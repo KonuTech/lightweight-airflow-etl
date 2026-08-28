@@ -15,6 +15,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **CONFIG-01**: Developer can define a dataset's ingestion contract in `config.json` (file
       pattern, CSV dialect, schema with types/nullability/date format, Oracle target/invalid table
       names)
+
 - [ ] **CONFIG-02**: System validates `config.json` once per run via Pydantic v2 before any CSV
       processing begins, failing fast with a complete list of errors on a malformed config
 
@@ -28,20 +29,27 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [ ] **ENGINE-01**: `csv_processor.process(file_path, config)` validates CSV structure (column
       count / missing / unexpected columns) before validating anything else
+
 - [ ] **ENGINE-02**: Engine validates each column's type (integer/decimal/date) per the config
       schema
+
 - [ ] **ENGINE-03**: Engine validates required (non-nullable) fields are non-empty
 - [ ] **ENGINE-04**: Engine explicitly converts each valid CSV string field to its configured
       Python/Oracle type (no implicit Oracle casting)
+
 - [ ] **ENGINE-05**: An invalid row does not stop processing of the rest of the file; valid and
       invalid rows are split and both counted
+
 - [ ] **ENGINE-06**: Each invalid row records `error_code`, `error_message`, `source_file`, and
       `row_number` alongside its original field values
+
 - [ ] **ENGINE-07**: CSV reading and validation processes rows in configurable chunks (not one row
       at a time, not the whole file loaded into memory)
+
 - [ ] **ENGINE-08**: `process()` returns a structured `ProcessingResult` (total/valid/invalid rows,
       duration, status) with distinct status codes (SUCCESS / SUCCESS_WITH_INVALID_ROWS /
       FILE_NOT_FOUND / INVALID_FILE / CONFIGURATION_ERROR / DATABASE_ERROR / PROCESSING_ERROR)
+
 - [ ] **ENGINE-09**: `csv_processor` has no Airflow import/dependency and can be unit-tested
       standalone
 
@@ -49,10 +57,13 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [ ] **LOAD-01**: Valid rows are bulk-inserted into the dataset's `<DATASET>_VALID` Oracle table
       using `executemany()` array binding (no per-row INSERT)
+
 - [ ] **LOAD-02**: Invalid rows are bulk-inserted into the dataset's `<DATASET>_INVALID` Oracle
       table with their error metadata, using the same bulk mechanism
+
 - [ ] **LOAD-03**: Each processed file is recorded in a minimal ingestion metadata table
       (file_name, checksum, dataset, timestamp, total/valid/invalid counts, status)
+
 - [ ] **LOAD-04**: Re-processing a file already recorded (same filename + checksum + dataset) does
       not duplicate data — retrying an Airflow task is safe
 
@@ -61,21 +72,26 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **DAG-01**: An Airflow TaskFlow DAG (`load_config` → `wait_for_file` → `process_csv` →
       `load_results` → `report_result`) orchestrates ingestion for a dataset, calling
       `csv_processor` rather than implementing CSV logic itself
+
 - [ ] **DAG-02**: The DAG can be triggered via a single HTTP request (Airflow's own REST API)
       passing dataset name and config path as runtime conf
+
 - [ ] **DAG-03**: The DAG waits for the expected CSV file using a deferrable operator/trigger
       (non-blocking, releases the Airflow worker slot while waiting)
+
 - [ ] **DAG-04**: After processing, the DAG reports a concise human-readable summary (dataset,
       file, row counts, duration, status)
+
 - [ ] **DAG-05**: The same DAG definition works for both the `customers` and `orders` datasets
       purely by config, with no dataset-specific code branches
 
 ### Infrastructure
 
-- [ ] **INFRA-01**: `docker-compose` stands up Airflow (LocalExecutor), Airflow's metadata DB, and
+- [x] **INFRA-01**: `docker-compose` stands up Airflow (LocalExecutor), Airflow's metadata DB, and
       a pinned Oracle Database Free image tag, runnable from WSL against Docker Desktop
+
 - [ ] **INFRA-02**: CPU/RAM/disk resource allocation for the environment is documented
-- [ ] **INFRA-03**: Oracle and Airflow credentials for local dev are managed consistently through
+- [x] **INFRA-03**: Oracle and Airflow credentials for local dev are managed consistently through
       one documented credential pair (`admin`/`admin`) via `.env`/docker-compose environment
       variables — not scattered inline or hardcoded differently across configs, connection
       strings, and DAG code
@@ -84,10 +100,13 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [ ] **TEST-01**: Unit tests cover config parsing, CSV parsing, type conversion, date validation,
       valid/invalid row handling, and chunked processing
+
 - [ ] **TEST-02**: Integration tests exercise a real Oracle Database Free container (not mocked)
       and verify actual resulting rows
+
 - [ ] **TEST-03**: An end-to-end test exercises the full path: HTTP request → DAG run → config →
       file detection → `csv_processor` → Oracle VALID/INVALID tables
+
 - [ ] **TEST-04**: A performance benchmark at ~100K rows compares row-by-row vs. chunked/bulk
       processing and records rows/sec, peak memory, and Oracle load time
 
@@ -111,6 +130,7 @@ Deferred to future release. Tracked but not in current roadmap.
 
 - **CONFIG-03**: Regex-based file pattern matching (in addition to glob) — only if a real dataset's
   filenames can't be expressed as a glob
+
 - **CONFIG-04**: Simple configurable business-rule checks (min/max, allowed-value sets) — only if a
   concrete dataset needs one
 
@@ -123,6 +143,7 @@ Deferred to future release. Tracked but not in current roadmap.
 
 - **PKG-01**: Containerized `csv_processor` with its own Dockerfile — only relevant if the engine
   needs to run outside the Airflow worker process
+
 - **PKG-02**: Resource-config JSON formalizing CPU/RAM documentation as data — only if README prose
   proves insufficient in practice
 
@@ -172,9 +193,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DAG-03 | Phase 5 | Pending |
 | DAG-04 | Phase 5 | Pending |
 | DAG-05 | Phase 5 | Pending |
-| INFRA-01 | Phase 1 | Pending |
+| INFRA-01 | Phase 1 | Complete |
 | INFRA-02 | Phase 1 | Pending |
-| INFRA-03 | Phase 1 | Pending |
+| INFRA-03 | Phase 1 | Complete |
 | TEST-01 | Phase 3 | Pending |
 | TEST-02 | Phase 4 | Pending |
 | TEST-03 | Phase 6 | Pending |
@@ -183,6 +204,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DOC-01 | Phase 6 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 30 total
 - Mapped to phases: 30 (100%)
 - Unmapped: 0
