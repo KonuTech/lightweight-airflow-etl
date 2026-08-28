@@ -18,6 +18,7 @@ x-airflow-common: &airflow-common
     # enabled here for local-dev verification of D-11/oracle_default via
     # `airflow connections test`. Acceptable in this project's explicit local-dev-only scope.
     AIRFLOW__CORE__TEST_CONNECTION: "Enabled"
+  user: "${AIRFLOW_UID:-50000}:0"
   volumes:
     - ./docker/airflow/simple_auth_manager_passwords.json.generated:/opt/airflow/simple_auth_manager_passwords.json.generated
     - ./airflow/dags:/opt/airflow/dags
