@@ -1,0 +1,120 @@
+# The fixture-corpus manifest (D-16, D-16e) — the machine-readable
+# specification tools/corpus/__main__.py's `generate`/`verify` commands
+# materialize and check against the committed digest oracle
+# (tests/fixtures/CORPUS.sha256). `tests/fixtures/csv/**` (the generated
+# bytes) is gitignored; only this file and the digest oracle are committed.
+#
+# Category "dialect_encoding" (02-03-PLAN.md Task 3, 8 fixtures) proves the
+# tools/corpus mechanism end-to-end for the first of five planned categories
+# (02-RESEARCH.md's "Recommended scoped fixture category list"). Every
+# `expect:` block is free-text prose (D-16d) — never a fixed `error_code`,
+# which is Phase 3/ENGINE-06's vocabulary to define, not this phase's.
+version: 1
+master_seed: "lightweight-airflow-etl-corpus-v1"
+fixtures:
+  - name: "01_semicolon_delimiter"
+    category: "dialect_encoding"
+    generator:
+      kind: tabular
+      encoding: utf-8
+      delimiter: ";"
+      header: ["id", "name", "city"]
+      rows: 3
+      row_spec:
+        id: {kind: zero_padded_int, width: 3, start: 1}
+        name: {kind: pick, values: ["alice", "bob", "carol"]}
+        city: {kind: pick, values: ["berlin", "paris", "rome"]}
+    expect:
+      reason: "parses correctly when the config's csv.delimiter is declared as ';'"
+
+  - name: "02_pipe_delimiter"
+    category: "dialect_encoding"
+    generator:
+      kind: tabular
+      encoding: utf-8
+      delimiter: "|"
+      header: ["id", "name", "city"]
+      rows: 3
+      row_spec:
+        id: {kind: zero_padded_int, width: 3, start: 1}
+        name: {kind: pick, values: ["dave", "erin", "frank"]}
+        city: {kind: pick, values: ["madrid", "oslo", "vienna"]}
+    expect:
+      reason: "parses correctly when the config's csv.delimiter is declared as '|'"
+
+  - name: "03_tab_delimiter"
+    category: "dialect_encoding"
+    generator:
+      kind: tabular
+      encoding: utf-8
+      delimiter: "\t"
+      header: ["id", "name", "city"]
+      rows: 3
+      row_spec:
+        id: {kind: zero_padded_int, width: 3, start: 1}
+        name: {kind: pick, values: ["grace", "heidi", "ivan"]}
+        city: {kind: pick, values: ["lisbon", "dublin", "krakow"]}
+    expect:
+      reason: "parses correctly when the config's csv.delimiter is declared as '\\t' (a literal tab character)"
+
+  - name: "04_custom_quotechar"
+    category: "dialect_encoding"
+    generator:
+      kind: tabular
+      encoding: utf-8
+      delimiter: ","
+      quotechar: "'"
+      header: ["id", "full_name", "note"]
+      rows: 3
+      row_spec:
+        id: {kind: zero_padded_int, width: 3, start: 1}
+        full_name: {kind: pick, values: ["Smith, John", "Doe, Jane", "Lee, Ann"]}
+        note: {kind: repeat, char: "x", length: 4}
+    expect:
+      reason: "full_name's embedded comma forces quoting with the declared quotechar \"'\" instead of the default '\"' -- a config that hardcodes '\"' would mis-split this file's rows"
+
+  - name: "05_escapechar_no_doublequote"
+    category: "dialect_encoding"
+    generator:
+      kind: tabular
+      encoding: utf-8
+      delimiter: ","
+      quotechar: "\""
+      escapechar: "\\"
+      doublequote: false
+      header: ["id", "quote_text", "note"]
+      rows: 3
+      row_spec:
+        id: {kind: zero_padded_int, width: 3, start: 1}
+        quote_text: {kind: pick, values: ["she said \"hi\"", "he said \"bye\"", "no quote here"]}
+        note: {kind: repeat, char: "y", length: 4}
+    expect:
+      reason: "quote_text's embedded double-quote is escaped with a backslash (escapechar), never doubled (doublequote: false) -- exercises D-02's explicit escapechar/doublequote test-coverage request"
+
+  - name: "06_crlf_terminator"
+    category: "dialect_encoding"
+    generator:
+      kind: literal
+      encoding: utf-8
+      content: "id,name,city\r\n001,jack,athens\r\n002,karl,zurich\r\n003,liam,tokyo\r\n"
+    expect:
+      reason: "every record is hand-joined with an explicit CRLF terminator (R4) -- never csv.writer's own default or a translated '\\n' -- so a config declaring line_terminator '\\r\\n' round-trips exactly"
+
+  - name: "07_utf8_bom"
+    category: "dialect_encoding"
+    generator:
+      kind: literal_unicode
+      encoding: utf-8
+      bom: true
+      content: "id,name,city\n1,mona,cairo\n2,nora,accra\n"
+    expect:
+      reason: "a UTF-8 byte-order mark (EF BB BF) precedes an otherwise-plain-ASCII body -- the detector must strip the BOM before treating the first column name as 'id', not '\\ufeffid'"
+
+  - name: "08_utf16_encoding"
+    category: "dialect_encoding"
+    generator:
+      kind: literal_unicode
+      encoding: utf-16
+      content: "id,name,city\n1,omar,tunis\n2,priya,pune\n"
+    expect:
+      reason: "the whole file is encoded as UTF-16 (Python's own 'utf-16' codec embeds its own byte-order mark and 2-byte-per-character body) -- the encoding detector must recognize this as UTF-16, not misread it as UTF-8/Latin-1 garbage"
