@@ -12,6 +12,7 @@ dependencies = [
     "pydantic==2.13.4",
     "csv-processor",
     "faker==40.37.0",
+    "pyyaml==6.0.3",
 ]
 
 [project.scripts]
@@ -28,6 +29,13 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# `tools/` is a namespace package (no `__init__.py` at the `tools/` level,
+# matching the reference repo's own convention) living at the repo root, not
+# under `packages/` or `src/` -- unlike csv_processor (installed via the uv
+# workspace) it is never `pip install`-ed, so pytest needs the repo root on
+# sys.path to resolve `import tools.corpus...`. `python -m tools.corpus` gets
+# this for free (```-m``` always prepends cwd); pytest does not, hence this.
+pythonpath = ["."]
 
 # csv_processor is imported directly by local pytest/generate_csv.py/tools.corpus runs
 # (Phase 2's own RESEARCH.md Pitfall 1 -- this is the root pyproject.toml's own piece of
