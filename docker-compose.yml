@@ -13,6 +13,11 @@ x-airflow-common: &airflow-common
     # Airflow-agnostic (ENGINE-09); hostname is `oracle`, the compose service name (container-
     # internal DNS), not `localhost`.
     AIRFLOW_CONN_ORACLE_DEFAULT: "oracle://admin:admin@oracle:1521/?service_name=FREEPDB1&encoding=UTF-8&threaded=False&events=False"
+    # Airflow 3 defaults `core.test_connection` to "Disabled" (a deliberate security default,
+    # since the test-connection endpoint can be used to probe internal network reachability) --
+    # enabled here for local-dev verification of D-11/oracle_default via
+    # `airflow connections test`. Acceptable in this project's explicit local-dev-only scope.
+    AIRFLOW__CORE__TEST_CONNECTION: "Enabled"
   volumes:
     - ./docker/airflow/simple_auth_manager_passwords.json.generated:/opt/airflow/simple_auth_manager_passwords.json.generated
     - ./airflow/dags:/opt/airflow/dags

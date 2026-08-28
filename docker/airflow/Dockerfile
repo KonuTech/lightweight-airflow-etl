@@ -4,6 +4,7 @@ RUN pip install --no-cache-dir \
       "oracledb==4.0.2" \
       "pydantic==2.13.4" \
       "apache-airflow-providers-standard==1.17.0" \
+      "apache-airflow-providers-oracle==4.6.2" \
     --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-3.3.1/constraints-3.12.txt"
 
 COPY --chown=airflow:0 packages/csv-processor/pyproject.toml packages/csv-processor/pyproject.toml
