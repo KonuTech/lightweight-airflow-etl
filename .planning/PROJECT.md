@@ -54,6 +54,9 @@ table, and reports back a clear processing summary — end to end, reproducibly,
 - [ ] `config.json` itself validated (Pydantic v2, once per run) before CSV processing begins
 - [ ] docker-compose provisioning: Airflow (LocalExecutor) + Airflow metadata DB + Oracle Database
       Free (pinned tag), with documented CPU/RAM/disk allocation
+- [ ] Essential secrets maintenance: one documented `admin`/`admin` dev credential pair, sourced
+      from `.env`/docker-compose environment variables, used consistently everywhere a credential
+      is needed (Oracle, Airflow webserver) — no Vault, no scattered/inconsistent hardcoding
 - [ ] Everything run from WSL (Linux filesystem, not `/mnt/c/...`); Docker Desktop as the host
 - [ ] Tests: unit (config/parsing/type-conversion/validation), Oracle integration (real container,
       not mocked), one end-to-end test (HTTP → DAG → CSV → Oracle → VALID/INVALID tables)
@@ -137,6 +140,11 @@ API shape, version-specific semantics, whether a feature exists — verify again
 MCP Context7 rather than answering from training data. Applies broadly: Airflow's REST API/
 TaskFlow/Deferrable Triggers, `python-oracledb`, Pydantic v2.
 
+**Working preference:** don't trust DDL/setup exiting without error as proof a database object
+exists correctly — confirm by actually querying Oracle's own metadata/dictionary views (e.g.
+`USER_TABLES`, `ALL_TAB_COLUMNS`) after provisioning tables. Applies to Phase 1's environment
+setup and any later schema change.
+
 ## Constraints
 
 - **Environment**: WSL-first development (Linux filesystem, e.g. `~/projects/lightweight-airflow-etl`,
@@ -162,6 +170,7 @@ TaskFlow/Deferrable Triggers, `python-oracledb`, Pydantic v2.
 | docker-compose is a project deliverable, not pre-provisioned | Spec §22-23, 47-50 and DoD §59.1-4 expect the environment to be stood up from this repo | — Pending |
 | Two-tier reuse of reference repo's csv-processor/dataplat (vendor pure detection files; reimplement pipeline-coupled normalize/validate logic) | Verified by reading actual imports — csv-processor's detect/* and compression.py have near-zero dataplat coupling (1-2 lines); dataplat's normalize/validate are fully wired into a custom streaming pipeline that has no place here | — Pending |
 | orders.customer_id → customers.customer_id FK not enforced | Referential integrity validation is explicitly out of scope per spec §28, even though the reference repo enforces it | — Pending |
+| Single `admin`/`admin` dev credential everywhere, via env vars | Lightweight local project, Vault is explicitly out of scope; a single consistent credential keeps setup simple without scattering ad hoc secrets across configs | — Pending |
 
 ## Evolution
 
@@ -181,4 +190,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-28 after initialization*
+*Last updated: 2026-08-28 after roadmap review (added credentials/verification requirements)*

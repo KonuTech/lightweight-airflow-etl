@@ -75,6 +75,10 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **INFRA-01**: `docker-compose` stands up Airflow (LocalExecutor), Airflow's metadata DB, and
       a pinned Oracle Database Free image tag, runnable from WSL against Docker Desktop
 - [ ] **INFRA-02**: CPU/RAM/disk resource allocation for the environment is documented
+- [ ] **INFRA-03**: Oracle and Airflow credentials for local dev are managed consistently through
+      one documented credential pair (`admin`/`admin`) via `.env`/docker-compose environment
+      variables — not scattered inline or hardcoded differently across configs, connection
+      strings, and DAG code
 
 ### Testing
 
@@ -147,41 +151,42 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CONFIG-01 | TBD | Pending |
-| CONFIG-02 | TBD | Pending |
-| GEN-01 | TBD | Pending |
-| ENGINE-01 | TBD | Pending |
-| ENGINE-02 | TBD | Pending |
-| ENGINE-03 | TBD | Pending |
-| ENGINE-04 | TBD | Pending |
-| ENGINE-05 | TBD | Pending |
-| ENGINE-06 | TBD | Pending |
-| ENGINE-07 | TBD | Pending |
-| ENGINE-08 | TBD | Pending |
-| ENGINE-09 | TBD | Pending |
-| LOAD-01 | TBD | Pending |
-| LOAD-02 | TBD | Pending |
-| LOAD-03 | TBD | Pending |
-| LOAD-04 | TBD | Pending |
-| DAG-01 | TBD | Pending |
-| DAG-02 | TBD | Pending |
-| DAG-03 | TBD | Pending |
-| DAG-04 | TBD | Pending |
-| DAG-05 | TBD | Pending |
-| INFRA-01 | TBD | Pending |
-| INFRA-02 | TBD | Pending |
-| TEST-01 | TBD | Pending |
-| TEST-02 | TBD | Pending |
-| TEST-03 | TBD | Pending |
-| TEST-04 | TBD | Pending |
-| CI-01 | TBD | Pending |
-| DOC-01 | TBD | Pending |
+| CONFIG-01 | Phase 2 | Pending |
+| CONFIG-02 | Phase 2 | Pending |
+| GEN-01 | Phase 2 | Pending |
+| ENGINE-01 | Phase 3 | Pending |
+| ENGINE-02 | Phase 3 | Pending |
+| ENGINE-03 | Phase 3 | Pending |
+| ENGINE-04 | Phase 3 | Pending |
+| ENGINE-05 | Phase 3 | Pending |
+| ENGINE-06 | Phase 3 | Pending |
+| ENGINE-07 | Phase 3 | Pending |
+| ENGINE-08 | Phase 4 | Pending |
+| ENGINE-09 | Phase 3 | Pending |
+| LOAD-01 | Phase 4 | Pending |
+| LOAD-02 | Phase 4 | Pending |
+| LOAD-03 | Phase 4 | Pending |
+| LOAD-04 | Phase 4 | Pending |
+| DAG-01 | Phase 5 | Pending |
+| DAG-02 | Phase 5 | Pending |
+| DAG-03 | Phase 5 | Pending |
+| DAG-04 | Phase 5 | Pending |
+| DAG-05 | Phase 5 | Pending |
+| INFRA-01 | Phase 1 | Pending |
+| INFRA-02 | Phase 1 | Pending |
+| INFRA-03 | Phase 1 | Pending |
+| TEST-01 | Phase 3 | Pending |
+| TEST-02 | Phase 4 | Pending |
+| TEST-03 | Phase 6 | Pending |
+| TEST-04 | Phase 6 | Pending |
+| CI-01 | Phase 6 | Pending |
+| DOC-01 | Phase 6 | Pending |
 
 **Coverage:**
-- v1 requirements: 29 total
-- Mapped to phases: 0 (pending roadmap creation)
-- Unmapped: 29 ⚠️
+- v1 requirements: 30 total
+- Mapped to phases: 30 (100%)
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-08-28*
-*Last updated: 2026-08-28 after initial definition*
+*Last updated: 2026-08-28 after roadmap adjustment (added INFRA-03 credentials requirement; 100% v1 requirement coverage across 6 phases)*
