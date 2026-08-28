@@ -1,4 +1,4 @@
-.PHONY: up down reset logs
+.PHONY: up down reset logs verify smoke-test
 
 up:               ## Start the full stack (Airflow + Oracle)
 	docker compose up -d --wait
@@ -12,6 +12,14 @@ reset:             ## Full wipe: stop containers AND remove volumes (D-15)
 logs:              ## Tail logs from every service
 	docker compose logs -f
 
-# Later phases (2-6) add targets here (make test, make lint, make verify, make benchmark)
+verify:            ## Confirm Oracle schema + admin/admin dual-auth against a running stack
+	uv run python scripts/verify_environment.py
+
+smoke-test:        ## Cold start: wipe all state, boot fresh, confirm the stack is genuinely alive
+	$(MAKE) reset
+	$(MAKE) up
+	$(MAKE) verify
+
+# Later phases (2-6) add targets here (make test, make lint, make benchmark)
 # rather than inventing separate tooling -- this Makefile is the project-wide command
 # entrypoint (D-14), not scoped to Phase 1 only.
