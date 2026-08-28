@@ -12,7 +12,7 @@ x-airflow-common: &airflow-common
     # list`/`test`) -- csv_processor itself never touches this Connection object and stays
     # Airflow-agnostic (ENGINE-09); hostname is `oracle`, the compose service name (container-
     # internal DNS), not `localhost`.
-    AIRFLOW_CONN_ORACLE_DEFAULT: "oracle://admin:admin@oracle:1521/?service_name=FREEPDB1&encoding=UTF-8&threaded=False&events=False"
+    AIRFLOW_CONN_ORACLE_DEFAULT: "oracle://${ORACLE_APP_USER:-admin}:${ORACLE_APP_USER_PASSWORD:-admin}@oracle:1521/?service_name=FREEPDB1&encoding=UTF-8&threaded=False&events=False"
     # Airflow 3 defaults `core.test_connection` to "Disabled" (a deliberate security default,
     # since the test-connection endpoint can be used to probe internal network reachability) --
     # enabled here for local-dev verification of D-11/oracle_default via
