@@ -318,3 +318,74 @@ fixtures:
         signup_country: {kind: repeat, char: "", length: 1}
     expect:
       reason: "row 1's signup_country value is empty, which SHOULD validate cleanly since customers.json declares signup_country nullable: true -- this documents the nullable=true happy path, not an error case"
+
+  # Category "byte_level_hard" (02-04-PLAN.md Task 3, 5 fixtures) -- RFC-4180
+  # edge cases. Every column whose exact literal value is asserted in
+  # `expect:` uses the `repeat` row_spec kind (a constant string, no
+  # randomness) rather than `pick`, so the byte-exact content is guaranteed
+  # by construction instead of depending on which candidate a `.random()`
+  # draw happens to select (see 02-04-SUMMARY.md Deviations).
+  - name: "23_embedded_newline_in_quoted_field"
+    category: "byte_level_hard"
+    generator:
+      kind: tabular
+      encoding: utf-8
+      delimiter: ","
+      header: ["order_id", "note"]
+      rows: 1
+      row_spec:
+        order_id: {kind: zero_padded_int, width: 4, start: 1}
+        note: {kind: repeat, char: "line one\nline two", length: 1}
+    expect:
+      reason: "the fixture's only data row's note field contains a literal embedded newline, forcing RFC-4180 quoting so the field spans two physical lines inside one logical record"
+
+  - name: "24_embedded_delimiter_in_quoted_field"
+    category: "byte_level_hard"
+    generator:
+      kind: tabular
+      encoding: utf-8
+      delimiter: ","
+      header: ["order_id", "note"]
+      rows: 1
+      row_spec:
+        order_id: {kind: zero_padded_int, width: 4, start: 1}
+        note: {kind: repeat, char: "contains, a comma", length: 1}
+    expect:
+      reason: "the fixture's only data row's note field contains the configured delimiter ',' inside its value, forcing RFC-4180 quoting"
+
+  - name: "25_doubled_quote_escaping"
+    category: "byte_level_hard"
+    generator:
+      kind: tabular
+      encoding: utf-8
+      delimiter: ","
+      header: ["order_id", "note"]
+      rows: 1
+      row_spec:
+        order_id: {kind: zero_padded_int, width: 4, start: 1}
+        note: {kind: repeat, char: "she said \"hi\" again", length: 1}
+    expect:
+      reason: "the fixture's only data row's note field's embedded double-quote is escaped via RFC-4180 doubling (\"\") under the default doublequote: true, distinct from fixture 05's escapechar variant"
+
+  - name: "26_embedded_nul_byte"
+    category: "byte_level_hard"
+    generator:
+      kind: literal
+      encoding: utf-8
+      content: "order_id,customer_id,order_date,amount\nORD0001,CUST\0001,2026-01-01,100.00\n"
+    expect:
+      reason: "the customer_id field of the single data row contains a raw NUL (0x00) byte embedded in an otherwise-plain-ASCII row"
+
+  - name: "27_oversized_field_value"
+    category: "byte_level_hard"
+    generator:
+      kind: tabular
+      encoding: utf-8
+      delimiter: ","
+      header: ["order_id", "big_field"]
+      rows: 1
+      row_spec:
+        order_id: {kind: zero_padded_int, width: 4, start: 1}
+        big_field: {kind: repeat, char: "x", length: 10001}
+    expect:
+      reason: "big_field's value is 10,001 characters, exceeding a documented 10,000-character size threshold"
