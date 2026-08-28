@@ -83,6 +83,8 @@ def verify_airflow_auth() -> None:
         raise AssertionError(
             f"Airflow auth request failed with HTTP {exc.code}: {exc.read().decode('utf-8')}"
         ) from exc
+    except urllib.error.URLError as exc:
+        raise AssertionError(f"Airflow auth request failed: {exc}") from exc
     assert "access_token" in body, f"Response missing access_token field: {body}"
 
 
