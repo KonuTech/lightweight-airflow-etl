@@ -15,6 +15,7 @@ functions — Phase 4's Oracle integration tests reuse them (see 01-PATTERNS.md)
 
 from __future__ import annotations
 
+import http.client
 import json
 import sys
 import time
@@ -83,6 +84,11 @@ def verify_airflow_auth() -> None:
     on urllib.error.URLError/OSError (G-01-1) -- OSError is the confirmed common
     superclass of ConnectionResetError, which urllib never wraps as URLError when
     raised during the response-read phase (see .planning/debug/apiserver-auth-connreset.md).
+    Also retries http.client.IncompleteRead (a clean-but-early connection close during
+    the same read phase, not an OSError subclass) and json.JSONDecodeError/
+    UnicodeDecodeError (a truncated-but-non-empty body from the same cold-start race) --
+    all are symptoms of the identical transient condition, just observed at different
+    points in the read/decode/parse sequence (WR-01).
     A genuine urllib.error.HTTPError (e.g. HTTP 401) is never retried -- it is not
     transient and fails immediately, matching prior behavior exactly.
     """
@@ -104,7 +110,13 @@ def verify_airflow_auth() -> None:
             raise AssertionError(
                 f"Airflow auth request failed with HTTP {exc.code}: {exc.read().decode('utf-8')}"
             ) from exc
-        except (urllib.error.URLError, OSError) as exc:
+        except (
+            urllib.error.URLError,
+            OSError,
+            http.client.IncompleteRead,
+            json.JSONDecodeError,
+            UnicodeDecodeError,
+        ) as exc:
             if attempt < AUTH_RETRY_ATTEMPTS:
                 delay = min(
                     AUTH_RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1)),
