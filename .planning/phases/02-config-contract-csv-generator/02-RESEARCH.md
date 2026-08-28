@@ -846,8 +846,8 @@ already flagged (`cx_Oracle`, Airflow's legacy REST API).
 
 ## Open Questions
 
-1. **Should `configs/defaults.json` exist at all for this project's two datasets, or would two
-   fully self-contained dataset configs be simpler?**
+1. **(RESOLVED) Should `configs/defaults.json` exist at all for this project's two datasets, or
+   would two fully self-contained dataset configs be simpler?**
    - What we know: D-05 already locked "yes, `defaults.json` exists, mirroring the reference repo's
      pattern" — this question is really about *what* goes in it.
    - What's unclear: With only two datasets and a fairly small config schema, the set of genuinely
@@ -858,8 +858,11 @@ already flagged (`cx_Oracle`, Airflow's legacy REST API).
      `orders.json` genuinely share unchanged (verify by writing both dataset configs first, then
      factoring out the identical top-level keys) — don't force artificial sharing to justify the
      file's existence.
+   - RESOLVED: Plan 02-01 implements the recommendation directly — `defaults.json` holds only the
+     shared `csv` block, not `processing`.
 
-2. **Exact wording/shape of `error_code` values the corpus's `expect:` blocks describe in prose.**
+2. **(RESOLVED) Exact wording/shape of `error_code` values the corpus's `expect:` blocks describe
+   in prose.**
    - What we know: D-16d locks this as explicitly out of scope for Phase 2 — `expect:` stays
      permissive prose, Phase 3 owns the real vocabulary (ENGINE-06).
    - What's unclear: Nothing blocking for this phase; flagged only so the planner doesn't
@@ -867,6 +870,8 @@ already flagged (`cx_Oracle`, Airflow's legacy REST API).
    - Recommendation: Write `expect:` blocks as free-text descriptions of intent (e.g.
      `expect: {reason: "customer_id column is empty on a required field"}`), never as a
      structured/enum-shaped value.
+   - RESOLVED: Enforced structurally across 02-03/04/05's fixture authoring instructions and the
+     manifest schema — no `error_code` field is ever declared in `manifest.py`.
 
 ## Environment Availability
 
