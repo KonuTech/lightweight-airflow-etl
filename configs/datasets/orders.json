@@ -1,0 +1,40 @@
+{
+  "dataset": "orders",
+  "file_pattern": "orders_*.csv",
+  "columns": [
+    {
+      "name": "order_id",
+      "type": "string",
+      "nullable": false,
+      "required": true
+    },
+    {
+      "name": "customer_id",
+      "type": "string",
+      "nullable": false,
+      "required": true
+    },
+    {
+      "name": "order_date",
+      "type": "date",
+      "nullable": true,
+      "required": true,
+      "format": "%Y-%m-%d"
+    },
+    {
+      "name": "amount",
+      "type": "decimal",
+      "nullable": true,
+      "required": true,
+      "precision": 12,
+      "scale": 2
+    }
+  ],
+  "oracle": {
+    "valid_table": "orders_valid",
+    "invalid_table": "orders_invalid"
+  },
+  "processing": {
+    "chunk_size": 5000
+  }
+}
