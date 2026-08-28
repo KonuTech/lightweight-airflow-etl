@@ -1,13 +1,16 @@
 """Verify the local docker-compose environment is up and correctly provisioned.
 
-Checks (D-05, INFRA-03):
-1. Oracle: the expected tables exist in the ADMIN schema of FREEPDB1, confirmed by
-   querying USER_TABLES (not by trusting init-script exit status).
-2. Airflow: the admin/admin credential pair authenticates against the REST API's
+Checks (D-05, INFRA-03, ROADMAP.md Phase 1 Success Criterion 2):
+1. Oracle: all 5 expected tables (CUSTOMERS_VALID/INVALID, ORDERS_VALID/INVALID,
+   INGESTION_METADATA) exist in the ADMIN schema of FREEPDB1, confirmed by querying
+   USER_TABLES (not by trusting init-script exit status).
+2. Oracle: representative columns exist on CUSTOMERS_VALID and ORDERS_VALID,
+   confirmed via ALL_TAB_COLUMNS.
+3. Airflow: the admin/admin credential pair authenticates against the REST API's
    /auth/token endpoint and returns a JWT (access_token).
 
-`verify_tables()` is intentionally a standalone, importable function — Phase 4's
-Oracle integration tests reuse it (see 01-PATTERNS.md).
+`verify_tables()` and `verify_columns()` are intentionally standalone, importable
+functions — Phase 4's Oracle integration tests reuse them (see 01-PATTERNS.md).
 """
 
 from __future__ import annotations
@@ -45,6 +48,22 @@ def verify_tables(cursor: oracledb.Cursor, expected: set[str]) -> None:
     assert not missing, f"Missing tables: {missing}"
 
 
+def verify_columns(cursor: oracledb.Cursor, table: str, expected_columns: set[str]) -> None:
+    """Assert that `table`'s column set (owned by ADMIN) is a superset of
+    `expected_columns`, confirmed via ALL_TAB_COLUMNS (D-05).
+
+    Superset, not exact-equal, so adding a column later doesn't break this check.
+    Reusable by Phase 4's Oracle integration tests.
+    """
+    cursor.execute(
+        "SELECT column_name FROM all_tab_columns WHERE table_name = :table_name AND owner = 'ADMIN'",
+        {"table_name": table},
+    )
+    found = {row[0] for row in cursor.fetchall()}
+    missing = expected_columns - found
+    assert not missing, f"Table {table} missing columns: {missing}"
+
+
 def verify_airflow_auth() -> None:
     """Assert that admin/admin authenticates against Airflow's REST API and returns
     a JWT (access_token field)."""
@@ -71,8 +90,29 @@ def main() -> int:
     conn = oracledb.connect(user=ORACLE_USER, password=ORACLE_PASSWORD, dsn=ORACLE_DSN)
     try:
         cursor = conn.cursor()
-        verify_tables(cursor, expected={"INGESTION_METADATA"})
-        print("OK: INGESTION_METADATA table exists in ADMIN schema of FREEPDB1")
+        verify_tables(
+            cursor,
+            expected={
+                "CUSTOMERS_VALID",
+                "CUSTOMERS_INVALID",
+                "ORDERS_VALID",
+                "ORDERS_INVALID",
+                "INGESTION_METADATA",
+            },
+        )
+        print("OK: all 5 tables exist in ADMIN schema of FREEPDB1")
+
+        verify_columns(
+            cursor,
+            table="CUSTOMERS_VALID",
+            expected_columns={"CUSTOMER_ID", "NAME", "COUNTRY", "INGESTED_AT"},
+        )
+        verify_columns(
+            cursor,
+            table="ORDERS_VALID",
+            expected_columns={"ORDER_ID", "CUSTOMER_ID", "AMOUNT", "INGESTED_AT"},
+        )
+        print("OK: CUSTOMERS_VALID and ORDERS_VALID have expected representative columns")
     finally:
         conn.close()
 
