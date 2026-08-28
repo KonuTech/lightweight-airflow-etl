@@ -21,8 +21,14 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from typing import TYPE_CHECKING
 
-import oracledb
+if TYPE_CHECKING:
+    # Deferred to a type-checking-only import (WR-03): the module-level `import
+    # oracledb` made loading this file for testing verify_airflow_auth() (which
+    # has no Oracle dependency) require the oracledb driver to be installed.
+    # `oracledb.connect()` itself is imported lazily inside main() below.
+    import oracledb
 
 ORACLE_DSN = "localhost:1521/FREEPDB1"
 ORACLE_USER = "admin"
@@ -137,6 +143,8 @@ def verify_airflow_auth() -> None:
 
 
 def main() -> int:
+    import oracledb  # WR-03: lazy import -- only main() needs the Oracle driver.
+
     conn = oracledb.connect(user=ORACLE_USER, password=ORACLE_PASSWORD, dsn=ORACLE_DSN)
     try:
         cursor = conn.cursor()
