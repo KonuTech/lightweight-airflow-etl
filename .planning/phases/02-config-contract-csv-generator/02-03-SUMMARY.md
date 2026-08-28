@@ -193,3 +193,9 @@ structural; type/nullability; byte-level-hard; large/compressed). 02-05 also imp
 ---
 *Phase: 02-config-contract-csv-generator*
 *Completed: 2026-08-28*
+
+## Self-Check: PASSED
+
+All 8 created files (`tools/corpus/{__init__,manifest,generators,digests,__main__}.py`,
+`tests/unit/test_corpus_manifest.py`, `tests/fixtures/{corpus.yaml,CORPUS.sha256}`) confirmed
+present on disk. All 4 commits (`ca233d1`, `4b84f5d`, `ae5f965`, `c932084`) confirmed in `git log`.
