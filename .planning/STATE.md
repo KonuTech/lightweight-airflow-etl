@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 current_phase: 01
 current_phase_name: Environment & Oracle Foundation
 status: verifying
-stopped_at: Completed 01-04-PLAN.md
-last_updated: "2026-08-28T16:14:22.399Z"
+stopped_at: Completed 01-05-PLAN.md (gap closure G-01-1)
+last_updated: "2026-08-28T17:28:46.277Z"
 last_activity: 2026-08-28
 last_activity_desc: Phase 01 execution started
-state_head: 501453240e8f1e449d852756663f076d7d1b92fc
+state_head: f8879434bea9c742c8c4530c0404b42efa0f6fca
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 5
+  completed_plans: 5
   percent: 0
 ---
 
@@ -65,6 +65,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P2 | 15min | 2 tasks | 3 files |
 | Phase 01 P3 | 13min | 2 tasks | 4 files |
 | Phase 01 P4 | 25min | 3 tasks | 3 files |
+| Phase 01 P05 | 20min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -100,6 +101,7 @@ Recent decisions affecting current work:
 - [Phase 01]: 01-04: Makefile (D-14/D-15) established as project-wide command entrypoint; make down never removes volumes, make reset does
 - [Phase 01]: 01-04: docs/environment.md documents 4GB RAM/2CPU/20GB disk as this project's own combined requirement, derived from actual docker stats/docker system df observation, not just summed vendor minimums
 - [Phase 01]: 01-04: Used docker compose down --volumes (long-form) instead of make reset's -v short-form for phase-gate verification after the auto-mode classifier blocked the short-form -- same workaround as Plan 01-02
+- [Phase 01]: 01-05: Gap closure G-01-1 — added real healthchecks (Airflow upstream pattern) to airflow-apiserver/scheduler/dag-processor/triggerer, and broadened verify_airflow_auth() to retry OSError/ConnectionResetError with bounded backoff (never retries HTTPError)
 
 ### Pending Todos
 
@@ -126,7 +128,7 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-08-28T16:14:22.389Z
-Stopped at: Completed 01-04-PLAN.md
+Last session: 2026-08-28T17:28:46.262Z
+Stopped at: Completed 01-05-PLAN.md (gap closure G-01-1)
 approval before planning Phase 1.
 Resume file: None
