@@ -2,17 +2,17 @@
 gsd_state_version: 1.0
 current_phase: 02
 current_phase_name: Config Contract & CSV Generator
-status: executing
-stopped_at: Completed 02-04-PLAN.md
-last_updated: "2026-08-28T21:52:31.512Z"
+status: verifying
+stopped_at: Completed 02-05-PLAN.md
+last_updated: "2026-08-28T22:06:09.184Z"
 last_activity: 2026-08-28
 last_activity_desc: Phase 02 execution started
-state_head: cf0e28394af7abc0dacb7b6b96c8bfbe42c035a7
+state_head: e4c46fd511e8914290f55926aaf6c62ef44099e3
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 10
-  completed_plans: 9
+  completed_plans: 10
   percent: 17
 ---
 
@@ -32,7 +32,7 @@ from a fresh `git clone`.
 
 Phase: 02 (Config Contract & CSV Generator) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-28 — Phase 02 execution started
 
 Progress: [██░░░░░░░░] 17%
@@ -70,6 +70,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 02 P02 | 2min | 2 tasks | 4 files |
 | Phase 02 P03 | 15min | 3 tasks | 11 files |
 | Phase 02 P04 | 20min | 3 tasks | 2 files |
+| Phase 02 P05 | 25min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -115,6 +116,9 @@ Recent decisions affecting current work:
 - [Phase 02]: [Phase 02]: 02-03: pyproject.toml gains pythonpath = ["."] so pytest resolves the tools namespace package (never pip-installed, unlike csv_processor via the uv workspace); 8 dialect_encoding fixtures + digest oracle committed, sha256sum -c verified independently
 - [Phase 02]: Fixtures whose exact byte content is asserted in expect: use the repeat row_spec kind (constant, no randomness) instead of pick with multiple candidates, after pick's per-row random draw failed to reliably include the invalid candidate in a 2-row fixture
 - [Phase 02]: 12_wrong_column_count_row authored as literal (not tabular) and 27_oversized_field_value authored as tabular+repeat (not literal) -- both deviate from the plan's literal action-text wording but stay within already-implemented generator/row_spec kinds
+- [Phase 02]: [Phase 02]: 02-05: Added tests/unit/test_corpus_generators.py (not in the plan's own Task 1 files list) to give the tdd=true wrapper-generator task a real RED/GREEN cycle; kept its fixtures small/synthetic rather than depending on the real 60 MiB corpus fixture
+- [Phase 02]: [Phase 02]: 02-05: Task 2's RED phase used a copy-paste bug in the negative-control buffering script rather than a mistuned RLIMIT_AS value -- verified empirically that setrlimit(RLIMIT_AS) after interpreter startup only bounds further growth, so an artificially small limit does not make the streaming reader fail
+- [Phase 02]: [Phase 02]: 02-05: profile:large dispatches to a new _generate_tabular_batched function rather than modifying _generate_tabular in place, eliminating regression risk to the 27 already-committed fixture digests
 
 ### Pending Todos
 
@@ -137,6 +141,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-08-28T21:52:31.486Z
-Stopped at: Completed 02-04-PLAN.md
+Last session: 2026-08-28T22:06:09.161Z
+Stopped at: Completed 02-05-PLAN.md
 Resume file: None

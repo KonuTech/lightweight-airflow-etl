@@ -21,7 +21,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Generator
 
-- [ ] **GEN-01**: Developer can generate a deterministic CSV file matching a dataset's config,
+- [x] **GEN-01**: Developer can generate a deterministic CSV file matching a dataset's config,
       containing a configurable mix of valid rows (all schema types) and invalid rows (wrong type,
       invalid date, missing required field)
 
@@ -174,7 +174,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | CONFIG-01 | Phase 2 | Complete |
 | CONFIG-02 | Phase 2 | Complete |
-| GEN-01 | Phase 2 | Pending |
+| GEN-01 | Phase 2 | Complete |
 | ENGINE-01 | Phase 3 | Pending |
 | ENGINE-02 | Phase 3 | Pending |
 | ENGINE-03 | Phase 3 | Pending |
