@@ -11,6 +11,7 @@ dependencies = [
     "oracledb==4.0.2",
     "pydantic==2.13.4",
     "csv-processor",
+    "faker==40.37.0",
 ]
 
 [project.scripts]
