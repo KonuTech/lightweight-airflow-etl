@@ -3,3 +3,9 @@ docker/airflow/simple_auth_manager_passwords.json.generated
 .venv/
 __pycache__/
 *.pyc
+
+# D-06: generate_csv.py's output -- generated content, never committed.
+/data/
+# D-16e: tools/corpus's generated fixture bytes -- the manifest + digest
+# oracle (corpus.yaml / CORPUS.sha256) ARE committed; only the bytes aren't.
+/tests/fixtures/csv/

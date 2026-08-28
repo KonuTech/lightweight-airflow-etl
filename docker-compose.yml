@@ -22,6 +22,9 @@ x-airflow-common: &airflow-common
   volumes:
     - ./docker/airflow/simple_auth_manager_passwords.json.generated:/opt/airflow/simple_auth_manager_passwords.json.generated
     - ./airflow/dags:/opt/airflow/dags
+    # D-06: generate_csv.py writes to ./data/<dataset>/ on the host; mounted here
+    # so Phase 5's DAG can read the same files from inside the container.
+    - ./data:/opt/airflow/data
   depends_on:
     airflow-init:
       condition: service_completed_successfully

@@ -11,6 +11,7 @@ from __future__ import annotations
 import csv
 import importlib.util
 import random
+import sys
 from decimal import Decimal
 from pathlib import Path
 
@@ -25,6 +26,12 @@ _CONFIGS_DIR = _REPO_ROOT / "configs"
 _SPEC = importlib.util.spec_from_file_location("generate_csv", _MODULE_PATH)
 generate_csv = importlib.util.module_from_spec(_SPEC)
 assert _SPEC.loader is not None
+# Register in sys.modules BEFORE exec_module: generate_csv.py's frozen
+# dataclass (GeneratedCsv) uses postponed annotations, and dataclasses'
+# forward-ref resolution looks the module up via sys.modules[cls.__module__]
+# -- without this it raises AttributeError on a None module during class
+# creation.
+sys.modules["generate_csv"] = generate_csv
 _SPEC.loader.exec_module(generate_csv)
 
 
