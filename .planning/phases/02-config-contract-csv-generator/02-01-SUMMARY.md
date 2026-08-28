@@ -196,3 +196,7 @@ Ready for Plan 02 (extends this same config-contract + generator shape to the `o
 ---
 *Phase: 02-config-contract-csv-generator*
 *Completed: 2026-08-28*
+
+## Self-Check: PASSED
+
+All 9 created files confirmed present on disk; all 5 commits (`a50a0f8`, `4e58d63`, `84b67f0`, `802718e`, `1aac72f`) confirmed present in git history.
