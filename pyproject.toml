@@ -1,0 +1,19 @@
+[project]
+name = "lightweight-airflow-etl"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Konrad Borowiec", email = "konrad.borowiec@example.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "oracledb==4.0.2",
+]
+
+[project.scripts]
+lightweight-airflow-etl = "lightweight_airflow_etl:main"
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"
