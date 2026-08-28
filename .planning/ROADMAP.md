@@ -21,7 +21,7 @@ is fully proven before the end-to-end/benchmark/CI/docs completion gate closes t
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Environment & Oracle Foundation** - docker-compose stands up Airflow (LocalExecutor) + Airflow metadata DB + a pinned Oracle Database Free, with target schema ready, resource footprint documented, and a single dev credential pair used consistently everywhere
+- [x] **Phase 1: Environment & Oracle Foundation** - docker-compose stands up Airflow (LocalExecutor) + Airflow metadata DB + a pinned Oracle Database Free, with target schema ready, resource footprint documented, and a single dev credential pair used consistently everywhere (completed 2026-08-28)
 - [ ] **Phase 2: Config Contract & CSV Generator** - Pydantic v2 `config.json` contract per dataset, validated once per run, plus a deterministic CSV fixture generator covering valid and invalid rows
 - [ ] **Phase 3: CSV Processing Engine** - Airflow-agnostic detect/parse/validate/normalize engine that splits valid (type-converted) rows from invalid (error-tagged) rows in bounded-memory chunks
 - [ ] **Phase 4: Oracle Bulk Load, Idempotency & Engine Entrypoint** - `executemany()` bulk loading into `_VALID`/`_INVALID` tables, checksum-based idempotency via an ingestion metadata table, and the `process()` entrypoint with full status semantics
@@ -142,7 +142,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|-----------------|--------|-----------|
-| 1. Environment & Oracle Foundation | 5/5 | In Progress|  |
+| 1. Environment & Oracle Foundation | 5/5 | Complete    | 2026-08-28 |
 | 2. Config Contract & CSV Generator | 0/TBD | Not started | - |
 | 3. CSV Processing Engine | 0/TBD | Not started | - |
 | 4. Oracle Bulk Load, Idempotency & Engine Entrypoint | 0/TBD | Not started | - |
