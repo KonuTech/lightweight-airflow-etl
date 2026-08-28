@@ -38,7 +38,13 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Oracle's `<DATASET>_VALID`, `<DATASET>_INVALID`, and `ingestion_metadata` tables exist for both `customers` and `orders` immediately after the stack starts — confirmed by actually querying Oracle's own metadata/dictionary views (e.g. `USER_TABLES`, `ALL_TAB_COLUMNS`), not just by DDL exiting without error.
   3. The repo documents the CPU/RAM/disk allocation the stack actually needs under WSL2/Docker Desktop, matching what running it in practice requires.
   4. A single documented `admin`/`admin` credential pair, sourced from `.env`/docker-compose environment variables (no Vault, no per-service hardcoding), authenticates against both Oracle and the Airflow webserver — the same credential works everywhere it's needed.
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Tracer: docker-compose stack boots end-to-end (Oracle + Airflow + Postgres), one Oracle table verified via metadata views, admin/admin auth confirmed against both Oracle and Airflow's REST API, package-legitimacy checkpoint, host-side verify_environment.py scaffold
+- [ ] 01-02-PLAN.md — Full Oracle schema: CUSTOMERS_VALID/INVALID + ORDERS_VALID/INVALID with daily INTERVAL partitioning (D-01/D-02/D-03), verify_environment.py extended to all 5 tables + columns
+- [ ] 01-03-PLAN.md — Custom Airflow Dockerfile (D-12), docker-compose swapped to build from it, Oracle Connection registered for UI visibility (D-11), csv-processor/dags empty scaffolds (D-16)
+- [ ] 01-04-PLAN.md — Makefile (D-14/D-15), docs/environment.md with real observed resource numbers (INFRA-02), README entry point, full fresh-clone phase-gate verification
 
 ### Phase 2: Config Contract & CSV Generator
 **Goal**: A developer can fully describe a dataset's ingestion contract in `config.json` and generate a deterministic CSV fixture that matches it, with malformed configs rejected before any processing starts.
