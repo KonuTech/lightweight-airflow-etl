@@ -1,0 +1,12 @@
+{
+  "csv": {
+    "delimiter": ",",
+    "encoding": "utf-8",
+    "quotechar": "\"",
+    "header": true,
+    "escapechar": null,
+    "doublequote": true,
+    "lineterminator": "\n",
+    "decimal_separator": "."
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "dataset": "customers",
+  "file_pattern": "customers_*.csv",
+  "columns": [
+    {
+      "name": "customer_id",
+      "type": "string",
+      "nullable": false,
+      "required": true
+    },
+    {
+      "name": "name",
+      "type": "string",
+      "nullable": false,
+      "required": true
+    },
+    {
+      "name": "country",
+      "type": "string",
+      "nullable": false,
+      "required": true
+    },
+    {
+      "name": "birth_date",
+      "type": "date",
+      "nullable": true,
+      "required": true,
+      "format": "%Y-%m-%d"
+    },
+    {
+      "name": "event_ts",
+      "type": "timestamp",
+      "nullable": false,
+      "required": true,
+      "format": "%Y-%m-%dT%H:%M:%S%z"
+    },
+    {
+      "name": "signup_country",
+      "type": "string",
+      "nullable": true,
+      "required": false
+    }
+  ],
+  "oracle": {
+    "valid_table": "customers_valid",
+    "invalid_table": "customers_invalid"
+  },
+  "processing": {
+    "chunk_size": 5000
+  }
+}
