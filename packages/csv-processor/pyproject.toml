@@ -1,0 +1,10 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "csv-processor"
+version = "0.1.0"
+description = "Reusable CSV detection/parsing/validation/loading engine (scaffold only — logic added in Phase 3)"
+requires-python = ">=3.12"
+dependencies = []
