@@ -7,4 +7,15 @@ name = "csv-processor"
 version = "0.1.0"
 description = "Reusable CSV detection/parsing/validation/loading engine (scaffold only — logic added in Phase 3)"
 requires-python = ">=3.12"
-dependencies = []
+# NOTE (Phase 2 Pitfall 1): declaring a dependency here is documentation-only for
+# anyone running inside the Airflow container -- docker/airflow/Dockerfile installs
+# this package with `pip install --no-deps`, so the actual in-container install list
+# is that Dockerfile's own explicit `pip install` line (already has pydantic==2.13.4
+# from Phase 1). This entry only matters for `pip install -e packages/csv-processor`
+# standalone installs and for documenting the real dependency. Any future import
+# added under csv_processor/ needs the SAME package added in THREE places: here,
+# the root pyproject.toml (for local pytest/make runs), and docker/airflow/Dockerfile's
+# pip install line (only if it must run inside the Airflow container).
+dependencies = [
+    "pydantic==2.13.4",
+]

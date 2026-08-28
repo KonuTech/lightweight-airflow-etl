@@ -9,6 +9,8 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "oracledb==4.0.2",
+    "pydantic==2.13.4",
+    "csv-processor",
 ]
 
 [project.scripts]
@@ -17,3 +19,22 @@ lightweight-airflow-etl = "lightweight_airflow_etl:main"
 [build-system]
 requires = ["uv_build>=0.12.3,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+# csv_processor is imported directly by local pytest/generate_csv.py/tools.corpus runs
+# (Phase 2's own RESEARCH.md Pitfall 1 -- this is the root pyproject.toml's own piece of
+# the three-place dependency rule). uv workspace makes packages/csv-processor an editable
+# local dependency here; this has NO effect on the Airflow container, which installs the
+# same package separately via docker/airflow/Dockerfile's own `pip install --no-deps` line.
+[tool.uv.sources]
+csv-processor = { workspace = true }
+
+[tool.uv.workspace]
+members = ["packages/csv-processor"]
