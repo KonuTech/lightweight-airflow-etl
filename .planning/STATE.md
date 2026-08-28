@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 current_phase: 01
 current_phase_name: Environment & Oracle Foundation
 status: executing
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-08-28T15:36:59.909Z"
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-08-28T15:49:19.622Z"
 last_activity: 2026-08-28
 last_activity_desc: Phase 01 execution started
-state_head: 7d51eaae725b0125a51b6a01455d6740ceabb1ca
+state_head: 1ba17630bf4aa6b8856d88462e2595535fd98677
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 4
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -31,7 +31,7 @@ from a fresh `git clone`.
 ## Current Position
 
 Phase: 01 (Environment & Oracle Foundation) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-08-28 — Phase 01 execution started
 
@@ -62,6 +62,7 @@ Progress: [░░░░░░░░░░] 0%
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 01 P1 | 23min | 3 tasks | 13 files |
+| Phase 01 P2 | 15min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -90,6 +91,8 @@ Recent decisions affecting current work:
 
 - [Phase 01]: 01-01: Package legitimacy checkpoint approved — oracledb==4.0.2, pydantic==2.13.4, apache-airflow-providers-standard==1.18.0 installed at pinned versions per RESEARCH.md audit override
 - [Phase 01]: 01-01: uv init default src-layout scaffold kept as-is; coexists with D-16's packages/csv-processor/ layout added in Plan 01-03
+- [Phase 01]: 01-02: Applied 02_customers.sql/03_orders.sql DDL directly against the already-running Oracle container (docker compose exec sqlplus) in addition to a clean-volume down/up rebuild, since init scripts only run on genuine first boot
+- [Phase 01]: 01-02: verify_environment.py's verify_columns(cursor, table, expected_columns) does a superset (not exact-equal) column check via ALL_TAB_COLUMNS, reusable by Phase 4's Oracle integration tests
 
 ### Pending Todos
 
@@ -116,7 +119,7 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-08-28T15:36:59.902Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-08-28T15:49:19.614Z
+Stopped at: Completed 01-02-PLAN.md
 approval before planning Phase 1.
 Resume file: None
