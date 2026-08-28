@@ -43,6 +43,14 @@ def customers_config():
     )
 
 
+@pytest.fixture
+def orders_config():
+    return load_config(
+        _CONFIGS_DIR / "datasets" / "orders.json",
+        defaults_path=_CONFIGS_DIR / "defaults.json",
+    )
+
+
 def test_generate_rows_is_deterministic_for_same_seed(customers_config) -> None:
     first = generate_csv.generate_rows(customers_config, rows=50, invalid_ratio=0.2, seed=42)
     second = generate_csv.generate_rows(customers_config, rows=50, invalid_ratio=0.2, seed=42)
@@ -172,4 +180,84 @@ def test_cli_end_to_end_writes_real_csv_file(tmp_path, monkeypatch) -> None:
         header = next(reader)
         data_rows = list(reader)
     assert header == ["customer_id", "name", "country", "birth_date", "event_ts", "signup_country"]
+    assert len(data_rows) == 20
+
+
+# --- orders-specific tests (02-02 Task 1): proves the same generator/loader path
+# works, unmodified, for a second dataset with a decimal AND a date column. ---
+
+
+def test_generate_rows_is_deterministic_for_same_seed_orders(orders_config) -> None:
+    first = generate_csv.generate_rows(orders_config, rows=50, invalid_ratio=0.2, seed=42)
+    second = generate_csv.generate_rows(orders_config, rows=50, invalid_ratio=0.2, seed=42)
+
+    assert first.header == second.header
+    assert first.rows == second.rows
+    assert first.categories == second.categories
+
+
+def test_cli_run_twice_produces_byte_identical_files_orders(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(generate_csv, "_DATA_DIR", tmp_path / "run1")
+    generate_csv.main(["--dataset", "orders", "--rows", "50", "--invalid-ratio", "0.2", "--seed", "42"])
+    first_bytes = generate_csv.output_path("orders").read_bytes()
+
+    monkeypatch.setattr(generate_csv, "_DATA_DIR", tmp_path / "run2")
+    generate_csv.main(["--dataset", "orders", "--rows", "50", "--invalid-ratio", "0.2", "--seed", "42"])
+    second_bytes = generate_csv.output_path("orders").read_bytes()
+
+    assert first_bytes == second_bytes
+
+
+def test_orders_csv_header_matches_column_names_in_declared_order(orders_config) -> None:
+    generated = generate_csv.generate_rows(orders_config, rows=5, invalid_ratio=0.0, seed=1)
+
+    assert generated.header == ["order_id", "customer_id", "order_date", "amount"]
+
+
+def test_orders_exercises_wrong_type_and_invalid_date_categories(orders_config) -> None:
+    """`orders` has both a decimal column (`amount`) and a date column
+    (`order_date`), so unlike `customers` it must be able to exercise both the
+    `wrong_type` and `invalid_date` D-15 categories."""
+    generated = generate_csv.generate_rows(orders_config, rows=200, invalid_ratio=0.5, seed=42)
+
+    applicable = set(generate_csv.applicable_categories(orders_config))
+    used = {category for category in generated.categories if category is not None}
+
+    assert "wrong_type" in applicable
+    assert "invalid_date" in applicable
+    assert "wrong_type" in used
+    assert "invalid_date" in used
+    assert used <= applicable
+
+
+def test_orders_valid_amount_values_have_exactly_two_decimal_places(orders_config) -> None:
+    generated = generate_csv.generate_rows(orders_config, rows=200, invalid_ratio=0.2, seed=42)
+    amount_index = generated.header.index("amount")
+
+    valid_amounts = [
+        row[amount_index]
+        for row, category in zip(generated.rows, generated.categories)
+        if category is None
+    ]
+
+    assert valid_amounts
+    for amount in valid_amounts:
+        assert Decimal(amount).as_tuple().exponent == -2
+
+
+def test_cli_end_to_end_writes_real_csv_file_orders(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(generate_csv, "_DATA_DIR", tmp_path)
+
+    exit_code = generate_csv.main(
+        ["--dataset", "orders", "--rows", "20", "--invalid-ratio", "0.25", "--seed", "7"]
+    )
+
+    assert exit_code == 0
+    out_path = generate_csv.output_path("orders")
+    assert out_path.exists()
+    with out_path.open(newline="", encoding="utf-8") as handle:
+        reader = csv.reader(handle)
+        header = next(reader)
+        data_rows = list(reader)
+    assert header == ["order_id", "customer_id", "order_date", "amount"]
     assert len(data_rows) == 20

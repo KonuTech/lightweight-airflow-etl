@@ -23,6 +23,7 @@ from csv_processor.config import ConfigurationError, DatasetConfig, load_config
 
 _CONFIGS_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
 _CUSTOMERS_PATH = _CONFIGS_DIR / "datasets" / "customers.json"
+_ORDERS_PATH = _CONFIGS_DIR / "datasets" / "orders.json"
 _DEFAULTS_PATH = _CONFIGS_DIR / "defaults.json"
 
 _MINIMAL_VALID_DATASET: dict = {
@@ -43,6 +44,23 @@ def test_load_config_returns_validated_customers_dataset() -> None:
     assert len(config.columns) == 6
     assert config.oracle.valid_table == "customers_valid"
     assert config.oracle.invalid_table == "customers_invalid"
+
+
+def test_load_config_returns_validated_orders_dataset() -> None:
+    """02-02 Task 1: proves the second dataset (`orders`) validates through the
+    identical, unmodified load_config() path Plan 01 proved for `customers`
+    (CONFIG-01/GEN-01's "both datasets" requirement)."""
+    config = load_config(_ORDERS_PATH, defaults_path=_DEFAULTS_PATH)
+
+    assert config.dataset == "orders"
+    assert len(config.columns) == 4
+    assert config.oracle.valid_table == "orders_valid"
+    assert config.oracle.invalid_table == "orders_invalid"
+
+    amount_column = next(column for column in config.columns if column.name == "amount")
+    assert amount_column.type == "decimal"
+    assert amount_column.precision == 12
+    assert amount_column.scale == 2
 
 
 def test_dataset_config_is_frozen() -> None:
