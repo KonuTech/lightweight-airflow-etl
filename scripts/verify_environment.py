@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -29,6 +30,16 @@ ORACLE_PASSWORD = "admin"
 AIRFLOW_AUTH_TOKEN_URL = "http://localhost:8080/auth/token"
 AIRFLOW_USER = "admin"
 AIRFLOW_PASSWORD = "admin"
+
+# G-01-1: on Docker Desktop/WSL2, docker-compose's --wait can (even with a real
+# healthcheck) return moments before the apiserver's ASGI server is fully ready to
+# serve a response, producing a transient ConnectionResetError during the
+# response-read phase. This is a bounded, evidence-backed cold-start race (measured
+# ~12.66s in the debug session, see .planning/debug/apiserver-auth-connreset.md),
+# not a permanent failure -- retry with backoff instead of crashing on it.
+AUTH_RETRY_ATTEMPTS = 6
+AUTH_RETRY_BASE_DELAY_SECONDS = 1.0
+AUTH_RETRY_MAX_DELAY_SECONDS = 8.0
 
 
 def verify_tables(cursor: oracledb.Cursor, expected: set[str]) -> None:
@@ -66,7 +77,15 @@ def verify_columns(cursor: oracledb.Cursor, table: str, expected_columns: set[st
 
 def verify_airflow_auth() -> None:
     """Assert that admin/admin authenticates against Airflow's REST API and returns
-    a JWT (access_token field)."""
+    a JWT (access_token field).
+
+    Retries a bounded number of times (AUTH_RETRY_ATTEMPTS) with exponential backoff
+    on urllib.error.URLError/OSError (G-01-1) -- OSError is the confirmed common
+    superclass of ConnectionResetError, which urllib never wraps as URLError when
+    raised during the response-read phase (see .planning/debug/apiserver-auth-connreset.md).
+    A genuine urllib.error.HTTPError (e.g. HTTP 401) is never retried -- it is not
+    transient and fails immediately, matching prior behavior exactly.
+    """
     payload = json.dumps({"username": AIRFLOW_USER, "password": AIRFLOW_PASSWORD}).encode(
         "utf-8"
     )
@@ -76,15 +95,32 @@ def verify_airflow_auth() -> None:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    try:
-        with urllib.request.urlopen(request) as response:
-            body = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        raise AssertionError(
-            f"Airflow auth request failed with HTTP {exc.code}: {exc.read().decode('utf-8')}"
-        ) from exc
-    except urllib.error.URLError as exc:
-        raise AssertionError(f"Airflow auth request failed: {exc}") from exc
+    for attempt in range(1, AUTH_RETRY_ATTEMPTS + 1):
+        try:
+            with urllib.request.urlopen(request) as response:
+                body = json.loads(response.read().decode("utf-8"))
+            break
+        except urllib.error.HTTPError as exc:
+            raise AssertionError(
+                f"Airflow auth request failed with HTTP {exc.code}: {exc.read().decode('utf-8')}"
+            ) from exc
+        except (urllib.error.URLError, OSError) as exc:
+            if attempt < AUTH_RETRY_ATTEMPTS:
+                delay = min(
+                    AUTH_RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1)),
+                    AUTH_RETRY_MAX_DELAY_SECONDS,
+                )
+                print(
+                    f"Airflow auth attempt {attempt}/{AUTH_RETRY_ATTEMPTS} failed "
+                    f"({exc}) -- retrying in {delay}s (likely a transient cold-start "
+                    "race, see G-01-1)",
+                    file=sys.stderr,
+                )
+                time.sleep(delay)
+                continue
+            raise AssertionError(
+                f"Airflow auth request failed after {AUTH_RETRY_ATTEMPTS} attempts: {exc}"
+            ) from exc
     assert "access_token" in body, f"Response missing access_token field: {body}"
 
 
