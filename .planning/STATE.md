@@ -114,10 +114,6 @@ None yet.
   as likely needing a focused research pass during planning — see research/SUMMARY.md "Research
   Flags".
 
-- Oracle Free image tag (`gvenzl/oracle-free:23.26.2-faststart`) behavior is only
-  web-search-corroborated (LOW confidence per research) — needs a one-time manual boot check
-  before Phase 1 locks it into docker-compose.
-
 ## Deferred Items
 
 Items acknowledged and deferred at milestone close, most recent first:
@@ -128,7 +124,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-08-28T17:28:46.262Z
+Last session: 2026-08-28T17:44:12.547Z
 Stopped at: Phase 01 complete, ready to plan Phase 2
-approval before planning Phase 1.
 Resume file: None

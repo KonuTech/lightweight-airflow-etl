@@ -22,7 +22,11 @@ table, and reports back a clear processing summary — end to end, reproducibly,
 
 ### Validated
 
-(None yet — ship to validate)
+- ✓ docker-compose provisioning: Airflow (LocalExecutor) + Airflow metadata DB + Oracle Database
+      Free (pinned tag), with documented CPU/RAM/disk allocation — Phase 1
+- ✓ Essential secrets maintenance: one documented `admin`/`admin` dev credential pair, sourced
+      from `.env`/docker-compose environment variables, used consistently everywhere a credential
+      is needed (Oracle, Airflow webserver) — Phase 1
 
 ### Active
 
@@ -52,11 +56,6 @@ table, and reports back a clear processing summary — end to end, reproducibly,
       distinct status semantics (SUCCESS / SUCCESS_WITH_INVALID_ROWS / FILE_NOT_FOUND /
       INVALID_FILE / CONFIGURATION_ERROR / DATABASE_ERROR / PROCESSING_ERROR)
 - [ ] `config.json` itself validated (Pydantic v2, once per run) before CSV processing begins
-- [ ] docker-compose provisioning: Airflow (LocalExecutor) + Airflow metadata DB + Oracle Database
-      Free (pinned tag), with documented CPU/RAM/disk allocation
-- [ ] Essential secrets maintenance: one documented `admin`/`admin` dev credential pair, sourced
-      from `.env`/docker-compose environment variables, used consistently everywhere a credential
-      is needed (Oracle, Airflow webserver) — no Vault, no scattered/inconsistent hardcoding
 - [ ] Everything run from WSL (Linux filesystem, not `/mnt/c/...`); Docker Desktop as the host
 - [ ] Tests: unit (config/parsing/type-conversion/validation), Oracle integration (real container,
       not mocked), one end-to-end test (HTTP → DAG → CSV → Oracle → VALID/INVALID tables)
@@ -171,6 +170,8 @@ setup and any later schema change.
 | Two-tier reuse of reference repo's csv-processor/dataplat (vendor pure detection files; reimplement pipeline-coupled normalize/validate logic) | Verified by reading actual imports — csv-processor's detect/* and compression.py have near-zero dataplat coupling (1-2 lines); dataplat's normalize/validate are fully wired into a custom streaming pipeline that has no place here | — Pending |
 | orders.customer_id → customers.customer_id FK not enforced | Referential integrity validation is explicitly out of scope per spec §28, even though the reference repo enforces it | — Pending |
 | Single `admin`/`admin` dev credential everywhere, via env vars | Lightweight local project, Vault is explicitly out of scope; a single consistent credential keeps setup simple without scattering ad hoc secrets across configs | — Pending |
+| Every docker-compose service must declare an explicit `healthcheck:` if anything depends on its readiness | UAT (Phase 1) found `docker compose up --wait` reports a service Healthy the instant its process starts when no `healthcheck:` exists — not when it's actually ready. Airflow's `apiserver` had none; caused a real, reproducible cold-start race (~12s false-positive window) against `/auth/token`. Fixed via gap-closure Plan 01-05. | ✓ Applied — Phase 1 |
+| `apache-airflow-providers-oracle` added mid-Phase-1 (not in the original plan) | Discovered that `airflow connections test` needs a registered Hook class for `conn_type=oracle`, which only ships in this provider package — the raw `oracledb` driver alone isn't enough for Airflow's own connection-testing UI/CLI | ✓ Applied — Phase 1 |
 
 ## Evolution
 
@@ -190,4 +191,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-28 after roadmap review (added credentials/verification requirements)*
+*Last updated: 2026-08-28 after Phase 1 (Environment & Oracle Foundation)*
