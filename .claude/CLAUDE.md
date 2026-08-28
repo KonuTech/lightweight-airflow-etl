@@ -24,23 +24,43 @@ dependency, uv workspace member, or git submodule** — its `dataplat` package p
 boto3 and Postgres-`COPY`-specific loading that has no place in this project. Port logic in by
 reading and rewriting a smaller version, never by importing.
 
-Worth reading there, by subtree:
+Verified by reading actual imports (not assumed) — reuse is **two-tier**, not uniform:
 
-- `packages/csv-processor/src/csv_processor/detect/{dialect,encoding,header,schema,filename}.py`,
-  `compression.py`, `source.py` — DB-agnostic CSV dialect/encoding/header detection. Most directly
-  portable piece; Oracle needs the same sniffing Postgres does.
-- `packages/dataplat/src/dataplat/normalize/{dates,numeric,unicode,boolean_null}.py` — read for the
-  type-conversion approach (CSV string → Python type → DB type); reimplement smaller here, don't
-  import.
-- `packages/dataplat/src/dataplat/validate/` — only the structural/type/nullability subset applies
-  here. Ignore referential/uniqueness/volume-anomaly/completeness/circuit-breaker validators —
-  explicitly out of scope for this project.
+**Tier A — vendor the file, then strip 1-2 lines of coupling:**
+- `packages/csv-processor/src/csv_processor/detect/{dialect,encoding,header,filename,schema}.py` —
+  each imports `from dataplat.errors import <SomeError>`. Replace with a local exception class of
+  the same name; the actual detection logic (clevercsv dialect sniffing, chardet/charset-normalizer
+  encoding detection, the header-scoring heuristic) is pure and has zero Postgres/S3/Vault/K8s
+  coupling. Copy the file, fix the one import, done.
+- `packages/csv-processor/src/csv_processor/compression.py` — same treatment, plus one extra swap:
+  its file-opening call is `dataplat.storage.objectstore.open_text_stream` (S3-backed). Replace
+  with a plain local `open()`/`pathlib.Path.open()`; the gzip/zip handling around it is untouched.
+
+**Tier B — read the algorithm, do not extract the file:**
+- `packages/csv-processor/src/csv_processor/source.py` — fully wired into dataplat's `Source`
+  protocol, `SchemaRepository`, `RecordChunk` model. Not a portable file; read it only to see the
+  *sequence* (detect compression → decode encoding → detect dialect → detect header → stream rows)
+  and write your own smaller orchestrator following that sequence.
+- `packages/dataplat/src/dataplat/normalize/{dates,numeric,unicode,boolean_null}.py` and all of
+  `packages/dataplat/src/dataplat/validate/*` — **every one of these is implemented as a "stage"**
+  plugged into dataplat's custom streaming pipeline engine (`dataplat.pipeline.protocol.
+  StreamingStage`/`BarrierStage`, `dataplat.models.record.RejectedRecord`/`StageResult`,
+  `dataplat.observability.metrics` calls baked into each). None of that stage scaffolding applies
+  here. What's worth reading is the algorithm *inside* each stage — e.g. the strict-`strptime`
+  date-rejection logic in `normalize/dates.py`, the regex checks in `validate/pattern.py` — then
+  reimplement just that logic as a plain function against this project's own row model. Only the
+  structural/type/nullability validators are even in scope per spec §28 — ignore referential/
+  uniqueness/volume-anomaly/completeness/circuit-breaker entirely, they're explicitly excluded.
 - `airflow/dags/csv_ingest_customers.py` + `airflow/dags/_common/` — the working reference for "thin
   TaskFlow DAG delegates to a processing engine." Skip the KubernetesPodOperator-specific parts
   (`_common/kpo.py`, `_common/tracing_kpo.py`) — this project has no Kubernetes; `process_csv` runs
   in-process under Airflow's LocalExecutor instead.
 - `docker/csv-processor/Dockerfile` — optional reference only if this project containerizes its
   processor.
+
+This tiering is a recorded decision, not just a note here — restate it explicitly when
+`/gsd-new-project`'s Q&A asks about prior art / technical approach, so it lands in `PROJECT.md`
+and survives into the phase that actually implements the CSV engine.
 
 ## Known gaps in the seed spec to resolve early (before/during `/gsd-new-project`)
 
