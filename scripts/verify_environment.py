@@ -103,7 +103,7 @@ def verify_airflow_auth() -> None:
     )
     for attempt in range(1, AUTH_RETRY_ATTEMPTS + 1):
         try:
-            with urllib.request.urlopen(request) as response:
+            with urllib.request.urlopen(request, timeout=10) as response:
                 body = json.loads(response.read().decode("utf-8"))
             break
         except urllib.error.HTTPError as exc:
