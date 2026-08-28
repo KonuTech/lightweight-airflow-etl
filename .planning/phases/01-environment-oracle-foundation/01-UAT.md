@@ -1,9 +1,9 @@
 ---
-status: diagnosed
+status: complete
 phase: 01-environment-oracle-foundation
-source: [01-01-SUMMARY.md, 01-02-SUMMARY.md, 01-03-SUMMARY.md, 01-04-SUMMARY.md]
+source: [01-01-SUMMARY.md, 01-02-SUMMARY.md, 01-03-SUMMARY.md, 01-04-SUMMARY.md, 01-05-SUMMARY.md]
 started: 2026-08-28T16:46:44Z
-updated: 2026-08-28T17:05:00Z
+updated: 2026-08-28T17:20:00Z
 ---
 
 ## Current Test
@@ -125,7 +125,9 @@ blocked: 0
 
 - gap_id: G-01-1
   truth: "Server boots without errors, any seed/migration completes, and a primary query (health check, homepage load, or basic API call) returns live data."
-  status: failed
+  status: resolved
+  resolved_by: "01-05-PLAN.md"
+  resolved_at: "2026-08-28"
   reason: "User reported: airflow-apiserver reports Docker-healthy before it can actually serve /auth/token — first request after a fresh `make up` hits ConnectionResetError with a raw traceback (retry with no changes passes cleanly). Also exposes that verify_airflow_auth()'s just-shipped URLError catch (01-REVIEW-FIX.md WR-03) doesn't cover ConnectionResetError, which isn't wrapped as URLError in this failure path."
   severity: major
   test: 1
