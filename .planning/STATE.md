@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 current_phase: 02
 current_phase_name: Config Contract & CSV Generator
 status: executing
-stopped_at: Completed 02-03-PLAN.md
-last_updated: "2026-08-28T21:37:42.471Z"
+stopped_at: Completed 02-04-PLAN.md
+last_updated: "2026-08-28T21:52:31.512Z"
 last_activity: 2026-08-28
 last_activity_desc: Phase 02 execution started
-state_head: c9320841ebb5cbd7631b8b20f6949683deb8bbcf
+state_head: cf0e28394af7abc0dacb7b6b96c8bfbe42c035a7
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 10
-  completed_plans: 8
+  completed_plans: 9
   percent: 17
 ---
 
@@ -31,7 +31,7 @@ from a fresh `git clone`.
 ## Current Position
 
 Phase: 02 (Config Contract & CSV Generator) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-08-28 — Phase 02 execution started
 
@@ -69,6 +69,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 02 P01 | 24min | 3 tasks | 15 files |
 | Phase 02 P02 | 2min | 2 tasks | 4 files |
 | Phase 02 P03 | 15min | 3 tasks | 11 files |
+| Phase 02 P04 | 20min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -112,6 +113,8 @@ Recent decisions affecting current work:
 - [Phase 02]: [Phase 02]: 02-02: test_config_models.py is a single test(...) commit with no paired feat(...) -- all 39 validation-rule assertions passed immediately against Plan 01's already-implemented models.py, per the plan's own carve-out for testing already-passing behavior
 - [Phase 02]: [Phase 02]: 02-03: PyYAML==6.0.3 package-legitimacy checkpoint approved by user; tools/corpus's Fixture model kept smaller than the reference repo's flat 20-field dataclass (generator stays a dict keyed by kind) since this project never needs wrapper/multipart/splice fields
 - [Phase 02]: [Phase 02]: 02-03: pyproject.toml gains pythonpath = ["."] so pytest resolves the tools namespace package (never pip-installed, unlike csv_processor via the uv workspace); 8 dialect_encoding fixtures + digest oracle committed, sha256sum -c verified independently
+- [Phase 02]: Fixtures whose exact byte content is asserted in expect: use the repeat row_spec kind (constant, no randomness) instead of pick with multiple candidates, after pick's per-row random draw failed to reliably include the invalid candidate in a 2-row fixture
+- [Phase 02]: 12_wrong_column_count_row authored as literal (not tabular) and 27_oversized_field_value authored as tabular+repeat (not literal) -- both deviate from the plan's literal action-text wording but stay within already-implemented generator/row_spec kinds
 
 ### Pending Todos
 
@@ -134,6 +137,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-08-28T21:37:42.448Z
-Stopped at: Completed 02-03-PLAN.md
+Last session: 2026-08-28T21:52:31.486Z
+Stopped at: Completed 02-04-PLAN.md
 Resume file: None

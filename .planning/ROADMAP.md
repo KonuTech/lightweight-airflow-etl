@@ -76,7 +76,7 @@ Plans:
   2. Loading a malformed `config.json` (bad type, missing required field, etc.) fails before any CSV processing begins and reports the complete list of validation errors in one pass, not just the first.
   3. Running the generator for a dataset produces a CSV file matching that dataset's config, containing a configurable mix of valid rows (covering every schema type) and invalid rows (wrong type, invalid date, missing required field).
 
-**Plans**: 3/5 plans executed
+**Plans**: 4/5 plans executed
 
 Plans:
 **Wave 1**
@@ -90,7 +90,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 02-04-PLAN.md — Structural, type/nullability, and byte-level-hard fixture categories (19 fixtures)
+- [x] 02-04-PLAN.md — Structural, type/nullability, and byte-level-hard fixture categories (19 fixtures)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -161,7 +161,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|-----------------|--------|-----------|
 | 1. Environment & Oracle Foundation | 5/5 | Complete    | 2026-08-28 |
-| 2. Config Contract & CSV Generator | 3/5 | In Progress|  |
+| 2. Config Contract & CSV Generator | 4/5 | In Progress|  |
 | 3. CSV Processing Engine | 0/TBD | Not started | - |
 | 4. Oracle Bulk Load, Idempotency & Engine Entrypoint | 0/TBD | Not started | - |
 | 5. Airflow DAG Wiring & Deferrable File-Wait | 0/TBD | Not started | - |
