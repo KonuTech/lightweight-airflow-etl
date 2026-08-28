@@ -42,7 +42,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. The repo documents the CPU/RAM/disk allocation the stack actually needs under WSL2/Docker Desktop, matching what running it in practice requires.
   4. A single documented `admin`/`admin` credential pair, sourced from `.env`/docker-compose environment variables (no Vault, no per-service hardcoding), authenticates against both Oracle and the Airflow webserver — the same credential works everywhere it's needed.
 
-**Plans**: 3/4 plans executed
+**Plans**: 4/4 plans executed
 
 Plans:
 **Wave 1**
@@ -59,7 +59,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 01-04-PLAN.md — Makefile (D-14/D-15), docs/environment.md with real observed resource numbers (INFRA-02), README entry point, full fresh-clone phase-gate verification
+- [x] 01-04-PLAN.md — Makefile (D-14/D-15), docs/environment.md with real observed resource numbers (INFRA-02), README entry point, full fresh-clone phase-gate verification
 
 ### Phase 2: Config Contract & CSV Generator
 
@@ -138,7 +138,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|-----------------|--------|-----------|
-| 1. Environment & Oracle Foundation | 3/4 | In Progress|  |
+| 1. Environment & Oracle Foundation | 4/4 | In Progress|  |
 | 2. Config Contract & CSV Generator | 0/TBD | Not started | - |
 | 3. CSV Processing Engine | 0/TBD | Not started | - |
 | 4. Oracle Bulk Load, Idempotency & Engine Entrypoint | 0/TBD | Not started | - |

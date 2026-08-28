@@ -90,7 +90,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **INFRA-01**: `docker-compose` stands up Airflow (LocalExecutor), Airflow's metadata DB, and
       a pinned Oracle Database Free image tag, runnable from WSL against Docker Desktop
 
-- [ ] **INFRA-02**: CPU/RAM/disk resource allocation for the environment is documented
+- [x] **INFRA-02**: CPU/RAM/disk resource allocation for the environment is documented
 - [x] **INFRA-03**: Oracle and Airflow credentials for local dev are managed consistently through
       one documented credential pair (`admin`/`admin`) via `.env`/docker-compose environment
       variables — not scattered inline or hardcoded differently across configs, connection
@@ -194,7 +194,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DAG-04 | Phase 5 | Pending |
 | DAG-05 | Phase 5 | Pending |
 | INFRA-01 | Phase 1 | Complete |
-| INFRA-02 | Phase 1 | Pending |
+| INFRA-02 | Phase 1 | Complete |
 | INFRA-03 | Phase 1 | Complete |
 | TEST-01 | Phase 3 | Pending |
 | TEST-02 | Phase 4 | Pending |

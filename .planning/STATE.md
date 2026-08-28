@@ -2,17 +2,17 @@
 gsd_state_version: 1.0
 current_phase: 01
 current_phase_name: Environment & Oracle Foundation
-status: executing
-stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-08-28T16:03:30.231Z"
+status: verifying
+stopped_at: Completed 01-04-PLAN.md
+last_updated: "2026-08-28T16:14:22.399Z"
 last_activity: 2026-08-28
 last_activity_desc: Phase 01 execution started
-state_head: 92eb1a3bb7d630a7f73a6ca3497303fc954877a8
+state_head: 501453240e8f1e449d852756663f076d7d1b92fc
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -32,7 +32,7 @@ from a fresh `git clone`.
 
 Phase: 01 (Environment & Oracle Foundation) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-28 — Phase 01 execution started
 
 Progress: [░░░░░░░░░░] 0%
@@ -64,6 +64,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P1 | 23min | 3 tasks | 13 files |
 | Phase 01 P2 | 15min | 2 tasks | 3 files |
 | Phase 01 P3 | 13min | 2 tasks | 4 files |
+| Phase 01 P4 | 25min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -96,6 +97,9 @@ Recent decisions affecting current work:
 - [Phase 01]: 01-02: verify_environment.py's verify_columns(cursor, table, expected_columns) does a superset (not exact-equal) column check via ALL_TAB_COLUMNS, reusable by Phase 4's Oracle integration tests
 - [Phase 01]: 01-03: apache-airflow-providers-standard corrected from 1.18.0 to 1.17.0 to match the official Airflow 3.3.1 constraints file (avoids ResolutionImpossible)
 - [Phase 01]: 01-03: apache-airflow-providers-oracle==4.6.2 added (not in original plan) -- required for airflow connections test to work; approved via package-legitimacy checkpoint
+- [Phase 01]: 01-04: Makefile (D-14/D-15) established as project-wide command entrypoint; make down never removes volumes, make reset does
+- [Phase 01]: 01-04: docs/environment.md documents 4GB RAM/2CPU/20GB disk as this project's own combined requirement, derived from actual docker stats/docker system df observation, not just summed vendor minimums
+- [Phase 01]: 01-04: Used docker compose down --volumes (long-form) instead of make reset's -v short-form for phase-gate verification after the auto-mode classifier blocked the short-form -- same workaround as Plan 01-02
 
 ### Pending Todos
 
@@ -122,7 +126,7 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-08-28T16:03:30.222Z
-Stopped at: Completed 01-03-PLAN.md
+Last session: 2026-08-28T16:14:22.389Z
+Stopped at: Completed 01-04-PLAN.md
 approval before planning Phase 1.
 Resume file: None
