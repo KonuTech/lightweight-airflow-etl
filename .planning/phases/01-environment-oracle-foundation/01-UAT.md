@@ -1,9 +1,9 @@
 ---
-status: complete
+status: diagnosed
 phase: 01-environment-oracle-foundation
 source: [01-01-SUMMARY.md, 01-02-SUMMARY.md, 01-03-SUMMARY.md, 01-04-SUMMARY.md]
 started: 2026-08-28T16:46:44Z
-updated: 2026-08-28T16:52:00Z
+updated: 2026-08-28T17:05:00Z
 ---
 
 ## Current Test
@@ -129,5 +129,13 @@ blocked: 0
   reason: "User reported: airflow-apiserver reports Docker-healthy before it can actually serve /auth/token — first request after a fresh `make up` hits ConnectionResetError with a raw traceback (retry with no changes passes cleanly). Also exposes that verify_airflow_auth()'s just-shipped URLError catch (01-REVIEW-FIX.md WR-03) doesn't cover ConnectionResetError, which isn't wrapped as URLError in this failure path."
   severity: major
   test: 1
-  artifacts: []
-  missing: []
+  root_cause: "Two independent causes, both required to reproduce this exact symptom. (1) airflow-apiserver (and scheduler/dag-processor/triggerer) have NO healthcheck: block in docker-compose.yml, so `docker compose up --wait` treats the container as Healthy the instant the process starts (<1s), not once uvicorn is actually serving (~12.66s later in this session, confirmed via docker inspect + log-timestamp correlation). (2) On Docker Desktop/WSL2 specifically, the port-forwarding proxy accepts the TCP connection during that gap and resets it rather than refusing it outright (604/604 polling attempts across the full gap raised ConnectionResetError, never ConnectionRefusedError) — confirmed via `docker info` (Operating System: Docker Desktop). Separately, scripts/verify_environment.py::verify_airflow_auth()'s URLError catch (WR-03, commit d7d0882) cannot structurally catch this: CPython's urllib.request.AbstractHTTPHandler.do_open() only wraps OSError as URLError around the h.request() (connect+send) phase — h.getresponse() (where this ConnectionResetError is actually raised, during response-read) is outside that wrap and re-raises unchanged. ConnectionResetError's MRO (ConnectionResetError -> ConnectionError -> OSError -> Exception) never includes URLError."
+  artifacts:
+    - path: "docker-compose.yml"
+      issue: "airflow-apiserver (and scheduler/dag-processor/triggerer) services have no healthcheck: block, so --wait's readiness signal is false (reports Healthy at container start, not app readiness)"
+    - path: "scripts/verify_environment.py"
+      issue: "verify_airflow_auth()'s except clause (HTTPError, URLError) cannot catch a getresponse()-phase ConnectionResetError — structurally out of scope for that wrap, not a matter of adding one more exception type without also reconsidering the retry strategy"
+  missing:
+    - "Add a real healthcheck: to airflow-apiserver (e.g. curl against an actual health endpoint) with a start_period long enough to cover Airflow's bootstrap, so --wait reflects true readiness"
+    - "Broaden or retry verify_airflow_auth()'s exception handling to also handle ConnectionResetError/OSError from the response-read phase, so a cold-start race produces a clean FAILED message instead of a raw traceback"
+  debug_session: ".planning/debug/apiserver-auth-connreset.md"
