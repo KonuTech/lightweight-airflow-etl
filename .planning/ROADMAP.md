@@ -15,6 +15,7 @@ is fully proven before the end-to-end/benchmark/CI/docs completion gate closes t
 ## Phases
 
 **Phase Numbering:**
+
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
@@ -30,75 +31,104 @@ Decimal phases appear between their surrounding integers in numeric order.
 ## Phase Details
 
 ### Phase 1: Environment & Oracle Foundation
+
 **Goal**: A developer can stand up the entire local stack from a fresh `git clone` — Airflow, its metadata DB, and a schema-ready Oracle Database Free instance — with documented resource requirements.
 **Depends on**: Nothing (first phase)
 **Requirements**: INFRA-01, INFRA-02, INFRA-03
 **Success Criteria** (what must be TRUE):
+
   1. Running `docker-compose up` from a fresh clone brings up Airflow (LocalExecutor), Airflow's metadata DB, and a pinned (non-`latest`) Oracle Database Free image, all healthy and reachable from the host.
   2. Oracle's `<DATASET>_VALID`, `<DATASET>_INVALID`, and `ingestion_metadata` tables exist for both `customers` and `orders` immediately after the stack starts — confirmed by actually querying Oracle's own metadata/dictionary views (e.g. `USER_TABLES`, `ALL_TAB_COLUMNS`), not just by DDL exiting without error.
   3. The repo documents the CPU/RAM/disk allocation the stack actually needs under WSL2/Docker Desktop, matching what running it in practice requires.
   4. A single documented `admin`/`admin` credential pair, sourced from `.env`/docker-compose environment variables (no Vault, no per-service hardcoding), authenticates against both Oracle and the Airflow webserver — the same credential works everywhere it's needed.
+
 **Plans**: 4 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 01-01-PLAN.md — Tracer: docker-compose stack boots end-to-end (Oracle + Airflow + Postgres), one Oracle table verified via metadata views, admin/admin auth confirmed against both Oracle and Airflow's REST API, package-legitimacy checkpoint, host-side verify_environment.py scaffold
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 01-02-PLAN.md — Full Oracle schema: CUSTOMERS_VALID/INVALID + ORDERS_VALID/INVALID with daily INTERVAL partitioning (D-01/D-02/D-03), verify_environment.py extended to all 5 tables + columns
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 01-03-PLAN.md — Custom Airflow Dockerfile (D-12), docker-compose swapped to build from it, Oracle Connection registered for UI visibility (D-11), csv-processor/dags empty scaffolds (D-16)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 01-04-PLAN.md — Makefile (D-14/D-15), docs/environment.md with real observed resource numbers (INFRA-02), README entry point, full fresh-clone phase-gate verification
 
 ### Phase 2: Config Contract & CSV Generator
+
 **Goal**: A developer can fully describe a dataset's ingestion contract in `config.json` and generate a deterministic CSV fixture that matches it, with malformed configs rejected before any processing starts.
 **Depends on**: Nothing new (parallel-safe with Phase 1; blocks Phase 3)
 **Requirements**: CONFIG-01, CONFIG-02, GEN-01
 **Success Criteria** (what must be TRUE):
+
   1. A dataset's file pattern, CSV dialect, per-column schema (types/nullability/date format), and Oracle target/invalid table names are all defined in one `config.json`, with working configs provided for both `customers` and `orders`.
   2. Loading a malformed `config.json` (bad type, missing required field, etc.) fails before any CSV processing begins and reports the complete list of validation errors in one pass, not just the first.
   3. Running the generator for a dataset produces a CSV file matching that dataset's config, containing a configurable mix of valid rows (covering every schema type) and invalid rows (wrong type, invalid date, missing required field).
+
 **Plans**: TBD
 
 ### Phase 3: CSV Processing Engine
+
 **Goal**: Given a raw CSV file and a dataset config, the engine correctly separates valid, type-converted rows from invalid, error-tagged rows, processing in bounded-memory chunks, with zero Airflow dependency.
 **Depends on**: Phase 2 (needs the config contract shape and generated fixtures to validate against)
 **Requirements**: ENGINE-01, ENGINE-02, ENGINE-03, ENGINE-04, ENGINE-05, ENGINE-06, ENGINE-07, ENGINE-09, TEST-01
 **Success Criteria** (what must be TRUE):
+
   1. A CSV with structural problems (wrong column count, missing or unexpected columns) is flagged as such before any type or nullability check runs against it.
   2. Processing a mixed valid/invalid fixture yields correctly type-converted valid rows and invalid rows carrying `error_code`/`error_message`/`source_file`/`row_number` alongside their original values — one bad row never halts processing of the rest of the file, and both counts are accurate.
   3. Processing a large CSV file runs in configurable chunks; memory use stays bounded rather than growing with file size, and detection (dialect/encoding/header) runs once per file, not once per chunk.
   4. The `csv_processor` package can be imported and its full test suite run in an environment with no Airflow installed.
   5. The unit test suite covering config parsing, CSV parsing, type conversion, date validation, valid/invalid row handling, and chunked processing passes.
+
 **Plans**: TBD
 
 ### Phase 4: Oracle Bulk Load, Idempotency & Engine Entrypoint
+
 **Goal**: Validated rows from the engine land in Oracle via true bulk operations, re-processing an already-recorded file is a safe no-op, and the engine's public entrypoint returns a complete, correctly-classified result.
 **Depends on**: Phase 1 (Oracle schema/target tables), Phase 3 (validated, split rows to load)
 **Requirements**: LOAD-01, LOAD-02, LOAD-03, LOAD-04, ENGINE-08, TEST-02
 **Success Criteria** (what must be TRUE):
+
   1. Processing a fixture file bulk-inserts its valid rows into `<DATASET>_VALID` and its invalid rows (with error metadata) into `<DATASET>_INVALID` using `executemany()` array binding — verified against a real Oracle Database Free container, not mocks.
   2. Every processed file produces exactly one row in the ingestion metadata table recording file_name, checksum, dataset, timestamp, and total/valid/invalid counts.
   3. Re-processing the same file (same filename + checksum + dataset) a second time does not duplicate rows in either target table.
   4. Calling `csv_processor.process(file_path, config)` returns a `ProcessingResult` carrying the correct status (SUCCESS / SUCCESS_WITH_INVALID_ROWS / FILE_NOT_FOUND / INVALID_FILE / CONFIGURATION_ERROR / DATABASE_ERROR / PROCESSING_ERROR) for each corresponding scenario.
+
 **Plans**: TBD
 
 ### Phase 5: Airflow DAG Wiring & Deferrable File-Wait
+
 **Goal**: A single, config-driven Airflow DAG orchestrates ingestion for either dataset end-to-end, triggerable over HTTP, waiting for files without occupying a worker slot.
 **Depends on**: Phase 4 (needs a complete, tested `process()` entrypoint to call)
 **Requirements**: DAG-01, DAG-02, DAG-03, DAG-04, DAG-05
 **Success Criteria** (what must be TRUE):
+
   1. Posting a single HTTP request to Airflow's REST API with a dataset name and config path as runtime conf starts a DAG run that executes `load_config` → `wait_for_file` → `process_csv` → `load_results` → `report_result` in order, calling into `csv_processor` rather than reimplementing its logic.
   2. While waiting for the expected CSV file, the task shows as deferred (triggerer-managed, not occupying a worker slot) in Airflow's UI/API.
   3. A completed run's logs/report show a concise, human-readable summary — dataset, file, row counts, duration, status.
   4. The identical DAG definition runs successfully for both `customers` and `orders` purely by passing different config, with no dataset-specific code branches in the DAG.
+
 **Plans**: TBD
 
 ### Phase 6: End-to-End Verification, Benchmark, CI & Docs
+
 **Goal**: The complete system is proven correct end-to-end via HTTP trigger, proven measurably faster/leaner at realistic scale than a naive approach, continuously checked on every PR, and documented well enough for a new developer to reproduce unaided.
 **Depends on**: Phase 5 (needs the full DAG + HTTP trigger wired)
 **Requirements**: TEST-03, TEST-04, CI-01, DOC-01
 **Success Criteria** (what must be TRUE):
+
   1. An automated end-to-end test triggers a DAG run over HTTP and asserts the expected rows land in Oracle's `VALID`/`INVALID` tables for a real fixture file.
   2. A benchmark run at ~100K rows records rows/sec, peak memory, and Oracle load time for both a row-by-row approach and the chunked/bulk approach, and the results demonstrate the chunked/bulk approach's advantage.
   3. Opening a pull request automatically runs lint, type check, and unit tests via GitHub Actions, with pass/fail visible on the PR.
   4. Following only the README and `docs/`, a new developer can go from `git clone` to a completed HTTP-triggered ingestion with no undocumented manual steps.
+
 **Plans**: TBD
 
 ## Progress
