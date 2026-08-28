@@ -62,8 +62,7 @@ _BUFFERING_SCRIPT = """
 import resource, sys
 resource.setrlimit(resource.RLIMIT_AS, (int(sys.argv[2]), int(sys.argv[2])))
 with open(sys.argv[1], newline="") as handle:
-    for _ in handle:
-        pass
+    handle.readlines()
 """
 
 
