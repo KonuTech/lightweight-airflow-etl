@@ -1,9 +1,23 @@
 """Deterministic fixture generation (D-16, GEN-01) — the R1-R10 determinism
-rules, scoped to the ``tabular``, ``literal``, and ``literal_unicode`` kinds
-this plan needs. ``wrapper`` (gzip/zip, R5) is intentionally unimplemented —
-02-05-PLAN.md adds it when the compressed fixtures are authored. ``multipart``
-has no fixture in this project's scope at all (kept only in
-``manifest.GeneratorKind`` for parity, per 02-RESEARCH.md).
+rules, covering the ``tabular``, ``literal``, ``literal_unicode``, and
+``wrapper`` kinds. ``wrapper`` (gzip/zip, R5) was added by 02-05-PLAN.md for
+the large/compressed fixture category. ``multipart`` has no fixture in this
+project's scope at all (kept only in ``manifest.GeneratorKind`` for parity,
+per 02-RESEARCH.md).
+
+Unlike the reference repo's ``wrapper`` kind (which compresses an
+already-materialised sibling fixture file read back off disk), this
+project's compressed fixtures are small and self-contained: the inner
+payload is declared inline (``generator.inner``) and generated in-memory
+from the *same* private RNG stream as the wrapper fixture itself (R1 — the
+wrapped fixture's bytes still depend on nothing but its own name and the
+master seed, never on a second fixture's generation order).
+
+The ``profile: large`` tabular variant (``_generate_tabular_batched``) exists
+purely to keep 02-05-PLAN.md's ~60 MiB fixture from ever holding every
+rendered row simultaneously in one Python list before joining — it produces
+byte-identical output to the plain ``_generate_tabular`` path for the same
+declaration; batching is a memory-shape difference, never a format one.
 
 Ported (Tier B: read the algorithm, adapt scope; never copy verbatim) from
 ``/home/user/projects/airflow-platform/tools/corpus/generators.py``.
@@ -40,14 +54,17 @@ Each rule this module honors defeats one specific, named mechanism:
 from __future__ import annotations
 
 import codecs
+import gzip
 import hashlib
+import io
 import random
+import zipfile
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 from typing import TYPE_CHECKING, Any, Callable, Final
 
-if TYPE_CHECKING:
-    from .manifest import Fixture
+from .manifest import Fixture
 
+if TYPE_CHECKING:
     Renderer = Callable[[random.Random, int], str]
 
 _BOMS: Final[dict[str, bytes]] = {
@@ -63,6 +80,27 @@ _BOMS: Final[dict[str, bytes]] = {
 
 class GeneratorError(RuntimeError):
     """A fixture could not be generated from its declaration."""
+
+
+# `profile: large` batching (see module docstring) — rows are encoded and
+# flushed into the output buffer in chunks of this size rather than all at
+# once, so the largest transient object is one batch's worth of `str`s, not
+# the whole file's.
+_LARGE_BATCH_ROWS: Final[int] = 5000
+
+# R5: both non-negotiable. gzip embeds the current wall-clock time and the
+# source file name in its header, so without pinning both, two runs a second
+# apart produce different bytes.
+_GZIP_COMPRESSLEVEL: Final[int] = 9
+_GZIP_MTIME: Final[int] = 0
+_GZIP_FILENAME: Final[str] = ""
+
+# R5's zip counterpart: `ZipInfo.date_time` defaults to the current wall-clock
+# time, which would make this fixture exactly as non-reproducible across runs
+# as an unpinned gzip mtime. 1980-01-01 is ZIP's minimum representable date,
+# pinned explicitly rather than left to the default.
+_ZIP_DATE_TIME: Final[tuple[int, int, int, int, int, int]] = (1980, 1, 1, 0, 0, 0)
+_ZIP_DEFAULT_INNER_FILENAME: Final[str] = "payload.csv"
 
 
 def stream_for(master_seed: str, name: str) -> random.Random:
@@ -97,15 +135,18 @@ def generate_fixture(fixture: Fixture, rng: random.Random) -> bytes:
     """
     kind = fixture.generator.get("kind")
     if kind == "tabular":
+        if fixture.generator.get("profile") == "large":
+            return _generate_tabular_batched(fixture, rng)
         return _generate_tabular(fixture, rng)
     if kind == "literal":
         return _generate_literal(fixture)
     if kind == "literal_unicode":
         return _generate_literal_unicode(fixture)
+    if kind == "wrapper":
+        return _generate_wrapper(fixture, rng)
     msg = (
         f"{fixture.name}: generator kind {kind!r} is not implemented in this "
-        f"plan's scope (wrapper is added by 02-05-PLAN.md; multipart has no "
-        f"fixture in this project)"
+        f"project's scope (multipart has no fixture in this project)"
     )
     raise GeneratorError(msg)
 
@@ -143,6 +184,122 @@ def _generate_tabular(fixture: Fixture, rng: random.Random) -> bytes:
     # never csv.writer's own default, never a translated "\n".
     text = line_terminator.join(lines) + line_terminator
     return _encode(fixture.name, text, encoding)
+
+
+def _generate_tabular_batched(fixture: Fixture, rng: random.Random) -> bytes:
+    """Batched variant of ``_generate_tabular`` for ``profile: large`` fixtures.
+
+    Produces byte-identical output to ``_generate_tabular`` for the same
+    declaration (proven by ``test_corpus_generators.py``'s byte-for-byte
+    equivalence test) but never holds more than ``_LARGE_BATCH_ROWS`` rendered
+    rows in memory at once — rows are encoded and flushed into a growing
+    ``bytearray`` in batches instead of collected into one Python list and
+    joined in a single pass at the end.
+    """
+    spec = fixture.generator
+    delimiter = spec.get("delimiter", ",")
+    quotechar = spec.get("quotechar", '"')
+    escapechar = spec.get("escapechar")
+    doublequote = spec.get("doublequote", True)
+    line_terminator = spec.get("line_terminator", "\n")
+    encoding = spec.get("encoding", "utf-8")
+    header = tuple(spec.get("header", ()))
+    rows = spec.get("rows", 0)
+    row_spec = spec.get("row_spec", {})
+
+    if not header:
+        msg = f"{fixture.name}: a tabular fixture needs a non-empty header"
+        raise GeneratorError(msg)
+    if encoding in {"utf-16", "utf-32"}:
+        # Bare utf-16/utf-32 codecs prepend a byte-order mark on every
+        # encode() call -- batching per-chunk would embed one BOM per batch
+        # instead of one for the whole file. No large/wrapper fixture in this
+        # project's scope declares a bare multi-byte encoding; this is a
+        # defensive guard against a future combination that would silently
+        # corrupt the file, not a supported one.
+        msg = (
+            f"{fixture.name}: profile 'large' does not support bare {encoding!r} "
+            f"(would embed a byte-order mark per batch, not once for the file)"
+        )
+        raise GeneratorError(msg)
+
+    # R7: renderers built once, in the header's own declared order.
+    renderers = [_renderer_for(fixture.name, column, row_spec.get(column)) for column in header]
+
+    def _row(fields: tuple[str, ...]) -> str:
+        return delimiter.join(
+            _quote_field(field, delimiter, quotechar, escapechar, doublequote) for field in fields
+        )
+
+    term_bytes = _encode(fixture.name, line_terminator, encoding)
+    buffer = bytearray()
+    buffer += _encode(fixture.name, _row(header), encoding)
+    buffer += term_bytes
+
+    batch: list[str] = []
+    for row_index in range(rows):
+        batch.append(_row(tuple(render(rng, row_index) for render in renderers)))
+        if len(batch) >= _LARGE_BATCH_ROWS:
+            buffer += _encode(fixture.name, line_terminator.join(batch), encoding)
+            buffer += term_bytes
+            batch = []
+    if batch:
+        buffer += _encode(fixture.name, line_terminator.join(batch), encoding)
+        buffer += term_bytes
+
+    return bytes(buffer)
+
+
+def _generate_wrapper(fixture: Fixture, rng: random.Random) -> bytes:
+    """Compress an inline inner payload with deterministic wrapper headers (R5).
+
+    ``generator.inner`` declares a small, self-contained payload spec (any
+    already-implemented kind, typically ``tabular``); it is generated first
+    via the normal dispatcher, reusing this fixture's own private RNG stream
+    (R1), then wrapped per ``generator.format``.
+    """
+    spec = fixture.generator
+    inner_spec = spec.get("inner")
+    if not isinstance(inner_spec, dict):
+        msg = f"{fixture.name}: wrapper fixture needs an 'inner' generator mapping"
+        raise GeneratorError(msg)
+
+    inner_fixture = Fixture(
+        name=fixture.name, category=fixture.category, generator=inner_spec, expect=fixture.expect
+    )
+    raw = generate_fixture(inner_fixture, rng)
+
+    fmt = spec.get("format")
+    if fmt == "gzip":
+        return _wrap_gzip(raw)
+    if fmt == "zip":
+        member_name = spec.get("inner_filename", _ZIP_DEFAULT_INNER_FILENAME)
+        return _wrap_zip(member_name, raw)
+    msg = f"{fixture.name}: wrapper format {fmt!r} is not supported (want 'gzip' or 'zip')"
+    raise GeneratorError(msg)
+
+
+def _wrap_gzip(raw: bytes) -> bytes:
+    """Gzip-wrap bytes with deterministic headers (R5): ``mtime=0``, ``filename=""``."""
+    buffer = io.BytesIO()
+    with gzip.GzipFile(
+        fileobj=buffer,
+        mode="wb",
+        compresslevel=_GZIP_COMPRESSLEVEL,
+        mtime=_GZIP_MTIME,
+        filename=_GZIP_FILENAME,
+    ) as compressed:
+        compressed.write(raw)
+    return buffer.getvalue()
+
+
+def _wrap_zip(member_name: str, raw: bytes) -> bytes:
+    """Zip-wrap bytes with a deterministic member timestamp (R5): 1980-01-01."""
+    member = zipfile.ZipInfo(filename=member_name, date_time=_ZIP_DATE_TIME)
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, mode="w") as archive:
+        archive.writestr(member, raw)
+    return buffer.getvalue()
 
 
 def _generate_literal(fixture: Fixture) -> bytes:
