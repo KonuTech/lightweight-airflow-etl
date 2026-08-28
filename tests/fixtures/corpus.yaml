@@ -118,3 +118,109 @@ fixtures:
       content: "id,name,city\n1,omar,tunis\n2,priya,pune\n"
     expect:
       reason: "the whole file is encoded as UTF-16 (Python's own 'utf-16' codec embeds its own byte-order mark and 2-byte-per-character body) -- the encoding detector must recognize this as UTF-16, not misread it as UTF-8/Latin-1 garbage"
+
+  # Category "structural" (02-04-PLAN.md Task 1, 8 fixtures) -- malformed
+  # column shape: missing/extra/duplicate columns, wrong field count, empty
+  # file, header-only, no header, ragged rows/blank lines.
+  - name: "09_missing_column"
+    category: "structural"
+    generator:
+      kind: tabular
+      encoding: utf-8
+      delimiter: ","
+      header: ["customer_id", "name", "birth_date", "event_ts", "signup_country"]
+      rows: 2
+      row_spec:
+        customer_id: {kind: zero_padded_int, width: 4, start: 1}
+        name: {kind: pick, values: ["Amir Khan", "Bella Fox"]}
+        birth_date: {kind: pick, values: ["1990-01-01", "1985-06-15"]}
+        event_ts: {kind: pick, values: ["2026-01-01T00:00:00+0000", "2026-01-02T00:00:00+0000"]}
+        signup_country: {kind: pick, values: ["DE", "FR"]}
+    expect:
+      reason: "header omits customers.json's schema-declared 'country' column entirely -- a header missing a schema-declared column"
+
+  - name: "10_extra_unexpected_column"
+    category: "structural"
+    generator:
+      kind: tabular
+      encoding: utf-8
+      delimiter: ","
+      header: ["customer_id", "name", "country", "birth_date", "event_ts", "signup_country", "referral_code"]
+      rows: 2
+      row_spec:
+        customer_id: {kind: zero_padded_int, width: 4, start: 1}
+        name: {kind: pick, values: ["Carla Diaz", "Dmitri Orlov"]}
+        country: {kind: pick, values: ["DE", "FR"]}
+        birth_date: {kind: pick, values: ["1990-01-01", "1985-06-15"]}
+        event_ts: {kind: pick, values: ["2026-01-01T00:00:00+0000", "2026-01-02T00:00:00+0000"]}
+        signup_country: {kind: pick, values: ["DE", "FR"]}
+        referral_code: {kind: pick, values: ["REF-100", "REF-200"]}
+    expect:
+      reason: "header includes 'referral_code', a column not declared in customers.json's or orders.json's schema -- an extra unexpected column"
+
+  - name: "11_duplicate_column_name"
+    category: "structural"
+    generator:
+      kind: tabular
+      encoding: utf-8
+      delimiter: ","
+      header: ["order_id", "customer_id", "customer_id", "amount"]
+      rows: 2
+      row_spec:
+        order_id: {kind: zero_padded_int, width: 4, start: 1}
+        customer_id: {kind: pick, values: ["CUST001", "CUST002"]}
+        amount: {kind: decimal, scale: 2, min: 0, max: 999.99}
+    expect:
+      reason: "header repeats the column name 'customer_id' twice -- a duplicate column name"
+
+  - name: "12_wrong_column_count_row"
+    category: "structural"
+    generator:
+      kind: literal
+      encoding: utf-8
+      content: "order_id,customer_id,order_date,amount\nORD0001,CUST001,2026-01-01,100.00\nORD0002,CUST002,2026-01-02\nORD0003,CUST003,2026-01-03,300.00\n"
+    expect:
+      reason: "row 2 has only 3 fields while the header declares 4 columns -- a ragged row with the wrong column count"
+
+  - name: "13_empty_file"
+    category: "structural"
+    generator:
+      kind: literal
+      encoding: utf-8
+      content: ""
+    expect:
+      reason: "the file is zero bytes -- no header, no data, nothing to parse"
+
+  - name: "14_header_only_no_rows"
+    category: "structural"
+    generator:
+      kind: tabular
+      encoding: utf-8
+      delimiter: ","
+      header: ["order_id", "customer_id", "order_date", "amount"]
+      rows: 0
+      row_spec:
+        order_id: {kind: zero_padded_int, width: 4, start: 1}
+        customer_id: {kind: pick, values: ["CUST001", "CUST002"]}
+        order_date: {kind: pick, values: ["2026-01-01", "2026-01-02"]}
+        amount: {kind: decimal, scale: 2, min: 0, max: 999.99}
+    expect:
+      reason: "structurally valid, zero data rows, not an error case"
+
+  - name: "15_no_header_row"
+    category: "structural"
+    generator:
+      kind: literal
+      encoding: utf-8
+      content: "ORD0001,CUST001,2026-01-01,100.00\nORD0002,CUST002,2026-01-02,200.00\n"
+    expect:
+      reason: "the file has no header line at all -- config.json expects the first row to declare column names"
+
+  - name: "16_ragged_rows_and_blank_lines"
+    category: "structural"
+    generator:
+      kind: literal
+      encoding: utf-8
+      content: "order_id,customer_id,order_date,amount\nORD0001,CUST001,2026-01-01,100.00\n\nORD0002,CUST002\nORD0003,CUST003,2026-01-03,300.00,EXTRA\n\nORD0004,CUST004,2026-01-04,400.00"
+    expect:
+      reason: "mixes a short row (missing amount), a long row (extra field), and blank lines interspersed, with no trailing newline at end of file"
