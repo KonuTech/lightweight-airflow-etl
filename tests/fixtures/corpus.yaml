@@ -224,3 +224,97 @@ fixtures:
       content: "order_id,customer_id,order_date,amount\nORD0001,CUST001,2026-01-01,100.00\n\nORD0002,CUST002\nORD0003,CUST003,2026-01-03,300.00,EXTRA\n\nORD0004,CUST004,2026-01-04,400.00"
     expect:
       reason: "mixes a short row (missing amount), a long row (extra field), and blank lines interspersed, with no trailing newline at end of file"
+
+  # Category "type_nullability" (02-04-PLAN.md Task 2, 6 fixtures) -- this
+  # project's own structural/type/nullability-only validation vocabulary
+  # (no reference-repo file-for-file match, per 02-RESEARCH.md).
+  - name: "17_invalid_integer_value"
+    category: "type_nullability"
+    generator:
+      kind: tabular
+      encoding: utf-8
+      delimiter: ","
+      header: ["order_id", "customer_id", "quantity", "amount"]
+      rows: 1
+      row_spec:
+        order_id: {kind: zero_padded_int, width: 4, start: 1}
+        customer_id: {kind: repeat, char: "CUST001", length: 1}
+        quantity: {kind: repeat, char: "not-a-number", length: 1}
+        amount: {kind: decimal, scale: 2, min: 0, max: 999.99}
+    expect:
+      reason: "the fixture's only data row has quantity value 'not-a-number', not a valid integer in a column shaped like an integer column"
+
+  - name: "18_invalid_decimal_too_many_places"
+    category: "type_nullability"
+    generator:
+      kind: tabular
+      encoding: utf-8
+      delimiter: ","
+      header: ["order_id", "customer_id", "order_date", "amount"]
+      rows: 1
+      row_spec:
+        order_id: {kind: zero_padded_int, width: 4, start: 1}
+        customer_id: {kind: repeat, char: "CUST001", length: 1}
+        order_date: {kind: repeat, char: "2026-01-01", length: 1}
+        amount: {kind: repeat, char: "100.999", length: 1}
+    expect:
+      reason: "the fixture's only data row has amount value '100.999', which has 3 decimal places, exceeding orders.json's amount column's configured scale=2"
+
+  - name: "19_invalid_date_format"
+    category: "type_nullability"
+    generator:
+      kind: tabular
+      encoding: utf-8
+      delimiter: ","
+      header: ["customer_id", "name", "birth_date"]
+      rows: 1
+      row_spec:
+        customer_id: {kind: zero_padded_int, width: 4, start: 1}
+        name: {kind: repeat, char: "Elin Park", length: 1}
+        birth_date: {kind: repeat, char: "31/02/2026", length: 1}
+    expect:
+      reason: "the fixture's only data row has birth_date value '31/02/2026', which does not match customers.json's configured format '%Y-%m-%d'"
+
+  - name: "20_invalid_timestamp_format"
+    category: "type_nullability"
+    generator:
+      kind: tabular
+      encoding: utf-8
+      delimiter: ","
+      header: ["customer_id", "event_ts"]
+      rows: 1
+      row_spec:
+        customer_id: {kind: zero_padded_int, width: 4, start: 1}
+        event_ts: {kind: repeat, char: "2026-01-01 00:00:00", length: 1}
+    expect:
+      reason: "the fixture's only data row has event_ts value '2026-01-01 00:00:00', which does not match customers.json's configured format '%Y-%m-%dT%H:%M:%S%z'"
+
+  - name: "21_empty_required_field"
+    category: "type_nullability"
+    generator:
+      kind: tabular
+      encoding: utf-8
+      delimiter: ","
+      header: ["customer_id", "name", "country"]
+      rows: 1
+      row_spec:
+        customer_id: {kind: repeat, char: "", length: 1}
+        name: {kind: repeat, char: "Gina Volkov", length: 1}
+        country: {kind: repeat, char: "DE", length: 1}
+    expect:
+      reason: "the fixture's only data row has an empty customer_id value, but customers.json declares customer_id nullable: false -- an empty required field"
+
+  - name: "22_empty_nullable_field_should_pass"
+    category: "type_nullability"
+    generator:
+      kind: tabular
+      encoding: utf-8
+      delimiter: ","
+      header: ["customer_id", "name", "signup_country"]
+      rows: 1
+      row_spec:
+        customer_id: {kind: zero_padded_int, width: 4, start: 1}
+        name: {kind: repeat, char: "Ines Moreau", length: 1}
+        signup_country: {kind: repeat, char: "", length: 1}
+    expect:
+      reason: "row 1's signup_country value is empty, which SHOULD validate cleanly since customers.json declares signup_country nullable: true -- this documents the nullable=true happy path, not an error case"
