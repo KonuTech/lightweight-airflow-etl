@@ -1,0 +1,5 @@
+.env
+docker/airflow/simple_auth_manager_passwords.json.generated
+.venv/
+__pycache__/
+*.pyc
