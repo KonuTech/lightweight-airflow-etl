@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 current_phase: 02
 current_phase_name: Config Contract & CSV Generator
 status: executing
-stopped_at: Completed 02-01-PLAN.md
-last_updated: "2026-08-28T21:12:46.913Z"
+stopped_at: Completed 02-02-PLAN.md
+last_updated: "2026-08-28T21:20:32.269Z"
 last_activity: 2026-08-28
 last_activity_desc: Phase 02 execution started
-state_head: 1aac72fed85648f38752be2357018caf303f819e
+state_head: 7fd91a02226eae236b98ba737e80cf9947704adc
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 10
-  completed_plans: 6
+  completed_plans: 7
   percent: 17
 ---
 
@@ -31,7 +31,7 @@ from a fresh `git clone`.
 ## Current Position
 
 Phase: 02 (Config Contract & CSV Generator) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-08-28 — Phase 02 execution started
 
@@ -67,6 +67,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 01 P4 | 25min | 3 tasks | 3 files |
 | Phase 01 P05 | 20min | 2 tasks | 3 files |
 | Phase 02 P01 | 24min | 3 tasks | 15 files |
+| Phase 02 P02 | 2min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -106,6 +107,8 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-01: uv workspace wiring added (root pyproject.toml [tool.uv.workspace]/[tool.uv.sources]) so csv_processor is locally importable -- Phase 1 only scaffolded it
 - [Phase 02]: 02-01: Faker==40.37.0 package-legitimacy checkpoint approved by user for generate_csv.py's realistic-string generation
 - [Phase 02]: 02-01: generate_csv.py uses two independent randomness streams (Faker.seed for strings, random.Random(seed) for structural/invalid-row decisions) and an applicable_categories() pattern restricting D-15's invalid-row categories to what a dataset's schema can actually produce
+- [Phase 02]: [Phase 02]: 02-02: Ran a genuine RED/GREEN cycle for orders.json by physically setting the config file aside while writing the orders-specific tests, confirming ConfigurationError failure, then restoring it -- proved the tests would actually fail without the config
+- [Phase 02]: [Phase 02]: 02-02: test_config_models.py is a single test(...) commit with no paired feat(...) -- all 39 validation-rule assertions passed immediately against Plan 01's already-implemented models.py, per the plan's own carve-out for testing already-passing behavior
 
 ### Pending Todos
 
@@ -128,6 +131,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-08-28T21:12:46.879Z
-Stopped at: Completed 02-01-PLAN.md
+Last session: 2026-08-28T21:20:32.238Z
+Stopped at: Completed 02-02-PLAN.md
 Resume file: None

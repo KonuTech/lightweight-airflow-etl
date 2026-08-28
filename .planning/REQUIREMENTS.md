@@ -12,11 +12,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Configuration
 
-- [ ] **CONFIG-01**: Developer can define a dataset's ingestion contract in `config.json` (file
+- [x] **CONFIG-01**: Developer can define a dataset's ingestion contract in `config.json` (file
       pattern, CSV dialect, schema with types/nullability/date format, Oracle target/invalid table
       names)
 
-- [ ] **CONFIG-02**: System validates `config.json` once per run via Pydantic v2 before any CSV
+- [x] **CONFIG-02**: System validates `config.json` once per run via Pydantic v2 before any CSV
       processing begins, failing fast with a complete list of errors on a malformed config
 
 ### Generator
@@ -172,8 +172,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CONFIG-01 | Phase 2 | Pending |
-| CONFIG-02 | Phase 2 | Pending |
+| CONFIG-01 | Phase 2 | Complete |
+| CONFIG-02 | Phase 2 | Complete |
 | GEN-01 | Phase 2 | Pending |
 | ENGINE-01 | Phase 3 | Pending |
 | ENGINE-02 | Phase 3 | Pending |
