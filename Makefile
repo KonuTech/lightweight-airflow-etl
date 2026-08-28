@@ -1,4 +1,4 @@
-.PHONY: up down reset logs verify smoke-test generate fixtures fixtures-verify
+.PHONY: up down reset logs verify smoke-test generate fixtures fixtures-verify verify-phase2
 
 up:               ## Start the full stack (Airflow + Oracle)
 	docker compose up -d --wait
@@ -29,6 +29,12 @@ fixtures:          ## Materialize the byte-level fixture corpus + (re)write its 
 fixtures-verify:   ## Regenerate the corpus to a temp dir and diff SHA-256 against the committed oracle (D-16f)
 	uv run python -m tools.corpus verify --manifest tests/fixtures/corpus.yaml --digests tests/fixtures/CORPUS.sha256
 
+verify-phase2:     ## Phase 2's own combined local gate: full unit suite + fixture digest-oracle verification (D-16g)
+	uv run pytest tests/unit/ -x
+	$(MAKE) fixtures-verify
+
 # Later phases (2-6) add targets here (make test, make lint, make benchmark)
 # rather than inventing separate tooling -- this Makefile is the project-wide command
-# entrypoint (D-14), not scoped to Phase 1 only.
+# entrypoint (D-14), not scoped to Phase 1 only. Wiring verify-phase2 (or its
+# successors) into GitHub Actions CI is explicitly Phase 6's job (CI-01), not
+# touched here.
