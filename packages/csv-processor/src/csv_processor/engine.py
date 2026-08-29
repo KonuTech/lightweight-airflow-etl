@@ -89,6 +89,18 @@ def process_chunks(
                     continue  # D-13 short-circuit -- check_row never called
 
                 row_dict = dict(zip(header, raw_row))
+                # CR-01's per-row companion fix: a `required: false` column
+                # legitimately absent from the detected header (source.py's
+                # missing-column check no longer flags it) would otherwise
+                # KeyError the moment validate.check_row()/normalize_row()'s
+                # row[column.name] lookups run. Backfilling it as an empty
+                # string treats "never in the file" identically to
+                # "present but blank" -- the column's own `nullable` flag
+                # then governs it exactly as it already does for any other
+                # blank value.
+                for column in config.columns:
+                    if column.name not in row_dict:
+                        row_dict[column.name] = ""
                 error_code, error_message, _error_column = validate.check_row(row_dict, config)
                 if error_code:
                     invalid_rows.append(

@@ -157,3 +157,22 @@ def test_16_ragged_rows_and_blank_lines(tmp_path: Path) -> None:
     # != header field count (4).
     assert invalid_rows[2]["order_id"] == "ORD0003"
     assert invalid_rows[2]["amount"] == "300.00"
+
+
+def test_optional_column_absent_from_header_processes_successfully(tmp_path: Path) -> None:
+    """CR-01/G-03-1 regression: a customers CSV that genuinely omits
+    `signup_country` (`required: false` in customers.json's own shipped
+    config) must process successfully, not raise MISSING_REQUIRED_COLUMN."""
+    csv_path = tmp_path / "customers_optional_absent.csv"
+    csv_path.write_text(
+        "customer_id,name,country,birth_date,event_ts\n"
+        "CUST001,Alice,US,1990-01-01,2026-01-01T00:00:00+0000\n"
+    )
+
+    chunks = list(process_chunks(csv_path, _customers_config()))
+
+    assert len(chunks) == 1
+    valid_rows, invalid_rows = chunks[0]
+    assert invalid_rows == []
+    assert len(valid_rows) == 1
+    assert valid_rows[0]["customer_id"] == "CUST001"

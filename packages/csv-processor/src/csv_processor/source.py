@@ -228,10 +228,17 @@ def prepare_source(
         )
 
     declared_names = {c.name for c in config.columns}
+    required_names = {c.name for c in config.columns if c.required}
     header_names = set(header_detection.raw_header)
     # D-21: order-independent, matched by name only. D-22: case-sensitive,
     # exact-string equality, never normalized first.
-    missing = declared_names - header_names
+    # CR-01: only a column actually declared `required: true` can trigger
+    # MISSING_REQUIRED_COLUMN -- a `required: false` column (e.g.
+    # customers.json's own signup_country) may be genuinely absent. `extra`
+    # below still compares against the FULL `declared_names` set, never
+    # `required_names` -- a present, correctly-named optional column must
+    # never be flagged EXTRA_UNEXPECTED_COLUMN.
+    missing = required_names - header_names
     if missing:
         raise StructuralValidationError(
             f"header is missing declared column(s): {sorted(missing)}",
