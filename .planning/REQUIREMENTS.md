@@ -104,7 +104,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **TEST-02**: Integration tests exercise a real Oracle Database Free container (not mocked)
       and verify actual resulting rows
 
-- [ ] **TEST-03**: An end-to-end test exercises the full path: HTTP request → DAG run → config →
+- [x] **TEST-03**: An end-to-end test exercises the full path: HTTP request → DAG run → config →
       file detection → `csv_processor` → Oracle VALID/INVALID tables
 
 - [ ] **TEST-04**: A performance benchmark at ~100K rows compares row-by-row vs. chunked/bulk
@@ -198,7 +198,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFRA-03 | Phase 1 | Complete |
 | TEST-01 | Phase 3 | Complete |
 | TEST-02 | Phase 4 | Complete |
-| TEST-03 | Phase 6 | Pending |
+| TEST-03 | Phase 6 | Complete |
 | TEST-04 | Phase 6 | Pending |
 | CI-01 | Phase 6 | Pending |
 | DOC-01 | Phase 6 | Pending |
