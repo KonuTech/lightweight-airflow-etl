@@ -420,3 +420,149 @@ def test_repeated_header_excluded_and_out_of_coverage_malformed_row_surfaced_tog
     assert all_invalid[0]["customer_id"] == "BADROWONLYONEFIELD"
     assert "customer_id" not in {row["customer_id"] for row in all_valid}
     assert {row["customer_id"] for row in all_valid} == set(good_customer_ids)
+
+
+def test_uncoverable_tail_indices_covers_adversarial_edge_cases() -> None:
+    """CR-01: `_uncoverable_tail_indices()` computes the maximal contiguous
+    suffix of a SINGLE candidate-index set ending at `sample_covered_row_count`
+    (the sample's own unprovable last row) -- proven directly against every
+    adversarial boundary condition identified before implementation, fully
+    decoupled from any CSV-level byte-position engineering."""
+    cases: list[tuple[set[int], int, set[int]]] = [
+        (set(), 10, set()),  # empty excluded_indices
+        ({5}, 5, {5}),  # single index exactly at the boundary
+        ({3, 4, 5}, 5, {3, 4, 5}),  # contiguous run of 3 touching the boundary
+        # a run touching the boundary is captured, a separate non-adjacent
+        # run ({1, 2}) is left untouched
+        ({1, 2, 7, 8}, 8, {7, 8}),
+        # run touching absolute index 0, must not underflow/loop forever
+        ({0, 1, 2}, 2, {0, 1, 2}),
+        ({5}, 0, set()),  # boundary at row 0, index 5 not adjacent -- no false positive
+        ({0}, 0, {0}),  # boundary at row 0 AND index 0 is itself a candidate
+        # index 6 does not touch a boundary of 5 -- walk starts at 5, 5 not
+        # in {6}, stops immediately, 6 is never even considered
+        ({6}, 5, set()),
+    ]
+    for excluded_indices, sample_covered_row_count, expected in cases:
+        result = source._uncoverable_tail_indices(excluded_indices, sample_covered_row_count)
+        assert result == expected, (
+            f"_uncoverable_tail_indices({excluded_indices!r}, "
+            f"{sample_covered_row_count!r}) == {result!r}, expected {expected!r}"
+        )
+
+
+def test_two_contiguous_malformed_rows_at_sample_boundary_both_surface_as_invalid(
+    tmp_path: Path,
+) -> None:
+    """CR-01 regression (03-REVIEW.md Critical finding, fourth review round):
+    a contiguous run of TWO genuinely malformed rows at the sample's own
+    tail-adjacent position must BOTH surface as `WRONG_COLUMN_COUNT` invalid
+    rows -- `detect/header.py`'s `_detect_footer_rows` walks backward and
+    chains contiguous field-count mismatches together, but 03-08's own CR-04
+    fix only protected the single index equal to `sample_covered_row_count`;
+    every other index in the same contiguous run was left eligible for CR-03's
+    content re-validation alone, which cannot distinguish a genuine footer
+    from a genuinely malformed row caught in the same chain."""
+    header = "id,name"
+    lines = [header]
+    cumulative = len(header) + 1
+    good_ids: list[str] = []
+    i = 1
+    while cumulative <= source.SAMPLE_BYTES:
+        row = f"ID{i:06d},Name{i:06d}"
+        lines.append(row)
+        cumulative += len(row) + 1
+        good_ids.append(f"ID{i:06d}")
+        i += 1
+    # The loop's last TWO appended rows straddle the sample's byte cutoff.
+    # Replace both with genuinely malformed single-field literals of EXACTLY
+    # the same length (19 chars) as the well-formed row format they replace,
+    # keeping the file's total byte layout byte-for-byte identical to what
+    # `cumulative` already computed -- no underscores (03-08's own documented
+    # `detect/encoding.py` corroboration-sensitivity deviation).
+    good_ids.pop()
+    good_ids.pop()
+    lines[-1] = "BADROWNUMBERONE1234"
+    lines[-2] = "BADROWNUMBERTWO5678"
+    for _ in range(3000):
+        row = f"ID{i:06d},Name{i:06d}"
+        lines.append(row)
+        good_ids.append(f"ID{i:06d}")
+        i += 1
+    csv_path = tmp_path / "two_contiguous_malformed_at_boundary.csv"
+    csv_path.write_text("\n".join(lines) + "\n")
+    assert csv_path.stat().st_size > source.SAMPLE_BYTES
+    config = _large_id_name_config()
+
+    chunks = list(process_chunks(csv_path, config))
+
+    all_valid = [row for valid_rows, _ in chunks for row in valid_rows]
+    all_invalid = [row for _, invalid_rows in chunks for row in invalid_rows]
+    assert len(all_invalid) == 2
+    assert {row["id"] for row in all_invalid} == {
+        "BADROWNUMBERONE1234",
+        "BADROWNUMBERTWO5678",
+    }
+    for row in all_invalid:
+        assert row["error_code"] == "WRONG_COLUMN_COUNT"
+        assert row["name"] is None
+    assert {row["id"] for row in all_valid} == set(good_ids)
+
+
+def test_interior_repeated_header_row_not_contaminated_by_adjacent_boundary_footer_run(
+    tmp_path: Path,
+) -> None:
+    """Checker-found regression: the per-source-then-union fix must not let
+    a boundary-touching footer-shaped run (`footer_row_indices`) swallow an
+    unrelated INTERIOR repeated-header row (`repeated_header_row_indices`)
+    merely because their absolute indices are numerically adjacent by pure
+    coincidence -- `_detect_footer_rows`'s contiguous backward walk and
+    `_detect_repeated_header_rows`'s unbounded full-scan are structurally
+    independent detectors with no shared ordering guarantee. Under a naive
+    union-then-walk implementation, the genuine interior repeated-header row
+    is incorrectly stripped of its exclusion-eligibility and leaks through to
+    ordinary per-row validation as an unremarkable VALID row (its own content
+    -- the literal header values -- happens to satisfy every structural/type/
+    nullability check for this config's plain string columns), instead of
+    being excluded from both streams per G-03-2."""
+    header = "id,name"
+    lines = [header]
+    cumulative = len(header) + 1
+    good_ids: list[str] = []
+    i = 1
+    while cumulative <= source.SAMPLE_BYTES:
+        row = f"ID{i:06d},Name{i:06d}"
+        lines.append(row)
+        cumulative += len(row) + 1
+        good_ids.append(f"ID{i:06d}")
+        i += 1
+    # lines[-1] (absolute index sample_covered_row_count) is boundary-touching
+    # and footer-shaped (flagged only by footer_row_indices). lines[-2]
+    # (absolute index sample_covered_row_count - 1, genuinely INTERIOR) is an
+    # exact duplicate of the header (flagged only by repeated_header_row_indices'
+    # own unrelated unbounded scan).
+    good_ids.pop()
+    good_ids.pop()
+    lines[-1] = "BADROWNUMBERONE1234"
+    lines[-2] = "id,name"
+    for _ in range(3000):
+        row = f"ID{i:06d},Name{i:06d}"
+        lines.append(row)
+        good_ids.append(f"ID{i:06d}")
+        i += 1
+    csv_path = tmp_path / "interior_repeated_header_adjacent_boundary.csv"
+    csv_path.write_text("\n".join(lines) + "\n")
+    assert csv_path.stat().st_size > source.SAMPLE_BYTES
+    config = _large_id_name_config()
+
+    chunks = list(process_chunks(csv_path, config))
+
+    all_valid = [row for valid_rows, _ in chunks for row in valid_rows]
+    all_invalid = [row for _, invalid_rows in chunks for row in invalid_rows]
+    assert len(all_invalid) == 1
+    assert all_invalid[0]["error_code"] == "WRONG_COLUMN_COUNT"
+    assert all_invalid[0]["id"] == "BADROWNUMBERONE1234"
+    assert all_invalid[0]["name"] is None
+    valid_ids = {row["id"] for row in all_valid}
+    assert "id" not in valid_ids
+    assert valid_ids == set(good_ids)
