@@ -27,7 +27,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### CSV Processing Engine
 
-- [ ] **ENGINE-01**: `csv_processor.process(file_path, config)` validates CSV structure (column
+- [x] **ENGINE-01**: `csv_processor.process(file_path, config)` validates CSV structure (column
       count / missing / unexpected columns) before validating anything else
 
 - [ ] **ENGINE-02**: Engine validates each column's type (integer/decimal/date) per the config
@@ -37,10 +37,10 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **ENGINE-04**: Engine explicitly converts each valid CSV string field to its configured
       Python/Oracle type (no implicit Oracle casting)
 
-- [ ] **ENGINE-05**: An invalid row does not stop processing of the rest of the file; valid and
+- [x] **ENGINE-05**: An invalid row does not stop processing of the rest of the file; valid and
       invalid rows are split and both counted
 
-- [ ] **ENGINE-06**: Each invalid row records `error_code`, `error_message`, `source_file`, and
+- [x] **ENGINE-06**: Each invalid row records `error_code`, `error_message`, `source_file`, and
       `row_number` alongside its original field values
 
 - [ ] **ENGINE-07**: CSV reading and validation processes rows in configurable chunks (not one row
@@ -98,7 +98,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Testing
 
-- [ ] **TEST-01**: Unit tests cover config parsing, CSV parsing, type conversion, date validation,
+- [x] **TEST-01**: Unit tests cover config parsing, CSV parsing, type conversion, date validation,
       valid/invalid row handling, and chunked processing
 
 - [ ] **TEST-02**: Integration tests exercise a real Oracle Database Free container (not mocked)
@@ -175,12 +175,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CONFIG-01 | Phase 2 | Complete |
 | CONFIG-02 | Phase 2 | Complete |
 | GEN-01 | Phase 2 | Complete |
-| ENGINE-01 | Phase 3 | Gaps Found |
+| ENGINE-01 | Phase 3 | Complete |
 | ENGINE-02 | Phase 3 | Gaps Found |
 | ENGINE-03 | Phase 3 | Gaps Found |
 | ENGINE-04 | Phase 3 | Gaps Found |
-| ENGINE-05 | Phase 3 | Gaps Found |
-| ENGINE-06 | Phase 3 | Gaps Found |
+| ENGINE-05 | Phase 3 | Complete |
+| ENGINE-06 | Phase 3 | Complete |
 | ENGINE-07 | Phase 3 | Gaps Found |
 | ENGINE-08 | Phase 4 | Pending |
 | ENGINE-09 | Phase 3 | Gaps Found |
@@ -196,7 +196,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFRA-01 | Phase 1 | Complete |
 | INFRA-02 | Phase 1 | Complete |
 | INFRA-03 | Phase 1 | Complete |
-| TEST-01 | Phase 3 | Gaps Found |
+| TEST-01 | Phase 3 | Complete |
 | TEST-02 | Phase 4 | Pending |
 | TEST-03 | Phase 6 | Pending |
 | TEST-04 | Phase 6 | Pending |
