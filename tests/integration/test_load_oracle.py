@@ -163,3 +163,178 @@ def test_ingestion_metadata_recorded(tmp_path: Path, oracle_cursor: oracledb.Cur
     assert db_valid_rows == 1
     assert db_invalid_rows == 1
     assert status == "SUCCESS_WITH_INVALID_ROWS"
+
+
+def test_reprocess_is_idempotent(tmp_path: Path, oracle_cursor: oracledb.Cursor) -> None:
+    csv_path = tmp_path / "customers_20260829.csv"
+    csv_path.write_text(_ALL_VALID_CSV, encoding="utf-8")
+    config = _load_customers_config()
+    valid_rows, invalid_rows = _collect_chunks(csv_path, config)
+    assert invalid_rows == []
+
+    load.insert_rows(
+        oracle_cursor,
+        table=config.oracle.valid_table,
+        columns=[c.name for c in config.columns],
+        rows=valid_rows,
+    )
+    checksum = load.sha256_file(csv_path)
+    load.record_ingestion(
+        oracle_cursor,
+        dataset="customers",
+        file_name=csv_path.name,
+        checksum=checksum,
+        total_rows=len(valid_rows),
+        valid_rows=len(valid_rows),
+        invalid_rows=0,
+        status="SUCCESS",
+    )
+    oracle_cursor.connection.commit()
+
+    oracle_cursor.execute("SELECT COUNT(*) FROM customers_valid")
+    (count_before,) = oracle_cursor.fetchone()
+
+    result = load.find_existing_ingestion(oracle_cursor, dataset="customers", checksum=checksum)
+    assert result == {
+        "total_rows": len(valid_rows),
+        "valid_rows": len(valid_rows),
+        "invalid_rows": 0,
+        "status": "SUCCESS",
+    }
+
+    # find_existing_ingestion is query-only -- never re-inserts anything itself.
+    oracle_cursor.execute("SELECT COUNT(*) FROM customers_valid")
+    (count_after,) = oracle_cursor.fetchone()
+    assert count_after == count_before
+
+
+def test_duplicate_checksum_raises_integrity_error(
+    tmp_path: Path, oracle_cursor: oracledb.Cursor
+) -> None:
+    csv_path = tmp_path / "customers_20260829.csv"
+    csv_path.write_text(_ALL_VALID_CSV, encoding="utf-8")
+    checksum = load.sha256_file(csv_path)
+
+    load.record_ingestion(
+        oracle_cursor,
+        dataset="customers",
+        file_name="customers_a.csv",
+        checksum=checksum,
+        total_rows=3,
+        valid_rows=3,
+        invalid_rows=0,
+        status="SUCCESS",
+    )
+    oracle_cursor.connection.commit()
+
+    with pytest.raises(oracledb.IntegrityError) as exc_info:
+        load.record_ingestion(
+            oracle_cursor,
+            dataset="customers",
+            file_name="customers_b.csv",
+            checksum=checksum,
+            total_rows=3,
+            valid_rows=3,
+            invalid_rows=0,
+            status="SUCCESS",
+        )
+    (error_obj,) = exc_info.value.args
+    assert error_obj.full_code == "ORA-00001"
+    oracle_cursor.connection.rollback()
+
+
+def test_renamed_file_same_checksum_is_treated_as_same_file(
+    tmp_path: Path, oracle_cursor: oracledb.Cursor
+) -> None:
+    csv_path = tmp_path / "customers_a.csv"
+    csv_path.write_text(_ALL_VALID_CSV, encoding="utf-8")
+    checksum = load.sha256_file(csv_path)
+
+    load.record_ingestion(
+        oracle_cursor,
+        dataset="customers",
+        file_name="customers_a.csv",
+        checksum=checksum,
+        total_rows=3,
+        valid_rows=3,
+        invalid_rows=0,
+        status="SUCCESS",
+    )
+    oracle_cursor.connection.commit()
+
+    # Looked up by (dataset, checksum) only -- "customers_b.csv" never enters this call.
+    result = load.find_existing_ingestion(oracle_cursor, dataset="customers", checksum=checksum)
+    assert result is not None
+    assert result["total_rows"] == 3
+    assert result["status"] == "SUCCESS"
+
+
+def test_insert_rows_skips_executemany_for_empty_list(oracle_cursor: oracledb.Cursor) -> None:
+    oracle_cursor.execute("SELECT COUNT(*) FROM customers_valid")
+    (count_before,) = oracle_cursor.fetchone()
+
+    load.insert_rows(oracle_cursor, table="customers_valid", columns=["customer_id"], rows=[])
+
+    oracle_cursor.execute("SELECT COUNT(*) FROM customers_valid")
+    (count_after,) = oracle_cursor.fetchone()
+    assert count_after == count_before
+
+
+def test_oversized_value_raises_database_error(oracle_cursor: oracledb.Cursor) -> None:
+    config = _load_customers_config()
+    oversized_row = {
+        "customer_id": "x" * 65,  # customers_invalid.customer_id is VARCHAR2(64)
+        "name": "Oversized",
+        "country": "US",
+        "birth_date": "1990-01-01",
+        "event_ts": "2026-01-01T00:00:00+0000",
+        "signup_country": "US",
+        "error_code": "TYPE_MISMATCH",
+        "error_message": "oversized value",
+        "source_file": "customers_oversized.csv",
+        "row_number": 1,
+        "raw_line": "x" * 65,
+    }
+    invalid_columns = [c.name for c in config.columns] + list(load.INVALID_ROW_SUFFIX_COLUMNS)
+
+    with pytest.raises(oracledb.DatabaseError):
+        load.insert_rows(
+            oracle_cursor,
+            table=config.oracle.invalid_table,
+            columns=invalid_columns,
+            rows=[oversized_row],
+        )
+    oracle_cursor.connection.rollback()
+
+
+def test_zero_row_file_still_records_metadata_row(
+    tmp_path: Path, oracle_cursor: oracledb.Cursor
+) -> None:
+    csv_path = tmp_path / "customers_20260829.csv"
+    csv_path.write_text(_HEADER_ONLY_CSV, encoding="utf-8")
+    config = _load_customers_config()
+
+    chunks = list(process_chunks(csv_path, config))
+    assert chunks == []  # D-20: a valid header with zero data rows yields no chunks at all
+
+    checksum = load.sha256_file(csv_path)
+    load.record_ingestion(
+        oracle_cursor,
+        dataset="customers",
+        file_name=csv_path.name,
+        checksum=checksum,
+        total_rows=0,
+        valid_rows=0,
+        invalid_rows=0,
+        status="SUCCESS",
+    )
+    oracle_cursor.connection.commit()
+
+    oracle_cursor.execute(
+        "SELECT total_rows, valid_rows, invalid_rows, status FROM ingestion_metadata "
+        "WHERE dataset = :dataset AND checksum = :checksum",
+        {"dataset": "customers", "checksum": checksum},
+    )
+    rows = oracle_cursor.fetchall()
+    assert len(rows) == 1
+    assert rows[0] == (0, 0, 0, "SUCCESS")
