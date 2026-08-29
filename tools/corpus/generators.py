@@ -337,21 +337,25 @@ def _renderer_for(fixture_name: str, column: str, spec: dict[str, Any] | None) -
         raise GeneratorError(msg)
     kind = spec.get("kind")
     if kind == "zero_padded_int":
-        return _zero_padded_renderer(spec)
+        return _zero_padded_renderer(fixture_name, column, spec)
     if kind == "pick":
-        return _pick_renderer(spec)
+        return _pick_renderer(fixture_name, column, spec)
     if kind == "decimal":
-        return _decimal_renderer(spec)
+        return _decimal_renderer(fixture_name, column, spec)
     if kind == "repeat":
-        return _repeat_renderer(spec)
+        return _repeat_renderer(fixture_name, column, spec)
     msg = f"{fixture_name}: column {column!r} has unknown row_spec kind {kind!r}"
     raise GeneratorError(msg)
 
 
-def _zero_padded_renderer(spec: dict[str, Any]) -> Renderer:
+def _zero_padded_renderer(fixture_name: str, column: str, spec: dict[str, Any]) -> Renderer:
     """Render a monotonic integer with leading zeros — consumes no randomness."""
-    width = spec["width"]
-    start = spec["start"]
+    try:
+        width = spec["width"]
+        start = spec["start"]
+    except KeyError as exc:
+        msg = f"{fixture_name}: column {column!r} row_spec missing {exc.args[0]!r}"
+        raise GeneratorError(msg) from exc
 
     def _render(rng: random.Random, row_index: int) -> str:
         del rng
@@ -360,13 +364,17 @@ def _zero_padded_renderer(spec: dict[str, Any]) -> Renderer:
     return _render
 
 
-def _pick_renderer(spec: dict[str, Any]) -> Renderer:
+def _pick_renderer(fixture_name: str, column: str, spec: dict[str, Any]) -> Renderer:
     """Select from a fixed list by index arithmetic over ``.random()`` (R2).
 
     Never ``rng.choice()`` — only its own documented-stable ``.random()``
     sequence.
     """
-    values = tuple(spec["values"])
+    try:
+        values = tuple(spec["values"])
+    except KeyError as exc:
+        msg = f"{fixture_name}: column {column!r} row_spec missing {exc.args[0]!r}"
+        raise GeneratorError(msg) from exc
     count = len(values)
 
     def _render(rng: random.Random, row_index: int) -> str:
@@ -376,12 +384,16 @@ def _pick_renderer(spec: dict[str, Any]) -> Renderer:
     return _render
 
 
-def _decimal_renderer(spec: dict[str, Any]) -> Renderer:
+def _decimal_renderer(fixture_name: str, column: str, spec: dict[str, Any]) -> Renderer:
     """Render an exact decimal via integer arithmetic — never a float (R10)."""
-    scale = spec["scale"]
+    try:
+        scale = spec["scale"]
+        minimum = Decimal(str(spec["min"]))
+        maximum = Decimal(str(spec["max"]))
+    except KeyError as exc:
+        msg = f"{fixture_name}: column {column!r} row_spec missing {exc.args[0]!r}"
+        raise GeneratorError(msg) from exc
     separator = spec.get("decimal_separator", ".")
-    minimum = Decimal(str(spec["min"]))
-    maximum = Decimal(str(spec["max"]))
     power = 10**scale
     low = int(minimum.scaleb(scale).to_integral_value(rounding=ROUND_CEILING))
     high = int(maximum.scaleb(scale).to_integral_value(rounding=ROUND_FLOOR))
@@ -403,9 +415,13 @@ def _decimal_renderer(spec: dict[str, Any]) -> Renderer:
     return _render
 
 
-def _repeat_renderer(spec: dict[str, Any]) -> Renderer:
+def _repeat_renderer(fixture_name: str, column: str, spec: dict[str, Any]) -> Renderer:
     """Render a field of an exact declared width — consumes no randomness."""
-    value = spec["char"] * spec["length"]
+    try:
+        value = spec["char"] * spec["length"]
+    except KeyError as exc:
+        msg = f"{fixture_name}: column {column!r} row_spec missing {exc.args[0]!r}"
+        raise GeneratorError(msg) from exc
 
     def _render(rng: random.Random, row_index: int) -> str:
         del rng, row_index
