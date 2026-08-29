@@ -30,20 +30,20 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **ENGINE-01**: `csv_processor.process(file_path, config)` validates CSV structure (column
       count / missing / unexpected columns) before validating anything else
 
-- [ ] **ENGINE-02**: Engine validates each column's type (integer/decimal/date) per the config
+- [x] **ENGINE-02**: Engine validates each column's type (integer/decimal/date) per the config
       schema
 
-- [ ] **ENGINE-03**: Engine validates required (non-nullable) fields are non-empty
-- [ ] **ENGINE-04**: Engine explicitly converts each valid CSV string field to its configured
+- [x] **ENGINE-03**: Engine validates required (non-nullable) fields are non-empty
+- [x] **ENGINE-04**: Engine explicitly converts each valid CSV string field to its configured
       Python/Oracle type (no implicit Oracle casting)
 
-- [ ] **ENGINE-05**: An invalid row does not stop processing of the rest of the file; valid and
+- [x] **ENGINE-05**: An invalid row does not stop processing of the rest of the file; valid and
       invalid rows are split and both counted
 
 - [x] **ENGINE-06**: Each invalid row records `error_code`, `error_message`, `source_file`, and
       `row_number` alongside its original field values
 
-- [ ] **ENGINE-07**: CSV reading and validation processes rows in configurable chunks (not one row
+- [x] **ENGINE-07**: CSV reading and validation processes rows in configurable chunks (not one row
       at a time, not the whole file loaded into memory)
 
 - [ ] **ENGINE-08**: `process()` returns a structured `ProcessingResult` (total/valid/invalid rows,
@@ -98,7 +98,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Testing
 
-- [ ] **TEST-01**: Unit tests cover config parsing, CSV parsing, type conversion, date validation,
+- [x] **TEST-01**: Unit tests cover config parsing, CSV parsing, type conversion, date validation,
       valid/invalid row handling, and chunked processing
 
 - [ ] **TEST-02**: Integration tests exercise a real Oracle Database Free container (not mocked)
@@ -176,12 +176,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CONFIG-02 | Phase 2 | Complete |
 | GEN-01 | Phase 2 | Complete |
 | ENGINE-01 | Phase 3 | Complete |
-| ENGINE-02 | Phase 3 | Pending |
-| ENGINE-03 | Phase 3 | Pending |
-| ENGINE-04 | Phase 3 | Pending |
-| ENGINE-05 | Phase 3 | Pending |
+| ENGINE-02 | Phase 3 | Complete |
+| ENGINE-03 | Phase 3 | Complete |
+| ENGINE-04 | Phase 3 | Complete |
+| ENGINE-05 | Phase 3 | Complete |
 | ENGINE-06 | Phase 3 | Complete |
-| ENGINE-07 | Phase 3 | Pending |
+| ENGINE-07 | Phase 3 | Complete |
 | ENGINE-08 | Phase 4 | Pending |
 | ENGINE-09 | Phase 3 | Complete |
 | LOAD-01 | Phase 4 | Pending |
@@ -196,7 +196,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFRA-01 | Phase 1 | Complete |
 | INFRA-02 | Phase 1 | Complete |
 | INFRA-03 | Phase 1 | Complete |
-| TEST-01 | Phase 3 | Pending |
+| TEST-01 | Phase 3 | Complete |
 | TEST-02 | Phase 4 | Pending |
 | TEST-03 | Phase 6 | Pending |
 | TEST-04 | Phase 6 | Pending |

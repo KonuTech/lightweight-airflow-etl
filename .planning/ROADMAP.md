@@ -109,7 +109,7 @@ Plans:
   4. The `csv_processor` package can be imported and its full test suite run in an environment with no Airflow installed.
   5. The unit test suite covering config parsing, CSV parsing, type conversion, date validation, valid/invalid row handling, and chunked processing passes.
 
-**Plans**: 2/5 plans executed
+**Plans**: 3/5 plans executed
 
 Plans:
 **Wave 1**
@@ -119,7 +119,7 @@ Plans:
 
 **Wave 2** *(blocked on 03-02 completion)*
 
-- [ ] 03-03-PLAN.md — Tracer: source.py/validate.py/normalize.py/engine.py wired end-to-end, full type/nullability coverage (fixtures 17-22) and full structural coverage (fixtures 9-16)
+- [x] 03-03-PLAN.md — Tracer: source.py/validate.py/normalize.py/engine.py wired end-to-end, full type/nullability coverage (fixtures 17-22) and full structural coverage (fixtures 9-16)
 
 **Wave 3** *(blocked on 03-03 completion)*
 
@@ -177,7 +177,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|-----------------|--------|-----------|
 | 1. Environment & Oracle Foundation | 5/5 | Complete    | 2026-08-28 |
 | 2. Config Contract & CSV Generator | 5/5 | Complete    | 2026-08-29 |
-| 3. CSV Processing Engine | 2/5 | In Progress|  |
+| 3. CSV Processing Engine | 3/5 | In Progress|  |
 | 4. Oracle Bulk Load, Idempotency & Engine Entrypoint | 0/TBD | Not started | - |
 | 5. Airflow DAG Wiring & Deferrable File-Wait | 0/TBD | Not started | - |
 | 6. End-to-End Verification, Benchmark, CI & Docs | 0/TBD | Not started | - |
