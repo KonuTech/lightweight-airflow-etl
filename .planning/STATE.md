@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-08-29)
 validates and bulk-loads its valid rows into Oracle, routes invalid rows (with error metadata)
 into a separate table, and reports back a clear processing summary — end to end, reproducibly,
 from a fresh `git clone`.
-**Current focus:** Phase 5 — Airflow DAG Wiring & Deferrable File-Wait
+**Current focus:** Phase 6 — End-to-End Verification, Benchmark, CI & Docs
 
 ## Current Position
 
@@ -35,7 +35,7 @@ Plan: Not started
 Status: Ready to plan
 Last activity: 2026-08-29 — Phase 5 complete, transitioned to Phase 6
 
-Progress: [███████░░░] 67%
+Progress: [████████░░] 83%
 
 ## Performance Metrics
 
@@ -170,10 +170,9 @@ None yet.
 
 ### Blockers/Concerns
 
-- Research flags Phase 4 (`setinputsizes()` type-derivation, `batcherrors` semantics) and Phase 5
-  (whether stock `FileSensor(deferrable=True)` glob support suffices vs. a custom `BaseTrigger`)
-  as likely needing a focused research pass during planning — see research/SUMMARY.md "Research
-  Flags".
+None currently open. (Phase 4's `setinputsizes()`/`batcherrors` question and Phase 5's
+`FileSensor(deferrable=True)` sufficiency question — both flagged in research/SUMMARY.md
+"Research Flags" — were resolved during their respective phases' research/execution.)
 
 ## Deferred Items
 
@@ -185,6 +184,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-08-29T19:49:46.200Z
+Last session: 2026-08-29T20:33:53.834Z
 Stopped at: Phase 5 complete, ready to plan Phase 6
 Resume file: None
