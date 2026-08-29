@@ -109,10 +109,12 @@ Plans:
   4. The `csv_processor` package can be imported and its full test suite run in an environment with no Airflow installed.
   5. The unit test suite covering config parsing, CSV parsing, type conversion, date validation, valid/invalid row handling, and chunked processing passes.
 
-**Plans**: 8/8 plans executed, Plan 8 pending execution (Plan 6 is a verification gap-closure plan for
+**Plans**: 9/9 plans executed (Plan 6 is a verification gap-closure plan for
 CR-01/CR-02; Plan 7 is a code-review gap-closure plan for the CR-02 fix's own sample-boundary
 data-loss regression; Plan 8 is a code-review gap-closure plan for a genuinely malformed row silently
-dropped at the same sample-tail boundary CR-03/Plan 7 fixed for well-formed rows)
+dropped at the same sample-tail boundary CR-03/Plan 7 fixed for well-formed rows; Plan 9 is a
+code-review gap-closure plan for Plan 8's own residual — a contiguous run of 2+ candidate rows at the
+sample boundary, plus a `sample_was_truncated` off-by-one on a file whose exact size equals the sample)
 
 Plans:
 **Wave 1**
@@ -140,6 +142,10 @@ Plans:
 **Wave 6** *(gap closure — code review CR-04, blocked on Wave 5 completion)*
 
 - [x] 03-08-PLAN.md — Gap closure: `_filtered_rows()`'s footer/repeated-header exclusion is now gated by a new `sample_covered_row_count` (provable sample-byte coverage), checked before 03-07's own content re-validation — closes a genuinely malformed row being silently dropped whenever it coincides with the sample's own arbitrary tail-scan position, without reopening G-03-2 or CR-03
+
+**Wave 7** *(gap closure — code review CR-01/WR-01, blocked on Wave 6 completion)*
+
+- [x] 03-09-PLAN.md — Gap closure: extracts `_uncoverable_tail_indices()` generalizing 03-08's single-index coverage gate to the full contiguous run of sample-derived candidate indices touching the sample boundary (CR-01), plus a `sample_was_truncated` fix reading one byte past `SAMPLE_BYTES` to correctly distinguish true EOF from truncation (WR-01)
 
 ### Phase 4: Oracle Bulk Load, Idempotency & Engine Entrypoint
 
