@@ -80,6 +80,11 @@ class CsvDialectConfig(BaseModel):
     doublequote: bool = True  # D-02
     lineterminator: str = "\n"  # D-02
     decimal_separator: str = "."  # D-17 gap resolution, see 02-01-PLAN.md's planner_gap_note
+    # FTR-01 gap resolution, see 03-VERIFICATION.md's new gap finding / 03-10-PLAN.md --
+    # per-dataset opt-in for source.py's footer-shape exclusion heuristic; False (every
+    # dataset config shipped today) means a genuinely malformed last row is NEVER
+    # excluded on field-count-mismatch grounds alone
+    has_footer: bool = False
 
     @model_validator(mode="after")
     def _check_escapechar_present_when_doublequote_disabled(self) -> CsvDialectConfig:

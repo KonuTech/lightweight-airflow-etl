@@ -7,6 +7,7 @@
     "escapechar": null,
     "doublequote": true,
     "lineterminator": "\n",
-    "decimal_separator": "."
+    "decimal_separator": ".",
+    "has_footer": false
   }
 }
