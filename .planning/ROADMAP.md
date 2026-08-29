@@ -218,7 +218,22 @@ Plans:
   3. Opening a pull request automatically runs lint, type check, and unit tests via GitHub Actions, with pass/fail visible on the PR.
   4. Following only the README and `docs/`, a new developer can go from `git clone` to a completed HTTP-triggered ingestion with no undocumented manual steps.
 
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 06-01-PLAN.md — Tracer: automated HTTP-trigger -> deferred-wake -> Oracle-rows e2e proof (TEST-03), reusable `scripts/dag_polling.py`
+- [ ] 06-02-PLAN.md — Naive-vs-bulk Oracle write benchmark at ~100K rows (TEST-04), `docs/benchmark.md`
+- [ ] 06-03-PLAN.md — GitHub Actions CI (`lint-type-unit` + `oracle-e2e`, both PR-required) + whole-repo ruff/mypy (CI-01)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 06-04-PLAN.md — Oracle evidence script + business report + live-regenerated README Executive Summary + CI auto-commit job (TEST-03/DOC-01)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 06-05-PLAN.md — Topic docs (architecture/configuration/csv-engine/oracle/development), README summary+links rewrite, final Makefile targets (DOC-01)
 
 ## Progress
 
