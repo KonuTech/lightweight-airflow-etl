@@ -58,6 +58,9 @@ class ColumnSpec(BaseModel):
                     f"precision ({self.precision})"
                 )
                 raise ValueError(msg)
+        elif self.precision is not None or self.scale is not None:
+            msg = f"column {self.name!r}: 'precision'/'scale' are only valid for type 'decimal'"
+            raise ValueError(msg)
         return self
 
 
