@@ -115,3 +115,10 @@ TYPE_MISMATCH = "TYPE_MISMATCH"
 INVALID_DATE_FORMAT = "INVALID_DATE_FORMAT"
 INVALID_TIMESTAMP_FORMAT = "INVALID_TIMESTAMP_FORMAT"
 DECIMAL_PRECISION_EXCEEDED = "DECIMAL_PRECISION_EXCEEDED"
+
+# Compressed-input failures (03-04-PLAN.md Task 1, D-29/D-30/D-33) -- both
+# raised as FileInspectionError, distinguished by this error_code, matching
+# the same "one exception type, distinct error_code" convention as
+# StructuralValidationError above.
+CORRUPTED_ARCHIVE = "CORRUPTED_ARCHIVE"
+DECOMPRESSION_BOMB_EXCEEDED = "DECOMPRESSION_BOMB_EXCEEDED"
