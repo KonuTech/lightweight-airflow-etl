@@ -292,10 +292,12 @@ def process(file_path: Path, config: DatasetConfig) -> ProcessingResult:
             invalid_rows=invalid_count,
         )
     except StructuralValidationError:
-        connection.rollback()  # type: ignore[union-attr]
+        if connection is not None:
+            connection.rollback()
         return _build_result(Status.INVALID_FILE, config, file_path, start, checksum=checksum)
     except oracledb.Error:
-        connection.rollback()  # type: ignore[union-attr]
+        if connection is not None:
+            connection.rollback()
         return _build_result(
             Status.DATABASE_ERROR,
             config,
