@@ -166,7 +166,9 @@ Plans:
   3. Re-processing the same file (same filename + checksum + dataset) a second time does not duplicate rows in either target table.
   4. Calling `csv_processor.process(file_path, config)` returns a `ProcessingResult` carrying the correct status (SUCCESS / SUCCESS_WITH_INVALID_ROWS / FILE_NOT_FOUND / INVALID_FILE / CONFIGURATION_ERROR / DATABASE_ERROR / PROCESSING_ERROR) for each corresponding scenario.
 
-**Plans**: 2/2 plans executed
+**Plans**: 2/3 plans executed (Plan 3 is a code-review gap-closure plan for CR-01/WR-01 —
+`process()` crashed with an unhandled `AttributeError` instead of returning `DATABASE_ERROR` when
+`load.get_connection()` itself failed)
 
 Plans:
 **Wave 1**
@@ -176,6 +178,10 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 04-02-PLAN.md — Tracer: `csv_processor.process()` entrypoint assembling Plan 04-01's loader with Phase 3's `process_chunks()`, proving all 7 `ProcessingResult` status codes (ENGINE-08, TEST-02)
+
+**Wave 3** *(gap closure — code review CR-01/WR-01, blocked on Wave 2 completion)*
+
+- [ ] 04-03-PLAN.md — Gap closure: guards both unguarded `connection.rollback()` call sites (`except oracledb.Error:` and `except StructuralValidationError:`) on `connection is not None`, closing a real `AttributeError` crash when `load.get_connection()` itself fails — `process()` will correctly return `DATABASE_ERROR` instead of crashing (ENGINE-08)
 
 ### Phase 5: Airflow DAG Wiring & Deferrable File-Wait
 
@@ -215,7 +221,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Environment & Oracle Foundation | 5/5 | Complete    | 2026-08-28 |
 | 2. Config Contract & CSV Generator | 5/5 | Complete    | 2026-08-29 |
 | 3. CSV Processing Engine | 10/10 | Complete    | 2026-08-29 |
-| 4. Oracle Bulk Load, Idempotency & Engine Entrypoint | 2/2 | In Progress|  |
+| 4. Oracle Bulk Load, Idempotency & Engine Entrypoint | 2/3 | In Progress|  |
 | 5. Airflow DAG Wiring & Deferrable File-Wait | 0/TBD | Not started | - |
 | 6. End-to-End Verification, Benchmark, CI & Docs | 0/TBD | Not started | - |
 
