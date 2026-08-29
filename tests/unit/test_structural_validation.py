@@ -36,6 +36,7 @@ from csv_processor.config.models import (
 from csv_processor.engine import process_chunks
 from csv_processor.errors import StructuralValidationError
 
+from generator.generate_csv import generate_rows, write_csv
 from tools.corpus.generators import generate_fixture, stream_for
 from tools.corpus.manifest import load_manifest_with_seed
 
@@ -187,15 +188,20 @@ def test_optional_column_absent_from_header_processes_successfully(tmp_path: Pat
     assert valid_rows[0]["signup_country"] is None
 
 
-def _preamble_footer_config() -> DatasetConfig:
+def _preamble_footer_config(*, has_footer: bool = True) -> DatasetConfig:
     """Fixture-local ad hoc config for the CR-02 preamble/footer/repeated-
     header regression test -- mirrors test_byte_level_hard.py's
     `_order_id_note_config()` pattern (3 required, non-nullable string
-    columns matching this test's own literal CSV header exactly)."""
+    columns matching this test's own literal CSV header exactly).
+
+    `has_footer` defaults to `True` because every EXISTING call site in this
+    file exercises genuine footer/malformed-row-at-boundary exclusion-
+    eligibility scenarios that require footer detection active (FTR-01); new
+    tests proving the opt-out default pass `has_footer=False` explicitly."""
     return DatasetConfig(
         dataset="preamble_footer",
         file_pattern="preamble_footer_*.csv",
-        csv=CsvDialectConfig(),
+        csv=CsvDialectConfig(has_footer=has_footer),
         columns=[
             ColumnSpec(name="customer_id", type="string", nullable=False, required=True),
             ColumnSpec(name="name", type="string", nullable=False, required=True),
@@ -233,15 +239,20 @@ def test_preamble_footer_and_repeated_header_rows_excluded_from_processing(
     assert [row["customer_id"] for row in valid_rows] == ["CUST001", "CUST002", "CUST003"]
 
 
-def _large_id_name_config() -> DatasetConfig:
+def _large_id_name_config(*, has_footer: bool = True) -> DatasetConfig:
     """Fixture-local ad hoc config for the CR-03 sample-boundary regression
     test -- mirrors `_preamble_footer_config()`'s exact shape (2 required,
     non-nullable string columns matching this test's own literal CSV header
-    exactly)."""
+    exactly).
+
+    `has_footer` defaults to `True` because every EXISTING call site in this
+    file exercises genuine footer/malformed-row-at-boundary exclusion-
+    eligibility scenarios that require footer detection active (FTR-01); new
+    tests proving the opt-out default pass `has_footer=False` explicitly."""
     return DatasetConfig(
         dataset="large_id_name",
         file_pattern="large_id_name_*.csv",
-        csv=CsvDialectConfig(),
+        csv=CsvDialectConfig(has_footer=has_footer),
         columns=[
             ColumnSpec(name="id", type="string", nullable=False, required=True),
             ColumnSpec(name="name", type="string", nullable=False, required=True),
@@ -614,3 +625,91 @@ def test_file_exactly_sample_bytes_size_footer_still_correctly_excluded(
     all_invalid = [row for _, invalid_rows in chunks for row in invalid_rows]
     assert all_invalid == []
     assert {row["id"] for row in all_valid} == set(good_ids)
+
+
+def test_no_footer_optin_default_surfaces_malformed_last_row_as_invalid_not_dropped(
+    tmp_path: Path,
+) -> None:
+    """FTR-01 regression (03-VERIFICATION.md new gap finding): a dataset that
+    never opts in to `has_footer` must NEVER exclude its genuine last row on
+    field-count-mismatch grounds alone, at any file size -- a genuinely
+    malformed final row always surfaces as a `WRONG_COLUMN_COUNT` invalid
+    row. This is a small, well-within-`SAMPLE_BYTES` file (no truncation
+    involved at all) -- the verifier's own primary, simplest reproduction of
+    the baseline defect (distinct from the 03-06..03-09 sample-boundary-
+    truncation chain)."""
+    csv_path = tmp_path / "no_footer_optin.csv"
+    csv_path.write_text(
+        "id,name\nID000001,Name000001\nID000002,Name000002\nMALFORMEDLASTROWNOCOMMA\n"
+    )
+    assert csv_path.stat().st_size < source.SAMPLE_BYTES
+    config = _large_id_name_config(has_footer=False)
+
+    chunks = list(process_chunks(csv_path, config))
+
+    all_valid = [row for valid_rows, _ in chunks for row in valid_rows]
+    all_invalid = [row for _, invalid_rows in chunks for row in invalid_rows]
+    assert len(all_invalid) == 1
+    assert all_invalid[0]["error_code"] == "WRONG_COLUMN_COUNT"
+    assert all_invalid[0]["id"] == "MALFORMEDLASTROWNOCOMMA"
+    assert all_invalid[0]["name"] is None
+    assert {row["id"] for row in all_valid} == {"ID000001", "ID000002"}
+
+
+def test_generator_driven_customers_seed11_wrong_column_count_last_row_not_dropped(
+    tmp_path: Path,
+) -> None:
+    """FTR-01 regression: re-derives 03-VERIFICATION.md's own real-generator/
+    real-`customers.json` reproduction exactly. Seed=11 (50 rows, 30% invalid
+    ratio) places a `wrong_column_count` invalid row at the generator's own
+    physical last position -- the generator reports 50 rows (35 valid, 15
+    invalid) but, prior to this fix, `process_chunks()` only accounted for 49
+    (35 valid, 14 invalid): the last row vanished with zero trace in either
+    stream."""
+    config = _customers_config()
+    generated = generate_rows(config, rows=50, invalid_ratio=0.3, seed=11)
+    # Sanity precondition re-deriving the verifier's own finding that this
+    # exact seed/row-count/ratio combination places a wrong_column_count row
+    # at the file's true last position.
+    assert generated.categories[-1] == "wrong_column_count"
+    csv_path = tmp_path / "customers_seed11.csv"
+    write_csv(generated, config, csv_path)
+
+    chunks = list(process_chunks(csv_path, config))
+
+    all_valid = [row for valid_rows, _ in chunks for row in valid_rows]
+    all_invalid = [row for _, invalid_rows in chunks for row in invalid_rows]
+    expected_valid = sum(1 for c in generated.categories if c is None)
+    expected_invalid = sum(1 for c in generated.categories if c is not None)
+    assert expected_valid == 35
+    assert expected_invalid == 15
+    assert len(all_valid) == expected_valid
+    assert len(all_invalid) == expected_invalid
+    assert len(all_valid) + len(all_invalid) == 50
+
+
+def test_footer_optin_still_excludes_genuine_footer_row_within_sample(
+    tmp_path: Path,
+) -> None:
+    """FTR-01 regression (adversarial "whole file fits in sample AND a genuine
+    footer is declared" case): a dataset that explicitly opts in via
+    `has_footer=True` must still correctly exclude its genuine trailing
+    footer row, identically to the pre-existing unconditional-heuristic
+    behavior -- this is a permanent regression proof, not a RED/GREEN pair
+    (it passes both before and after this plan's own fix)."""
+    csv_path = tmp_path / "footer_optin.csv"
+    csv_path.write_text(
+        "id,name\nID000001,Name000001\nID000002,Name000002\nTOTALSROWNOTREALDATA\n"
+    )
+    assert csv_path.stat().st_size < source.SAMPLE_BYTES
+    config = _large_id_name_config(has_footer=True)
+
+    chunks = list(process_chunks(csv_path, config))
+
+    all_valid = [row for valid_rows, _ in chunks for row in valid_rows]
+    all_invalid = [row for _, invalid_rows in chunks for row in invalid_rows]
+    assert all_invalid == []
+    assert len(all_valid) == 2
+    valid_ids = {row["id"] for row in all_valid}
+    assert valid_ids == {"ID000001", "ID000002"}
+    assert "TOTALSROWNOTREALDATA" not in valid_ids
