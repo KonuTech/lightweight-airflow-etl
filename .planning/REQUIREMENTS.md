@@ -27,7 +27,7 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### CSV Processing Engine
 
-- [ ] **ENGINE-01**: `csv_processor.process(file_path, config)` validates CSV structure (column
+- [x] **ENGINE-01**: `csv_processor.process(file_path, config)` validates CSV structure (column
       count / missing / unexpected columns) before validating anything else
 
 - [ ] **ENGINE-02**: Engine validates each column's type (integer/decimal/date) per the config
@@ -50,7 +50,7 @@ Requirements for initial release. Each maps to roadmap phases.
       duration, status) with distinct status codes (SUCCESS / SUCCESS_WITH_INVALID_ROWS /
       FILE_NOT_FOUND / INVALID_FILE / CONFIGURATION_ERROR / DATABASE_ERROR / PROCESSING_ERROR)
 
-- [ ] **ENGINE-09**: `csv_processor` has no Airflow import/dependency and can be unit-tested
+- [x] **ENGINE-09**: `csv_processor` has no Airflow import/dependency and can be unit-tested
       standalone
 
 ### Oracle Loading
@@ -175,7 +175,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CONFIG-01 | Phase 2 | Complete |
 | CONFIG-02 | Phase 2 | Complete |
 | GEN-01 | Phase 2 | Complete |
-| ENGINE-01 | Phase 3 | Pending |
+| ENGINE-01 | Phase 3 | Complete |
 | ENGINE-02 | Phase 3 | Pending |
 | ENGINE-03 | Phase 3 | Pending |
 | ENGINE-04 | Phase 3 | Pending |
@@ -183,7 +183,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENGINE-06 | Phase 3 | Complete |
 | ENGINE-07 | Phase 3 | Pending |
 | ENGINE-08 | Phase 4 | Pending |
-| ENGINE-09 | Phase 3 | Pending |
+| ENGINE-09 | Phase 3 | Complete |
 | LOAD-01 | Phase 4 | Pending |
 | LOAD-02 | Phase 4 | Pending |
 | LOAD-03 | Phase 4 | Pending |
