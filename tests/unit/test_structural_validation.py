@@ -365,3 +365,58 @@ def test_repeated_header_row_excluded_even_when_file_exceeds_sample_size(
         "CUST002",
         *(f"CUSTF{i:05d}" for i in range(3000)),
     }
+
+
+def test_repeated_header_excluded_and_out_of_coverage_malformed_row_surfaced_together(
+    tmp_path: Path,
+) -> None:
+    """Proves G-03-2's exclusion guarantee and CR-04's coverage-eligibility
+    fix hold simultaneously in the same file: an interior repeated-header
+    row (well within `sample_covered_row_count`'s provably-covered range) is
+    excluded from both streams, while an out-of-coverage genuinely malformed
+    row (the sample's own tail-adjacent position) surfaces as an ordinary
+    `WRONG_COLUMN_COUNT` invalid row."""
+    lines = [
+        "customer_id,name,country",
+        "CUST001,Alice,US",
+        "CUST002,Bob,UK",
+        "customer_id,name,country",
+    ]
+    cumulative = sum(len(line) + 1 for line in lines)
+    good_customer_ids: list[str] = ["CUST001", "CUST002"]
+    i = 0
+    while cumulative <= source.SAMPLE_BYTES:
+        row = f"CUSTF{i:05d},Filler{i:05d},XX"
+        lines.append(row)
+        cumulative += len(row) + 1
+        good_customer_ids.append(f"CUSTF{i:05d}")
+        i += 1
+    # The loop's LAST appended row is -- by construction -- the one whose
+    # real bytes straddle `source.SAMPLE_BYTES`. Replace it with a genuinely
+    # malformed row (single field, no commas). Deliberately no underscores
+    # here (unlike Task 1's literal) -- an underscore-containing literal at
+    # this exact position tips charset_normalizer's ascii-vs-utf-8 pick for
+    # this specific sample's byte distribution, an unrelated pre-existing
+    # detect/encoding.py quirk out of this plan's scope; this equivalent
+    # single-field malformed literal avoids it.
+    good_customer_ids.pop()
+    lines[-1] = "BADROWONLYONEFIELD"
+    for _ in range(1000):
+        row = f"CUSTF{i:05d},Filler{i:05d},XX"
+        lines.append(row)
+        good_customer_ids.append(f"CUSTF{i:05d}")
+        i += 1
+    csv_path = tmp_path / "repeated_header_and_malformed.csv"
+    csv_path.write_text("\n".join(lines) + "\n")
+    assert csv_path.stat().st_size > source.SAMPLE_BYTES
+    config = _preamble_footer_config()
+
+    chunks = list(process_chunks(csv_path, config))
+
+    all_valid = [row for valid_rows, _ in chunks for row in valid_rows]
+    all_invalid = [row for _, invalid_rows in chunks for row in invalid_rows]
+    assert len(all_invalid) == 1
+    assert all_invalid[0]["error_code"] == "WRONG_COLUMN_COUNT"
+    assert all_invalid[0]["customer_id"] == "BADROWONLYONEFIELD"
+    assert "customer_id" not in {row["customer_id"] for row in all_valid}
+    assert {row["customer_id"] for row in all_valid} == set(good_customer_ids)
