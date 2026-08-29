@@ -24,6 +24,7 @@ from pathlib import Path
 
 import pytest
 
+from csv_processor import source
 from csv_processor.config.loader import load_config
 from csv_processor.config.models import (
     ColumnSpec,
@@ -230,3 +231,84 @@ def test_preamble_footer_and_repeated_header_rows_excluded_from_processing(
     assert invalid_rows == []
     assert len(valid_rows) == 3
     assert [row["customer_id"] for row in valid_rows] == ["CUST001", "CUST002", "CUST003"]
+
+
+def _large_id_name_config() -> DatasetConfig:
+    """Fixture-local ad hoc config for the CR-03 sample-boundary regression
+    test -- mirrors `_preamble_footer_config()`'s exact shape (2 required,
+    non-nullable string columns matching this test's own literal CSV header
+    exactly)."""
+    return DatasetConfig(
+        dataset="large_id_name",
+        file_pattern="large_id_name_*.csv",
+        csv=CsvDialectConfig(),
+        columns=[
+            ColumnSpec(name="id", type="string", nullable=False, required=True),
+            ColumnSpec(name="name", type="string", nullable=False, required=True),
+        ],
+        oracle=OracleTargetSpec(valid_table="lin_valid", invalid_table="lin_invalid"),
+        processing=ProcessingConfig(chunk_size=1000),
+    )
+
+
+def test_large_well_formed_file_loses_zero_rows_across_sample_boundary(
+    tmp_path: Path,
+) -> None:
+    """CR-03 regression (03-REVIEW.md Critical finding): a well-formed CSV
+    larger than `source.SAMPLE_BYTES` must lose zero rows -- the row whose
+    bytes straddle the 64 KiB detection sample's byte cutoff is truncated
+    mid-row WITHIN THE SAMPLE ONLY, which previously caused
+    `detect_header()`'s footer-scoring walk to flag its absolute index as a
+    false-positive footer row. `_filtered_rows()` then silently dropped the
+    same row's real, complete, well-formed content in PASS 2 -- no
+    `invalid_rows` entry, no exception, no count mismatch surfaced anywhere.
+    """
+    lines = ["id,name"] + [f"ID{i:06d},Name{i:06d}" for i in range(1, 6001)]
+    csv_path = tmp_path / "large_id_name.csv"
+    csv_path.write_text("\n".join(lines) + "\n")
+    # Sanity check: the repro scenario is genuinely reproduced only when the
+    # file actually exceeds the bounded detection sample.
+    assert csv_path.stat().st_size > source.SAMPLE_BYTES
+    config = _large_id_name_config()
+
+    chunks = list(process_chunks(csv_path, config))
+
+    all_valid = [row for valid_rows, _ in chunks for row in valid_rows]
+    all_invalid = [row for _, invalid_rows in chunks for row in invalid_rows]
+    assert all_invalid == []
+    assert len(all_valid) == 6000
+    assert {row["id"] for row in all_valid} == {f"ID{i:06d}" for i in range(1, 6001)}
+
+
+def test_repeated_header_row_excluded_even_when_file_exceeds_sample_size(
+    tmp_path: Path,
+) -> None:
+    """No regression of G-03-2: an interior repeated-header row within the
+    64 KiB detection sample must still be correctly excluded even when the
+    surrounding file's total size exceeds the sample -- proving CR-03's
+    re-validation fix and G-03-2's original exclusion guarantee hold
+    simultaneously in one file."""
+    lines = [
+        "customer_id,name,country",
+        "CUST001,Alice,US",
+        "CUST002,Bob,UK",
+        "customer_id,name,country",
+    ]
+    lines.extend(f"CUSTF{i:05d},Filler{i:05d},XX" for i in range(3000))
+    csv_path = tmp_path / "repeated_header_large.csv"
+    csv_path.write_text("\n".join(lines) + "\n")
+    assert csv_path.stat().st_size > source.SAMPLE_BYTES
+    config = _preamble_footer_config()
+
+    chunks = list(process_chunks(csv_path, config))
+
+    all_valid = [row for valid_rows, _ in chunks for row in valid_rows]
+    all_invalid = [row for _, invalid_rows in chunks for row in invalid_rows]
+    assert all_invalid == []
+    assert len(all_valid) == 2 + 3000
+    assert "customer_id" not in {row["customer_id"] for row in all_valid}
+    assert {row["customer_id"] for row in all_valid} == {
+        "CUST001",
+        "CUST002",
+        *(f"CUSTF{i:05d}" for i in range(3000)),
+    }
