@@ -133,7 +133,7 @@ Plans:
 
 **Wave 5** *(gap closure — code review G-03-3, blocked on Wave 4 completion)*
 
-- [ ] 03-07-PLAN.md — Gap closure: `source.py`'s `_filtered_rows()` re-validates every sample-derived footer/repeated-header candidate exclusion against the real full-file row content before excluding it, closing a silent data-loss regression 03-06's own CR-02 fix introduced on files larger than the 64 KiB detection sample
+- [x] 03-07-PLAN.md — Gap closure: `source.py`'s `_filtered_rows()` re-validates every sample-derived footer/repeated-header candidate exclusion against the real full-file row content before excluding it, closing a silent data-loss regression 03-06's own CR-02 fix introduced on files larger than the 64 KiB detection sample
 
 ### Phase 4: Oracle Bulk Load, Idempotency & Engine Entrypoint
 
@@ -186,7 +186,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|-----------------|--------|-----------|
 | 1. Environment & Oracle Foundation | 5/5 | Complete    | 2026-08-28 |
 | 2. Config Contract & CSV Generator | 5/5 | Complete    | 2026-08-29 |
-| 3. CSV Processing Engine | 6/7 | In Progress|  |
+| 3. CSV Processing Engine | 7/7 | In Progress|  |
 | 4. Oracle Bulk Load, Idempotency & Engine Entrypoint | 0/TBD | Not started | - |
 | 5. Airflow DAG Wiring & Deferrable File-Wait | 0/TBD | Not started | - |
 | 6. End-to-End Verification, Benchmark, CI & Docs | 0/TBD | Not started | - |

@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 current_phase: 03
 current_phase_name: CSV Processing Engine
 status: executing
-stopped_at: "Completed 03-06-PLAN.md (gap closure: G-03-1, G-03-2)"
-last_updated: "2026-08-29T14:12:16.582Z"
+stopped_at: "Completed 03-07-PLAN.md (gap closure: G-03-3, CR-03 sample-boundary data-loss regression)"
+last_updated: "2026-08-29T14:18:02.171Z"
 last_activity: 2026-08-29
 last_activity_desc: Phase 03 execution started
-state_head: 3aa518fab337851837788ea34c75cbcb31bf7040
+state_head: 875bfa9c2fb501116f8d5ae4de678727b814362b
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 17
-  completed_plans: 16
+  completed_plans: 17
   percent: 33
 ---
 
@@ -30,8 +30,8 @@ from a fresh `git clone`.
 
 ## Current Position
 
-Phase: 03 (CSV Processing Engine) — READY TO EXECUTE
-Plan: 2 of 6
+Phase: 03 (CSV Processing Engine) — EXECUTING
+Plan: 2 of 7
 Status: Ready to execute
 Last activity: 2026-08-29 — Phase 03 execution started
 
@@ -78,6 +78,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 03 P04 | 25min | 3 tasks | 6 files |
 | Phase 03 P05 | 40min | 4 tasks | 5 files |
 | Phase 03 P06 | 25min | 3 tasks | 5 files |
+| Phase 03 P07 | 15min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -137,6 +138,8 @@ Recent decisions affecting current work:
 - [Phase 03]: [Phase 03]: 03-05: Fixed a real bug in detect_dialect() -- clevercsv.Detector().detect() raises uncaught on a NUL-byte sample, folded into the existing declined-detection pattern (never a crash)
 - [Phase 03]: [Phase 03]: 03-06: Closed gaps G-03-1/G-03-2 -- source.py's missing-column check now filters by column.required (MISSING_REQUIRED_COLUMN only for required:true columns), engine.py backfills any config-declared header-absent column with an empty string to prevent KeyError, and PASS 2 now consumes detect_header()'s header_row_index/footer_row_indices/repeated_header_row_indices instead of discarding them
 - [Phase 03]: [Phase 03]: 03-06: Removed detect/filename.py's residual TYPE_CHECKING-guarded dataplat.config.model import (WR-01), replaced with a real local FilenameMaskConfig dataclass -- closes the last dataplat coupling this phase's Tier-A vendoring left behind
+- [Phase 03]: Phase 03 Plan 07: source.py's _filtered_rows() re-validates every sample-derived footer/repeated-header candidate exclusion against the REAL, full-file row content before excluding it (CR-03) -- closes 03-REVIEW.md's Critical silent-data-loss regression where a >64KiB file's sample-truncated boundary row was falsely excluded
+- [Phase 03]: Phase 03 Plan 07: Task 1's RED commit included Task 2's regression test alongside Task 1's own, since Task 2 (type=auto) has no independent RED/GREEN cycle and can only genuinely pass once Task 1's fix lands
 
 ### Pending Todos
 
@@ -159,6 +162,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-08-29T13:52:27.843Z
-Stopped at: Completed 03-06-PLAN.md (gap closure: G-03-1, G-03-2)
+Last session: 2026-08-29T14:18:02.102Z
+Stopped at: Completed 03-07-PLAN.md (gap closure: G-03-3, CR-03 sample-boundary data-loss regression)
 Resume file: None

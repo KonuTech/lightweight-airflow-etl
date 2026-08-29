@@ -37,7 +37,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **ENGINE-04**: Engine explicitly converts each valid CSV string field to its configured
       Python/Oracle type (no implicit Oracle casting)
 
-- [ ] **ENGINE-05**: An invalid row does not stop processing of the rest of the file; valid and
+- [x] **ENGINE-05**: An invalid row does not stop processing of the rest of the file; valid and
       invalid rows are split and both counted
 
 - [ ] **ENGINE-06**: Each invalid row records `error_code`, `error_message`, `source_file`, and
@@ -179,7 +179,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENGINE-02 | Phase 3 | Gaps Found |
 | ENGINE-03 | Phase 3 | Gaps Found |
 | ENGINE-04 | Phase 3 | Gaps Found |
-| ENGINE-05 | Phase 3 | Gaps Found |
+| ENGINE-05 | Phase 3 | Complete |
 | ENGINE-06 | Phase 3 | Gaps Found |
 | ENGINE-07 | Phase 3 | Gaps Found |
 | ENGINE-08 | Phase 4 | Pending |
