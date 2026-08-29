@@ -488,9 +488,22 @@ def prepare_source(
     # `has_header` check above already raised otherwise).
     for _ in range(header_detection.header_row_index + 1):  # type: ignore[operator]
         next(reader)
-    excluded_indices = set(header_detection.footer_row_indices) | set(
-        header_detection.repeated_header_row_indices
+    # FTR-01: `detect/header.py` is unmodified and always computes
+    # `footer_row_indices` via its unconditional field-count-mismatch
+    # heuristic, regardless of whether this dataset ever expects a footer at
+    # all -- but a non-opted-in dataset must never have that output
+    # CONSUMED. Forcing it to an empty set here (before `excluded_indices` is
+    # built) makes every downstream consumer (`excluded_indices` membership,
+    # `_uncoverable_tail_indices()`, CR-03's content re-validation) a
+    # complete no-op for footer purposes, while `repeated_header_row_indices`
+    # stays unconditionally active for every dataset (out of this gap's
+    # scope -- an exact-text match against the real header is a much
+    # stronger, lower-false-positive signal that needs no opt-in gate).
+    footer_row_indices = (
+        set(header_detection.footer_row_indices) if config.csv.has_footer else set()
     )
+    repeated_header_row_indices = set(header_detection.repeated_header_row_indices)
+    excluded_indices = footer_row_indices | repeated_header_row_indices
     # CR-03: `excluded_indices` is only a sample-derived CANDIDATE set --
     # `_filtered_rows()` re-validates each candidate against the real row at
     # that position before excluding it (see its own docstring).
@@ -500,8 +513,8 @@ def prepare_source(
             _rows_with_raw_line(reader, wrapper),
             start_index=header_detection.header_row_index + 1,  # type: ignore[operator]
             excluded_indices=excluded_indices,
-            footer_row_indices=set(header_detection.footer_row_indices),
-            repeated_header_row_indices=set(header_detection.repeated_header_row_indices),
+            footer_row_indices=footer_row_indices,
+            repeated_header_row_indices=repeated_header_row_indices,
             header_field_count=len(header_detection.raw_header),
             raw_header=header_detection.raw_header,
             sample_covered_row_count=sample_covered_row_count,
