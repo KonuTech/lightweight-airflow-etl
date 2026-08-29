@@ -280,6 +280,59 @@ def test_large_well_formed_file_loses_zero_rows_across_sample_boundary(
     assert {row["id"] for row in all_valid} == {f"ID{i:06d}" for i in range(1, 6001)}
 
 
+def test_malformed_row_at_sample_boundary_surfaces_as_invalid_not_dropped(
+    tmp_path: Path,
+) -> None:
+    """CR-04 regression (03-REVIEW.md Critical finding): a genuinely
+    malformed data row landing at the sample's own tail-adjacent position in
+    a file larger than `source.SAMPLE_BYTES` must surface as a
+    `WRONG_COLUMN_COUNT` invalid row, never silently vanish from both
+    `valid_rows` and `invalid_rows`. CR-03's content re-validation alone
+    cannot distinguish this case from a well-formed row truncated by the
+    sample cutoff -- both independently satisfy the same field-count-
+    mismatch criterion against their own real content. This is the sample's
+    own LAST parsed row, always ineligible for exclusion under the new
+    `sample_covered_row_count` coverage gate whenever the sample was
+    truncated."""
+    header = "id,name"
+    lines = [header]
+    cumulative = len(header) + 1
+    good_ids: list[str] = []
+    i = 1
+    while cumulative <= source.SAMPLE_BYTES:
+        row = f"ID{i:06d},Name{i:06d}"
+        lines.append(row)
+        cumulative += len(row) + 1
+        good_ids.append(f"ID{i:06d}")
+        i += 1
+    # The loop's LAST appended row is -- by construction -- the one whose
+    # real bytes straddle `source.SAMPLE_BYTES` (its start offset was
+    # <= SAMPLE_BYTES, its end pushed cumulative past it). Replace it with a
+    # genuinely malformed row (a real structural defect, not a truncation
+    # artifact): a single field, no comma.
+    good_ids.pop()
+    lines[-1] = "BADROW_ONLY_ONE_FIELD"
+    for _ in range(3000):
+        row = f"ID{i:06d},Name{i:06d}"
+        lines.append(row)
+        good_ids.append(f"ID{i:06d}")
+        i += 1
+    csv_path = tmp_path / "malformed_at_boundary.csv"
+    csv_path.write_text("\n".join(lines) + "\n")
+    assert csv_path.stat().st_size > source.SAMPLE_BYTES
+    config = _large_id_name_config()
+
+    chunks = list(process_chunks(csv_path, config))
+
+    all_valid = [row for valid_rows, _ in chunks for row in valid_rows]
+    all_invalid = [row for _, invalid_rows in chunks for row in invalid_rows]
+    assert len(all_invalid) == 1
+    assert all_invalid[0]["error_code"] == "WRONG_COLUMN_COUNT"
+    assert all_invalid[0]["id"] == "BADROW_ONLY_ONE_FIELD"
+    assert all_invalid[0]["name"] is None
+    assert {row["id"] for row in all_valid} == set(good_ids)
+
+
 def test_repeated_header_row_excluded_even_when_file_exceeds_sample_size(
     tmp_path: Path,
 ) -> None:
