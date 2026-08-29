@@ -109,12 +109,15 @@ Plans:
   4. The `csv_processor` package can be imported and its full test suite run in an environment with no Airflow installed.
   5. The unit test suite covering config parsing, CSV parsing, type conversion, date validation, valid/invalid row handling, and chunked processing passes.
 
-**Plans**: 9/9 plans executed (Plan 6 is a verification gap-closure plan for
+**Plans**: 9/10 plans executed (Plan 6 is a verification gap-closure plan for
 CR-01/CR-02; Plan 7 is a code-review gap-closure plan for the CR-02 fix's own sample-boundary
 data-loss regression; Plan 8 is a code-review gap-closure plan for a genuinely malformed row silently
 dropped at the same sample-tail boundary CR-03/Plan 7 fixed for well-formed rows; Plan 9 is a
 code-review gap-closure plan for Plan 8's own residual — a contiguous run of 2+ candidate rows at the
-sample boundary, plus a `sample_was_truncated` off-by-one on a file whose exact size equals the sample)
+sample boundary, plus a `sample_was_truncated` off-by-one on a file whose exact size equals the sample;
+Plan 10 is a verification gap-closure plan (FTR-01) for an unconditional, always-on footer-detection
+heuristic that silently dropped a genuinely malformed row at ANY file's true end, unrelated to sample
+truncation — closed via a new per-dataset `has_footer` opt-in, default off)
 
 Plans:
 **Wave 1**
@@ -146,6 +149,10 @@ Plans:
 **Wave 7** *(gap closure — code review CR-01/WR-01, blocked on Wave 6 completion)*
 
 - [x] 03-09-PLAN.md — Gap closure: extracts `_uncoverable_tail_indices()` generalizing 03-08's single-index coverage gate to the full contiguous run of sample-derived candidate indices touching the sample boundary (CR-01), plus a `sample_was_truncated` fix reading one byte past `SAMPLE_BYTES` to correctly distinguish true EOF from truncation (WR-01)
+
+**Wave 8** *(gap closure — verification FTR-01, blocked on Wave 7 completion)*
+
+- [ ] 03-10-PLAN.md — Gap closure: adds `CsvDialectConfig.has_footer` (default `False`) per-dataset opt-in; `prepare_source()` now forces `footer_row_indices` to empty for a non-opted-in dataset before building `excluded_indices`, so footer-shape exclusion never runs at all for a dataset that never declared one — closes an unconditional (not sample-truncation-related) silent-drop of a genuinely malformed last row, independently reproduced against this project's own generator/customers.json (seed=11: 49/50 rows accounted for pre-fix, 50/50 post-fix)
 
 ### Phase 4: Oracle Bulk Load, Idempotency & Engine Entrypoint
 
