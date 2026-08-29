@@ -566,3 +566,51 @@ def test_interior_repeated_header_row_not_contaminated_by_adjacent_boundary_foot
     valid_ids = {row["id"] for row in all_valid}
     assert "id" not in valid_ids
     assert valid_ids == set(good_ids)
+
+
+def test_file_exactly_sample_bytes_size_footer_still_correctly_excluded(
+    tmp_path: Path,
+) -> None:
+    """WR-01 regression (03-REVIEW.md Warning finding): a file whose real
+    byte size exactly equals `source.SAMPLE_BYTES` must never be
+    misclassified as truncated. `sample_was_truncated = len(sample) ==
+    SAMPLE_BYTES` cannot distinguish "the read was cut off because more file
+    follows" from "the file's real size happens to equal SAMPLE_BYTES
+    exactly, and the read simply reached true EOF" -- both produce the
+    identical `len(sample) == SAMPLE_BYTES` result. In the second case this
+    wrongly strips coverage-eligibility from that file's genuinely complete
+    last row, so a real footer there fails to be excluded and instead
+    surfaces as a spurious `WRONG_COLUMN_COUNT` invalid row."""
+    header = "id,name"
+    footer_row = "ENDOFFILEMARKER"
+    footer_line_bytes = len(footer_row) + 1
+    lines = [header]
+    good_ids: list[str] = []
+    i = 1
+    while True:
+        row = f"ID{i:06d},Name{i:06d}"
+        prospective_total = (
+            sum(len(line) + 1 for line in lines) + len(row) + 1 + footer_line_bytes
+        )
+        if prospective_total > source.SAMPLE_BYTES:
+            break
+        lines.append(row)
+        good_ids.append(f"ID{i:06d}")
+        i += 1
+    shortfall = source.SAMPLE_BYTES - (
+        sum(len(line) + 1 for line in lines) + footer_line_bytes
+    )
+    assert shortfall >= 0
+    lines[-1] = lines[-1] + ("X" * shortfall)
+    lines.append(footer_row)
+    csv_path = tmp_path / "exact_sample_bytes.csv"
+    csv_path.write_text("\n".join(lines) + "\n")
+    assert csv_path.stat().st_size == source.SAMPLE_BYTES
+    config = _large_id_name_config()
+
+    chunks = list(process_chunks(csv_path, config))
+
+    all_valid = [row for valid_rows, _ in chunks for row in valid_rows]
+    all_invalid = [row for _, invalid_rows in chunks for row in invalid_rows]
+    assert all_invalid == []
+    assert {row["id"] for row in all_valid} == set(good_ids)
