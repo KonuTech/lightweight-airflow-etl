@@ -20,13 +20,13 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-08-28)
+See: .planning/PROJECT.md (updated 2026-08-29)
 
 **Core value:** A single HTTP request can trigger an Airflow DAG that reads a generated CSV,
 validates and bulk-loads its valid rows into Oracle, routes invalid rows (with error metadata)
 into a separate table, and reports back a clear processing summary — end to end, reproducibly,
 from a fresh `git clone`.
-**Current focus:** Phase 03 — CSV Processing Engine
+**Current focus:** Phase 04 — Oracle Bulk Load, Idempotency & Engine Entrypoint
 
 ## Current Position
 
