@@ -44,6 +44,10 @@ def test_load_config_returns_validated_customers_dataset() -> None:
     assert len(config.columns) == 6
     assert config.oracle.valid_table == "customers_valid"
     assert config.oracle.invalid_table == "customers_invalid"
+    # FTR-01: customers.json omits the `csv` block entirely, inheriting
+    # defaults.json's -- proves the real load_config() merge path resolves
+    # the new opt-in field to its correct default with zero dataset-JSON edits.
+    assert config.csv.has_footer is False
 
 
 def test_load_config_returns_validated_orders_dataset() -> None:

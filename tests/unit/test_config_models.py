@@ -217,6 +217,19 @@ class TestCsvDialectExtraFields:
 
         assert dialect.decimal_separator == ","
 
+    def test_has_footer_defaults_to_false(self) -> None:
+        """FTR-01: absent from every dataset config shipped today (customers.json/
+        orders.json both omit the `csv` block entirely) -- must default to False so
+        footer-shape exclusion is never applied unless a dataset explicitly opts in."""
+        dialect = CsvDialectConfig.model_validate({})
+
+        assert dialect.has_footer is False
+
+    def test_has_footer_round_trips_with_explicit_true(self) -> None:
+        dialect = CsvDialectConfig.model_validate({"has_footer": True})
+
+        assert dialect.has_footer is True
+
 
 # --- delimiter/decimal_separator collision -------------------------------------
 
