@@ -1,6 +1,6 @@
 {
   "dataset": "orders",
-  "file_pattern": "orders_*.csv",
+  "file_pattern": "orders_*.csv*",
   "columns": [
     {
       "name": "order_id",
