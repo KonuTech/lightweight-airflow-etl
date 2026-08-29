@@ -15,7 +15,6 @@ reproduce the real per-round-trip cost this benchmark exists to measure).
 from __future__ import annotations
 
 import oracledb
-
 from csv_processor.config.models import DatasetConfig, is_safe_identifier
 
 

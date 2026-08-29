@@ -15,7 +15,6 @@ from pathlib import Path
 
 import oracledb
 import pytest
-
 from csv_processor import load
 from csv_processor.config.loader import load_config
 from csv_processor.config.models import DatasetConfig
@@ -101,8 +100,7 @@ def test_invalid_rows_bulk_inserted(tmp_path: Path, oracle_cursor: oracledb.Curs
     oracle_cursor.connection.commit()
 
     oracle_cursor.execute(
-        "SELECT error_code, error_message, source_file, row_number, raw_line "
-        "FROM customers_invalid"
+        "SELECT error_code, error_message, source_file, row_number, raw_line FROM customers_invalid"
     )
     rows = oracle_cursor.fetchall()
     assert len(rows) == 1

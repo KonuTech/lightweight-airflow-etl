@@ -13,12 +13,11 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import oracledb
-from pydantic import ValidationError
-
 from csv_processor.config.loader import load_config
 from csv_processor.config.models import DatasetConfig
 from csv_processor.engine import process
 from csv_processor.models import Status
+from pydantic import ValidationError
 
 _CONFIGS_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
 _CUSTOMERS_PATH = _CONFIGS_DIR / "datasets" / "customers.json"

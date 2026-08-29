@@ -48,7 +48,9 @@ def test_scanner_detects_a_synthetic_airflow_import(tmp_path: Path) -> None:
 def test_scanner_detects_a_synthetic_from_airflow_import(tmp_path: Path) -> None:
     """Also covers the `from airflow.X import Y` / provider-package shape."""
     synthetic = tmp_path / "would_be_offender_from.py"
-    synthetic.write_text("from airflow.providers.oracle.hooks.oracle import OracleHook\n", encoding="utf-8")
+    synthetic.write_text(
+        "from airflow.providers.oracle.hooks.oracle import OracleHook\n", encoding="utf-8"
+    )
 
     assert _imports_airflow(synthetic) is True
 

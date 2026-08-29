@@ -164,5 +164,5 @@ def test_27_oversized_field_value_parses_as_a_single_unsplit_field(tmp_path: Pat
     valid_rows, invalid_rows = chunks[0]
     assert invalid_rows == []
     assert len(valid_rows) == 1
-    assert len(valid_rows[0]["big_field"]) == 10_001
+    assert len(str(valid_rows[0]["big_field"])) == 10_001
     assert valid_rows[0]["big_field"] == "x" * 10_001

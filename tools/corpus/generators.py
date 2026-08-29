@@ -59,8 +59,9 @@ import hashlib
 import io
 import random
 import zipfile
+from collections.abc import Callable
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
-from typing import TYPE_CHECKING, Any, Callable, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from .manifest import Fixture
 

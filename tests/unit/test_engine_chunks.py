@@ -27,14 +27,10 @@ import sys
 from pathlib import Path
 
 import pytest
-
 from csv_processor.config.loader import load_config
 from csv_processor.config.models import (
     ColumnSpec,
-    CsvDialectConfig,
     DatasetConfig,
-    OracleTargetSpec,
-    ProcessingConfig,
 )
 from csv_processor.engine import process_chunks
 
@@ -75,7 +71,7 @@ def test_one_valid_one_invalid_customers_row_end_to_end(tmp_path: Path) -> None:
         "name": "Alice Smith",
         "country": "DE",
         "birth_date": dt.date(1990, 1, 1),
-        "event_ts": dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc),
+        "event_ts": dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
         "signup_country": "FR",
     }
     assert isinstance(valid_row["birth_date"], dt.date)
@@ -88,7 +84,7 @@ def test_one_valid_one_invalid_customers_row_end_to_end(tmp_path: Path) -> None:
     assert invalid_row["row_number"] == 2
     assert invalid_row["source_file"] == "customers_20260829.csv"
     assert "raw_line" in invalid_row
-    assert invalid_row["raw_line"].startswith(",Bob Jones,DE,")
+    assert str(invalid_row["raw_line"]).startswith(",Bob Jones,DE,")
 
 
 def test_structurally_broken_row_never_reaches_check_row(tmp_path: Path) -> None:
@@ -123,7 +119,6 @@ def test_structurally_broken_row_never_reaches_check_row(tmp_path: Path) -> None
 
 
 def test_convert_value_decimal_precision_exceeded() -> None:
-    from csv_processor.config.models import ColumnSpec
     from csv_processor.normalize import convert_value
 
     column = ColumnSpec(
@@ -136,7 +131,6 @@ def test_convert_value_decimal_precision_exceeded() -> None:
 
 
 def test_convert_value_invalid_date_format() -> None:
-    from csv_processor.config.models import ColumnSpec
     from csv_processor.normalize import convert_value
 
     column = ColumnSpec(

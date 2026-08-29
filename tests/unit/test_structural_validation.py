@@ -23,7 +23,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from csv_processor import source
 from csv_processor.config.loader import load_config
 from csv_processor.config.models import (
@@ -514,9 +513,9 @@ def test_two_contiguous_malformed_rows_at_sample_boundary_both_surface_as_invali
         "BADROWNUMBERONE1234",
         "BADROWNUMBERTWO5678",
     }
-    for row in all_invalid:
-        assert row["error_code"] == "WRONG_COLUMN_COUNT"
-        assert row["name"] is None
+    for invalid_row in all_invalid:
+        assert invalid_row["error_code"] == "WRONG_COLUMN_COUNT"
+        assert invalid_row["name"] is None
     assert {row["id"] for row in all_valid} == set(good_ids)
 
 
@@ -600,17 +599,13 @@ def test_file_exactly_sample_bytes_size_footer_still_correctly_excluded(
     i = 1
     while True:
         row = f"ID{i:06d},Name{i:06d}"
-        prospective_total = (
-            sum(len(line) + 1 for line in lines) + len(row) + 1 + footer_line_bytes
-        )
+        prospective_total = sum(len(line) + 1 for line in lines) + len(row) + 1 + footer_line_bytes
         if prospective_total > source.SAMPLE_BYTES:
             break
         lines.append(row)
         good_ids.append(f"ID{i:06d}")
         i += 1
-    shortfall = source.SAMPLE_BYTES - (
-        sum(len(line) + 1 for line in lines) + footer_line_bytes
-    )
+    shortfall = source.SAMPLE_BYTES - (sum(len(line) + 1 for line in lines) + footer_line_bytes)
     assert shortfall >= 0
     lines[-1] = lines[-1] + ("X" * shortfall)
     lines.append(footer_row)
@@ -698,9 +693,7 @@ def test_footer_optin_still_excludes_genuine_footer_row_within_sample(
     behavior -- this is a permanent regression proof, not a RED/GREEN pair
     (it passes both before and after this plan's own fix)."""
     csv_path = tmp_path / "footer_optin.csv"
-    csv_path.write_text(
-        "id,name\nID000001,Name000001\nID000002,Name000002\nTOTALSROWNOTREALDATA\n"
-    )
+    csv_path.write_text("id,name\nID000001,Name000001\nID000002,Name000002\nTOTALSROWNOTREALDATA\n")
     assert csv_path.stat().st_size < source.SAMPLE_BYTES
     config = _large_id_name_config(has_footer=True)
 

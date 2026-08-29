@@ -15,11 +15,10 @@ import os
 import time
 import urllib.error
 import urllib.request
-from typing import Iterator
+from collections.abc import Iterator
 
 import oracledb
 import pytest
-
 from csv_processor import load
 
 AIRFLOW_BASE_URL = os.environ.get("AIRFLOW_BASE_URL", "http://localhost:8080")

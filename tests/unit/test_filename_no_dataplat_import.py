@@ -14,7 +14,6 @@ import re
 from pathlib import Path
 
 import pytest
-
 from csv_processor.detect.filename import FilenameMaskConfig, parse_filename
 from csv_processor.errors import FilenameParsingError
 

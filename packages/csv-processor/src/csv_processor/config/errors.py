@@ -23,6 +23,6 @@ class ConfigurationError(Exception):
             ``pydantic.ValidationError.errors()``'s own structured list).
     """
 
-    def __init__(self, message: str, *, context: dict) -> None:
+    def __init__(self, message: str, *, context: dict[str, object]) -> None:
         super().__init__(message)
         self.context = context

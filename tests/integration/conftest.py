@@ -9,11 +9,10 @@ falls back to them) -- no separate hardcoding needed.
 
 from __future__ import annotations
 
-from typing import Iterator
+from collections.abc import Iterator
 
 import oracledb
 import pytest
-
 from csv_processor import load
 
 

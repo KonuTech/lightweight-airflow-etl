@@ -34,9 +34,7 @@ def get_jwt_token(base_url: str = AIRFLOW_BASE_URL) -> str:
     ``scripts/verify_environment.py::verify_airflow_auth`` -- no new auth
     mechanism invented for this module.
     """
-    payload = json.dumps({"username": AIRFLOW_USER, "password": AIRFLOW_PASSWORD}).encode(
-        "utf-8"
-    )
+    payload = json.dumps({"username": AIRFLOW_USER, "password": AIRFLOW_PASSWORD}).encode("utf-8")
     request = urllib.request.Request(
         f"{base_url}/auth/token",
         data=payload,
@@ -124,7 +122,7 @@ def wait_for_dag_run_result(
     result_task_id: str = "load_results_task",
     timeout: float = 120.0,
     interval: float = 1.0,
-) -> dict:
+) -> dict[str, object]:
     """GET ``.../dagRuns/{run_id}/wait?result={result_task_id}&interval={interval}``,
     blocking server-side (Airflow's own ``wait`` endpoint) until the DAG run
     completes.

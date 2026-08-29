@@ -15,11 +15,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
 import pytest
-from pydantic import ValidationError
-
 from csv_processor.config import ConfigurationError, DatasetConfig, load_config
+from pydantic import ValidationError
 
 _CONFIGS_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
 _CUSTOMERS_PATH = _CONFIGS_DIR / "datasets" / "customers.json"
@@ -99,8 +99,12 @@ def test_load_config_aggregates_multiple_field_errors_in_one_pass(tmp_path: Path
     with pytest.raises(ConfigurationError) as excinfo:
         load_config(dataset_path, defaults_path=defaults_path)
 
-    errors = excinfo.value.context["errors"]
-    error_locs = {tuple(e["loc"]) for e in errors}
+    # ConfigurationError.context["errors"] is a pydantic ValidationError.errors()
+    # list verbatim (csv_processor.config.errors docstring) -- cast() documents
+    # that known shape for mypy, which sees only `object` via the exception's
+    # generic dict[str, object] context.
+    errors = cast("list[dict[str, object]]", excinfo.value.context["errors"])
+    error_locs: set[tuple[object, ...]] = {tuple(cast("list[object]", e["loc"])) for e in errors}
     assert ("dataset",) in error_locs
     assert ("columns", 0, "type") in error_locs
     assert ("processing", "chunk_size") in error_locs

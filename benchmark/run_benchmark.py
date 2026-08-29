@@ -47,18 +47,26 @@ def build_parser() -> argparse.ArgumentParser:
         )
     )
     parser.add_argument("--dataset", default="customers", help="Dataset name (D-02: 'customers').")
-    parser.add_argument("--rows", type=int, required=True, help="Number of data rows to generate/process.")
+    parser.add_argument(
+        "--rows", type=int, required=True, help="Number of data rows to generate/process."
+    )
     parser.add_argument(
         "--invalid-ratio",
         type=float,
         default=0.1,
-        help="Fraction of generated rows that are deliberately invalid (matches generate_csv.py's own default).",
+        help=(
+            "Fraction of generated rows that are deliberately invalid "
+            "(matches generate_csv.py's own default)."
+        ),
     )
     parser.add_argument(
         "--seed", type=int, default=20260101, help="Seed for the deterministic fixture generator."
     )
     parser.add_argument(
-        "--mode", choices=("naive", "bulk"), required=True, help="Which Oracle write path to exercise."
+        "--mode",
+        choices=("naive", "bulk"),
+        required=True,
+        help="Which Oracle write path to exercise.",
     )
     return parser
 

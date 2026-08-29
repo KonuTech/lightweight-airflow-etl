@@ -24,7 +24,9 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "mypy==2.3.1",
     "pytest==9.1.1",
+    "ruff==0.16.5",
 ]
 
 [tool.pytest.ini_options]
@@ -47,3 +49,94 @@ csv-processor = { workspace = true }
 
 [tool.uv.workspace]
 members = ["packages/csv-processor"]
+
+# D-14 (06-CONTEXT.md): whole-repo ruff, `airflow/dags/` included -- no `exclude`
+# carving it out for CODE, per the user's explicit non-default choice over
+# "engine-only, DAGs excluded". `.planning/` is excluded here (not code): ruff
+# format's Markdown fenced-code-block formatting was found (this task) to
+# reformat Python snippets embedded in committed research/pattern docs --
+# historical planning artifacts, never intended targets of D-14's "whole repo"
+# scope.
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [".planning"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# UP042: `Status(str, Enum)` (csv_processor/models.py) is a Phase-4-established
+# public data contract (ENGINE-08) that crosses the DAG<->engine boundary via
+# `model_dump(mode="json")` -- switching it to `enum.StrEnum` is a real
+# behavior change (different `__str__`/`__repr__` semantics), out of scope for
+# this whole-repo lint-adoption task; ignored deliberately, not overlooked.
+ignore = ["UP042"]
+
+# D-14: whole-repo mypy, `airflow/dags/` included. Deliberately NOT a bare
+# `strict = true` -- this is brand-new whole-repo type-checking territory
+# (06-RESEARCH.md Pitfall 3), so the profile below is a targeted subset of
+# strict-mode flags rather than the full strict bundle. `disallow_any_generics`/
+# `disallow_untyped_defs`/`check_untyped_defs` are deliberately OMITTED from
+# the repo-wide default (found this task: enabling any of them repo-wide
+# floods `tests/` with dozens of pre-existing "missing return type
+# annotation"/bare-`dict` errors across every prior phase's already-passing
+# test suite -- exactly the "nuclear strict=true" outcome this profile is
+# explicitly avoiding). All three are turned back on per-module for
+# `csv_processor`/`generator`/`benchmark`/`scripts`/`_common`/`csv_ingest`
+# below -- this project's own source code, not tests -- which is also where
+# Pitfall 3's literal `airflow/dags/csv_ingest.py` bare-`dict` fix lives.
+[tool.mypy]
+plugins = ["pydantic.mypy"]
+python_version = "3.12"
+# `generator/`, `tools/`, and `airflow/dags/` (like
+# `[tool.pytest.ini_options] pythonpath = ["."]`, same rationale) have no
+# `__init__.py` at their top level -- namespace packages resolved relative to
+# the repo root and `airflow/dags/`, not `packages/csv-processor`'s installed
+# `src`-layout. Without these settings mypy's default (non-namespace) import-
+# resolution mode reports "Source file found twice under different module
+# names" for `generator/generate_csv.py`, and cannot resolve `airflow/dags/`'s
+# own `_common` package at all (both found this task, running whole-repo mypy
+# for the first time).
+explicit_package_bases = true
+mypy_path = [".", "airflow/dags"]
+exclude = ["^\\.venv/", "^packages/csv-processor/build/"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+
+# This project's own source code (never `tests/`) additionally requires every
+# generic to be parameterized and every function annotated -- the stricter
+# trio omitted from the repo-wide defaults above, scoped here to keep the
+# pre-existing test suite (written across Phases 1-5, before this phase's
+# mypy adoption) out of scope for this task's own acceptance criteria.
+[[tool.mypy.overrides]]
+module = [
+    "csv_processor.*",
+    "generator.*",
+    "benchmark.*",
+    "scripts.*",
+    "csv_ingest",
+    "_common.*",
+]
+disallow_any_generics = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+
+# Third-party libraries this project depends on that ship no type stubs and
+# have no `types-*` package on PyPI (verified: none of these are annotated
+# upstream) -- `ignore_missing_imports` scoped per-module, never a repo-wide
+# blanket suppression.
+[[tool.mypy.overrides]]
+module = ["clevercsv.*", "chardet.*", "charset_normalizer.*"]
+ignore_missing_imports = true
+
+# `apache-airflow`/`apache-airflow-providers-*` are deliberately NOT a
+# dependency of this root `pyproject.toml` (Phase 5 decision -- Airflow is
+# installed only inside `docker/airflow/Dockerfile`'s own container image, so
+# the DAG can be exercised against the real multi-container stack without
+# bloating every contributor's local dev environment). mypy therefore can
+# never resolve `airflow.*` locally or in CI's `lint-type-unit` job (which
+# also never installs Airflow) -- `ignore_missing_imports` here is a direct
+# consequence of that already-recorded architectural boundary, not a gap.
+[[tool.mypy.overrides]]
+module = ["airflow.*"]
+ignore_missing_imports = true

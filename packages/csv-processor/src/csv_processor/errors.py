@@ -44,7 +44,7 @@ class CsvProcessorError(Exception):
             subclass, but is always a ``dict`` (never ``None``).
     """
 
-    def __init__(self, message: str, *, context: dict) -> None:
+    def __init__(self, message: str, *, context: dict[str, object]) -> None:
         super().__init__(message)
         self.context = context
 

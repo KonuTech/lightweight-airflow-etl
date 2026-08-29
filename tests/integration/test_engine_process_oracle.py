@@ -15,7 +15,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import oracledb
-
 from csv_processor.config.loader import load_config
 from csv_processor.config.models import DatasetConfig
 from csv_processor.engine import process
@@ -55,9 +54,7 @@ def _load_customers_config() -> DatasetConfig:
     return load_config(_CUSTOMERS_PATH, defaults_path=_DEFAULTS_PATH)
 
 
-def test_process_success_status_end_to_end(
-    tmp_path: Path, oracle_cursor: oracledb.Cursor
-) -> None:
+def test_process_success_status_end_to_end(tmp_path: Path, oracle_cursor: oracledb.Cursor) -> None:
     csv_path = tmp_path / "customers_20260829_success.csv"
     csv_path.write_text(_ALL_VALID_CSV, encoding="utf-8")
     config = _load_customers_config()
@@ -81,9 +78,7 @@ def test_process_success_status_end_to_end(
     assert count == 3
 
 
-def test_process_success_with_invalid_rows(
-    tmp_path: Path, oracle_cursor: oracledb.Cursor
-) -> None:
+def test_process_success_with_invalid_rows(tmp_path: Path, oracle_cursor: oracledb.Cursor) -> None:
     csv_path = tmp_path / "customers_20260829_mixed.csv"
     csv_path.write_text(_MIXED_CSV, encoding="utf-8")
     config = _load_customers_config()

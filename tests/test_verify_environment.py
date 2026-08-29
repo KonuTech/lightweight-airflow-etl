@@ -30,8 +30,8 @@ from unittest.mock import Mock, patch
 
 _MODULE_PATH = Path(__file__).resolve().parent.parent / "scripts" / "verify_environment.py"
 _SPEC = importlib.util.spec_from_file_location("verify_environment", _MODULE_PATH)
+assert _SPEC is not None and _SPEC.loader is not None
 verify_environment = importlib.util.module_from_spec(_SPEC)
-assert _SPEC.loader is not None
 _SPEC.loader.exec_module(verify_environment)
 
 
@@ -41,7 +41,7 @@ class _FakeResponse:
     def __init__(self, body: bytes) -> None:
         self._body = body
 
-    def __enter__(self) -> "_FakeResponse":
+    def __enter__(self) -> _FakeResponse:
         return self
 
     def __exit__(self, *exc_info: object) -> None:
@@ -75,9 +75,7 @@ class VerifyAirflowAuthTests(unittest.TestCase):
         """ConnectionResetError on every attempt exhausts the retry budget: raises
         AssertionError (not ConnectionResetError), urlopen called exactly
         AUTH_RETRY_ATTEMPTS times."""
-        mock_urlopen = Mock(
-            side_effect=ConnectionResetError(104, "Connection reset by peer")
-        )
+        mock_urlopen = Mock(side_effect=ConnectionResetError(104, "Connection reset by peer"))
         with (
             patch.object(verify_environment.urllib.request, "urlopen", mock_urlopen),
             patch.object(verify_environment.time, "sleep", Mock()),
@@ -95,7 +93,7 @@ class VerifyAirflowAuthTests(unittest.TestCase):
             url=verify_environment.AIRFLOW_AUTH_TOKEN_URL,
             code=401,
             msg="Unauthorized",
-            hdrs=None,
+            hdrs=None,  # type: ignore[arg-type]  # HTTPError accepts None at runtime; typeshed's stub disagrees
             fp=io.BytesIO(b"Unauthorized"),
         )
         mock_urlopen = Mock(side_effect=http_error)

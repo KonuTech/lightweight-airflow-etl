@@ -16,7 +16,6 @@ import zipfile
 from pathlib import Path
 
 import pytest
-
 from csv_processor.compression import detect_compression, open_compressed_stream
 from csv_processor.config.loader import load_config
 from csv_processor.engine import process_chunks

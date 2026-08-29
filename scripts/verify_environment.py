@@ -74,7 +74,8 @@ def verify_columns(cursor: oracledb.Cursor, table: str, expected_columns: set[st
     Reusable by Phase 4's Oracle integration tests.
     """
     cursor.execute(
-        "SELECT column_name FROM all_tab_columns WHERE table_name = :table_name AND owner = 'ADMIN'",
+        "SELECT column_name FROM all_tab_columns "
+        "WHERE table_name = :table_name AND owner = 'ADMIN'",
         {"table_name": table},
     )
     found = {row[0] for row in cursor.fetchall()}
@@ -109,9 +110,7 @@ def verify_widened_invalid_columns(
     }
     assert not not_varchar2, f"Table {table} columns not VARCHAR2: {not_varchar2}"
 
-    not_nullable = {
-        name for name, (_data_type, nullable) in rows.items() if nullable != "Y"
-    }
+    not_nullable = {name for name, (_data_type, nullable) in rows.items() if nullable != "Y"}
     assert not not_nullable, f"Table {table} columns not nullable: {not_nullable}"
 
 
@@ -131,9 +130,7 @@ def verify_airflow_auth() -> None:
     A genuine urllib.error.HTTPError (e.g. HTTP 401) is never retried -- it is not
     transient and fails immediately, matching prior behavior exactly.
     """
-    payload = json.dumps({"username": AIRFLOW_USER, "password": AIRFLOW_PASSWORD}).encode(
-        "utf-8"
-    )
+    payload = json.dumps({"username": AIRFLOW_USER, "password": AIRFLOW_PASSWORD}).encode("utf-8")
     request = urllib.request.Request(
         AIRFLOW_AUTH_TOKEN_URL,
         data=payload,

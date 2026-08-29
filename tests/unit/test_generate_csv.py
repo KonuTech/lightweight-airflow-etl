@@ -17,7 +17,6 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-
 from csv_processor.config import load_config
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -25,8 +24,8 @@ _MODULE_PATH = _REPO_ROOT / "generator" / "generate_csv.py"
 _CONFIGS_DIR = _REPO_ROOT / "configs"
 
 _SPEC = importlib.util.spec_from_file_location("generate_csv", _MODULE_PATH)
+assert _SPEC is not None and _SPEC.loader is not None
 generate_csv = importlib.util.module_from_spec(_SPEC)
-assert _SPEC.loader is not None
 # Register in sys.modules BEFORE exec_module: generate_csv.py's frozen
 # dataclass (GeneratedCsv) uses postponed annotations, and dataclasses'
 # forward-ref resolution looks the module up via sys.modules[cls.__module__]
@@ -63,11 +62,15 @@ def test_generate_rows_is_deterministic_for_same_seed(customers_config) -> None:
 
 def test_cli_run_twice_produces_byte_identical_files(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(generate_csv, "_DATA_DIR", tmp_path / "run1")
-    generate_csv.main(["--dataset", "customers", "--rows", "50", "--invalid-ratio", "0.2", "--seed", "42"])
+    generate_csv.main(
+        ["--dataset", "customers", "--rows", "50", "--invalid-ratio", "0.2", "--seed", "42"]
+    )
     first_bytes = generate_csv.output_path("customers").read_bytes()
 
     monkeypatch.setattr(generate_csv, "_DATA_DIR", tmp_path / "run2")
-    generate_csv.main(["--dataset", "customers", "--rows", "50", "--invalid-ratio", "0.2", "--seed", "42"])
+    generate_csv.main(
+        ["--dataset", "customers", "--rows", "50", "--invalid-ratio", "0.2", "--seed", "42"]
+    )
     second_bytes = generate_csv.output_path("customers").read_bytes()
 
     assert first_bytes == second_bytes
@@ -199,11 +202,15 @@ def test_generate_rows_is_deterministic_for_same_seed_orders(orders_config) -> N
 
 def test_cli_run_twice_produces_byte_identical_files_orders(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(generate_csv, "_DATA_DIR", tmp_path / "run1")
-    generate_csv.main(["--dataset", "orders", "--rows", "50", "--invalid-ratio", "0.2", "--seed", "42"])
+    generate_csv.main(
+        ["--dataset", "orders", "--rows", "50", "--invalid-ratio", "0.2", "--seed", "42"]
+    )
     first_bytes = generate_csv.output_path("orders").read_bytes()
 
     monkeypatch.setattr(generate_csv, "_DATA_DIR", tmp_path / "run2")
-    generate_csv.main(["--dataset", "orders", "--rows", "50", "--invalid-ratio", "0.2", "--seed", "42"])
+    generate_csv.main(
+        ["--dataset", "orders", "--rows", "50", "--invalid-ratio", "0.2", "--seed", "42"]
+    )
     second_bytes = generate_csv.output_path("orders").read_bytes()
 
     assert first_bytes == second_bytes
@@ -237,7 +244,7 @@ def test_orders_valid_amount_values_have_exactly_two_decimal_places(orders_confi
 
     valid_amounts = [
         row[amount_index]
-        for row, category in zip(generated.rows, generated.categories)
+        for row, category in zip(generated.rows, generated.categories, strict=True)
         if category is None
     ]
 
@@ -271,7 +278,17 @@ def test_compress_flag_produces_gz_file_and_removes_plain_csv(tmp_path, monkeypa
     monkeypatch.setattr(generate_csv, "_DATA_DIR", tmp_path)
 
     exit_code = generate_csv.main(
-        ["--dataset", "customers", "--rows", "20", "--invalid-ratio", "0.1", "--seed", "7", "--compress"]
+        [
+            "--dataset",
+            "customers",
+            "--rows",
+            "20",
+            "--invalid-ratio",
+            "0.1",
+            "--seed",
+            "7",
+            "--compress",
+        ]
     )
 
     assert exit_code == 0
@@ -285,7 +302,17 @@ def test_compress_flag_produces_valid_gzipped_csv_matching_schema(tmp_path, monk
     monkeypatch.setattr(generate_csv, "_DATA_DIR", tmp_path)
 
     generate_csv.main(
-        ["--dataset", "customers", "--rows", "20", "--invalid-ratio", "0.0", "--seed", "7", "--compress"]
+        [
+            "--dataset",
+            "customers",
+            "--rows",
+            "20",
+            "--invalid-ratio",
+            "0.0",
+            "--seed",
+            "7",
+            "--compress",
+        ]
     )
 
     plain_path = generate_csv.output_path("customers")

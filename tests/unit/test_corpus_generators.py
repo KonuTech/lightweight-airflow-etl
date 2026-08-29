@@ -45,7 +45,9 @@ def _large_fixture(*, rows: int, length: int, include_profile: bool = True) -> m
     }
     if include_profile:
         spec["profile"] = "large"
-    return manifest.Fixture(name="test_large_fixture", category="large_compressed", generator=spec, expect={})
+    return manifest.Fixture(
+        name="test_large_fixture", category="large_compressed", generator=spec, expect={}
+    )
 
 
 def _wrapper_fixture(fmt: str, *, name: str = "test_wrapped_fixture") -> manifest.Fixture:
@@ -104,7 +106,9 @@ def test_large_profile_regenerates_byte_identical() -> None:
     fixture = _large_fixture(rows=5000, length=200)
 
     first = generators.generate_fixture(fixture, generators.stream_for("corpus-seed", fixture.name))
-    second = generators.generate_fixture(fixture, generators.stream_for("corpus-seed", fixture.name))
+    second = generators.generate_fixture(
+        fixture, generators.stream_for("corpus-seed", fixture.name)
+    )
 
     assert first == second
     assert len(first) > 0

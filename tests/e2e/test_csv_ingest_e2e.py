@@ -26,7 +26,6 @@ import time
 from pathlib import Path
 
 import oracledb
-
 from csv_processor.config.loader import load_config
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -36,14 +35,14 @@ _CUSTOMERS_CONFIG_PATH = "configs/datasets/customers.json"
 
 _DAG_POLLING_PATH = _REPO_ROOT / "scripts" / "dag_polling.py"
 _DAG_POLLING_SPEC = importlib.util.spec_from_file_location("dag_polling", _DAG_POLLING_PATH)
+assert _DAG_POLLING_SPEC is not None and _DAG_POLLING_SPEC.loader is not None
 dag_polling = importlib.util.module_from_spec(_DAG_POLLING_SPEC)
-assert _DAG_POLLING_SPEC.loader is not None
 _DAG_POLLING_SPEC.loader.exec_module(dag_polling)
 
 _GENERATE_CSV_PATH = _REPO_ROOT / "generator" / "generate_csv.py"
 _GENERATE_CSV_SPEC = importlib.util.spec_from_file_location("generate_csv", _GENERATE_CSV_PATH)
+assert _GENERATE_CSV_SPEC is not None and _GENERATE_CSV_SPEC.loader is not None
 generate_csv = importlib.util.module_from_spec(_GENERATE_CSV_SPEC)
-assert _GENERATE_CSV_SPEC.loader is not None
 # Register in sys.modules BEFORE exec_module: generate_csv.py's frozen
 # dataclass (GeneratedCsv) uses postponed annotations, and dataclasses'
 # forward-ref resolution looks the module up via sys.modules[cls.__module__]

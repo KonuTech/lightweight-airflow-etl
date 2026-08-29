@@ -107,7 +107,7 @@ def test_05_escapechar_no_doublequote_recovers_unescaped_literal_quote() -> None
     # The generator's own row_spec `pick` renderer selects a value for each
     # row deterministically (R2) -- assert against the two possible declared
     # values, both of which contain an embedded literal double-quote.
-    assert rows[1][1] in ("she said \"hi\"", "he said \"bye\"", "no quote here")
+    assert rows[1][1] in ('she said "hi"', 'he said "bye"', "no quote here")
     assert '"' in rows[1][1] or rows[1][1] == "no quote here"
     # Confirm at least one data row recovers the exact unescaped literal
     # quote characters (not a doubled or backslash-prefixed artifact).

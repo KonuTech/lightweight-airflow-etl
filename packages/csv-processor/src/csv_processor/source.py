@@ -24,7 +24,8 @@ from __future__ import annotations
 import codecs
 import csv
 import io
-from typing import TYPE_CHECKING, BinaryIO, Iterator, TextIO
+from collections.abc import Iterator
+from typing import TYPE_CHECKING, BinaryIO, TextIO
 
 from csv_processor import compression, detect, errors
 from csv_processor.errors import StructuralValidationError

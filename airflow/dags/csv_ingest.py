@@ -16,16 +16,14 @@ from __future__ import annotations
 
 import logging
 
+from _common import paths, reporting
 from airflow.providers.standard.sensors.filesystem import FileSensor
 from airflow.sdk import Param, dag, get_current_context, task
-
 from csv_processor.config.errors import ConfigurationError
 from csv_processor.config.loader import load_config
 from csv_processor.config.models import DatasetConfig
 from csv_processor.engine import process
 from csv_processor.models import ProcessingResult, Status
-
-from _common import paths, reporting
 
 
 @dag(
@@ -39,7 +37,7 @@ from _common import paths, reporting
 )
 def csv_ingest() -> None:
     @task
-    def load_config_task() -> dict:
+    def load_config_task() -> dict[str, object]:
         """Validate runtime conf and load the referenced dataset config.
 
         D-08: validates BOTH halves of runtime conf (dataset, config_path)
@@ -72,7 +70,7 @@ def csv_ingest() -> None:
     config_dict = load_config_task()
 
     @task.branch
-    def route_after_config(config_dict: dict) -> str:
+    def route_after_config(config_dict: dict[str, object]) -> str:
         """The one, deliberate, non-dataset-specific branch in this DAG (D-05).
 
         Keys off config validity only, never dataset identity.
@@ -96,7 +94,7 @@ def csv_ingest() -> None:
     )
 
     @task
-    def process_csv_task(config_dict: dict) -> dict:
+    def process_csv_task(config_dict: dict[str, object]) -> dict[str, object]:
         """Call ``csv_processor.engine.process()`` exactly once -- the sole
         Oracle-writing integration point (D-02/D-12).
 
@@ -118,7 +116,7 @@ def csv_ingest() -> None:
     result_dict = process_csv_task(config_dict)
 
     @task
-    def load_results_task(result_dict: dict) -> dict:
+    def load_results_task(result_dict: dict[str, object]) -> dict[str, object]:
         """D-02: thin pass-through -- never imports csv_processor.load or
         oracledb, never calls process() again."""
         return result_dict

@@ -18,8 +18,9 @@ from __future__ import annotations
 
 import itertools
 import time
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
+from typing import cast
 
 import oracledb
 from pydantic import ValidationError
@@ -75,18 +76,20 @@ def process_chunks(
                 if len(raw_row) != len(header):
                     # D-05: None for a structurally absent trailing field,
                     # never "" -- distinguishes "absent" from
-                    # "present-but-empty".
-                    row_dict: dict[str, object] = {
+                    # "present-but-empty". A DIFFERENT variable name than the
+                    # main-path `row_dict` below (mypy note): its `object`
+                    # value type (to allow `None`) must never widen the main
+                    # path's `dict[str, str]` inference, which
+                    # `validate.check_row()`/`normalize_row()` require.
+                    partial_row: dict[str, object] = {
                         name: (raw_row[i] if i < len(raw_row) else None)
                         for i, name in enumerate(header)
                     }
                     invalid_rows.append(
                         {
-                            **row_dict,
+                            **partial_row,
                             "error_code": errors.WRONG_COLUMN_COUNT,
-                            "error_message": (
-                                f"expected {len(header)} fields, got {len(raw_row)}"
-                            ),
+                            "error_message": (f"expected {len(header)} fields, got {len(raw_row)}"),
                             "source_file": source_file,
                             "row_number": row_number,
                             "raw_line": raw_line,
@@ -94,7 +97,10 @@ def process_chunks(
                     )
                     continue  # D-13 short-circuit -- check_row never called
 
-                row_dict = dict(zip(header, raw_row))
+                # strict=True is safe here: the `len(raw_row) != len(header)`
+                # branch above already `continue`s on any length mismatch, so
+                # this zip() is only ever reached with equal-length inputs.
+                row_dict = dict(zip(header, raw_row, strict=True))
                 # CR-01's per-row companion fix: a `required: false` column
                 # legitimately absent from the detected header (source.py's
                 # missing-column check no longer flags it) would otherwise
@@ -152,6 +158,32 @@ def _build_result(
         invalid_rows=invalid_rows,
         duration_seconds=time.monotonic() - start,
         checksum=checksum,
+    )
+
+
+def _result_from_existing(
+    existing: dict[str, object],
+    config: DatasetConfig,
+    file_path: Path,
+    start: float,
+    *,
+    checksum: str,
+) -> ProcessingResult:
+    """Build a ``ProcessingResult`` from a ``load.find_existing_ingestion()``
+    row (D-01's idempotency short-circuit -- read back verbatim, never
+    re-derived). Oracle's driver returns untyped ``object`` values per column
+    (mypy note); the `int`/`str` casts below reflect the ``ingestion_metadata``
+    schema's own known column types (Phase 1 DDL), not a runtime guess.
+    """
+    return _build_result(
+        Status(cast(str, existing["status"])),
+        config,
+        file_path,
+        start,
+        checksum=checksum,
+        total_rows=cast(int, existing["total_rows"]),
+        valid_rows=cast(int, existing["valid_rows"]),
+        invalid_rows=cast(int, existing["invalid_rows"]),
     )
 
 
@@ -214,16 +246,7 @@ def process(file_path: Path, config: DatasetConfig) -> ProcessingResult:
 
         existing = load.find_existing_ingestion(cursor, dataset=config.dataset, checksum=checksum)
         if existing is not None:
-            return _build_result(
-                Status(existing["status"]),
-                config,
-                file_path,
-                start,
-                checksum=checksum,
-                total_rows=existing["total_rows"],
-                valid_rows=existing["valid_rows"],
-                invalid_rows=existing["invalid_rows"],
-            )
+            return _result_from_existing(existing, config, file_path, start, checksum=checksum)
 
         valid_columns = [c.name for c in config.columns]
         invalid_columns = valid_columns + list(load.INVALID_ROW_SUFFIX_COLUMNS)
@@ -269,16 +292,7 @@ def process(file_path: Path, config: DatasetConfig) -> ProcessingResult:
             if existing is None:
                 msg = "expected a recorded ingestion row after ORA-00001, found none"
                 raise RuntimeError(msg) from exc
-            return _build_result(
-                Status(existing["status"]),
-                config,
-                file_path,
-                start,
-                checksum=checksum,
-                total_rows=existing["total_rows"],
-                valid_rows=existing["valid_rows"],
-                invalid_rows=existing["invalid_rows"],
-            )
+            return _result_from_existing(existing, config, file_path, start, checksum=checksum)
 
         connection.commit()
         return _build_result(

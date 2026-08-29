@@ -32,7 +32,13 @@ _READ_CHUNK = 1 << 20
 # original data columns (Phase 1 DDL, 02_customers.sql/03_orders.sql +
 # 04_widen_invalid_columns.sql) -- Phase 3's engine.py invalid-row dicts
 # already carry exactly these keys (D-09), verbatim, no adapter needed.
-INVALID_ROW_SUFFIX_COLUMNS = ("error_code", "error_message", "source_file", "row_number", "raw_line")
+INVALID_ROW_SUFFIX_COLUMNS = (
+    "error_code",
+    "error_message",
+    "source_file",
+    "row_number",
+    "raw_line",
+)
 
 
 def sha256_file(path: Path) -> str:
@@ -217,7 +223,8 @@ def record_ingestion(
     cursor.execute(
         "INSERT INTO ingestion_metadata "
         "(dataset, file_name, checksum, total_rows, valid_rows, invalid_rows, status) "
-        "VALUES (:dataset, :file_name, :checksum, :total_rows, :valid_rows, :invalid_rows, :status)",
+        "VALUES (:dataset, :file_name, :checksum, :total_rows, :valid_rows, "
+        ":invalid_rows, :status)",
         {
             "dataset": dataset,
             "file_name": file_name,

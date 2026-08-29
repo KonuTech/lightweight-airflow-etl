@@ -37,17 +37,14 @@ def test_prepare_source_defers_to_config_when_encoding_undetermined(
     config = load_config(_ORDERS_PATH, defaults_path=_DEFAULTS_PATH)
     csv_path = tmp_path / "orders_undetermined.csv"
     csv_path.write_text(
-        "order_id,customer_id,order_date,amount\n"
-        "ORD-1,CUST-1,2026-01-01,12.34\n",
+        "order_id,customer_id,order_date,amount\nORD-1,CUST-1,2026-01-01,12.34\n",
         encoding="utf-8",
     )
 
     monkeypatch.setattr(
         source.detect,
         "detect_encoding",
-        lambda sample, *, contract_encoding: EncodingDetection(
-            "undetermined", 0.0, "undetermined"
-        ),
+        lambda sample, *, contract_encoding: EncodingDetection("undetermined", 0.0, "undetermined"),
     )
 
     # Must not raise LookupError -- proves the fix, not just a passing status.

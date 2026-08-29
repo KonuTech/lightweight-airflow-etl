@@ -22,13 +22,12 @@ import csv
 import gzip
 import random
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-from faker import Faker
-
 from csv_processor.config import ColumnSpec, DatasetConfig, load_config
+from faker import Faker
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _CONFIGS_DIR = _REPO_ROOT / "configs"
@@ -84,7 +83,9 @@ def _valid_value(fake: Faker, rng: random.Random, column: ColumnSpec) -> str:
     if column.type == "integer":
         return str(rng.randint(0, 1_000_000))
     if column.type == "decimal":
-        if column.precision is None or column.scale is None:  # pragma: no cover - guarded by config validation
+        if (
+            column.precision is None or column.scale is None
+        ):  # pragma: no cover - guarded by config validation
             msg = f"column {column.name!r}: decimal type missing precision/scale"
             raise ValueError(msg)
         return format_decimal(rng, column.precision, column.scale)
@@ -101,7 +102,7 @@ def _valid_value(fake: Faker, rng: random.Random, column: ColumnSpec) -> str:
         if not column.format:  # pragma: no cover - guarded by config validation
             msg = f"column {column.name!r}: timestamp type missing format"
             raise ValueError(msg)
-        base = datetime(2020, 1, 1, tzinfo=timezone.utc)
+        base = datetime(2020, 1, 1, tzinfo=UTC)
         value_dt = base + timedelta(seconds=rng.randint(0, 365 * 5 * 86400))
         return value_dt.strftime(column.format)
     msg = f"column {column.name!r}: unsupported column type {column.type!r}"
@@ -149,7 +150,9 @@ class GeneratedCsv:
     categories: list[str | None]
 
 
-def generate_rows(config: DatasetConfig, rows: int, invalid_ratio: float, seed: int) -> GeneratedCsv:
+def generate_rows(
+    config: DatasetConfig, rows: int, invalid_ratio: float, seed: int
+) -> GeneratedCsv:
     """Generate `rows` deterministic rows for `config`, `invalid_ratio` of them
     invalid across D-15's applicable categories.
 

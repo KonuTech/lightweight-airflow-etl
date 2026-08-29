@@ -63,6 +63,7 @@ class FilenameMaskConfig:
 
     mask: str
 
+
 # The one pattern compile_mask scans a mask with, in a single left-to-right
 # pass (finditer). Alternatives, tried in order at each position:
 #   1. a full "{name}" / "{name:spec}" token (groups 1/2 = name/spec)

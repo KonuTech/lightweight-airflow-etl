@@ -8,7 +8,7 @@ external notification, per D-07).
 from __future__ import annotations
 
 
-def format_summary_log(result: dict) -> str:
+def format_summary_log(result: dict[str, object]) -> str:
     """Format ``result`` (a ``ProcessingResult``-shaped dict) as one summary log line.
 
     Args:

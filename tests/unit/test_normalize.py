@@ -23,7 +23,7 @@ def _column(**overrides: object) -> ColumnSpec:
         "required": True,
     }
     defaults.update(overrides)
-    return ColumnSpec(**defaults)  # type: ignore[arg-type]
+    return ColumnSpec(**defaults)
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +87,7 @@ def test_date_failure_invalid_format() -> None:
 def test_timestamp_success() -> None:
     column = _column(type="timestamp", format="%Y-%m-%dT%H:%M:%S%z")
     value, error_code = convert_value("2026-01-01T00:00:00+0000", column)
-    assert value == dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)
+    assert value == dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
     assert error_code is None
 
 
@@ -192,7 +192,7 @@ def test_parse_date_strict_timestamp_valid_match_passes() -> None:
     value, error_code = parse_date_strict(
         "2026-01-01T00:00:00+0000", "%Y-%m-%dT%H:%M:%S%z", is_timestamp=True
     )
-    assert value == dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)
+    assert value == dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
     assert error_code is None
 
 

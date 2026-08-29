@@ -40,9 +40,7 @@ def test_wait_for_task_state_polls_until_target_state_reached() -> None:
         _state_response("queued"),
         _state_response("deferred"),
     ]
-    with patch(
-        "scripts.dag_polling.urllib.request.urlopen", side_effect=responses
-    ) as mock_urlopen:
+    with patch("scripts.dag_polling.urllib.request.urlopen", side_effect=responses) as mock_urlopen:
         wait_for_task_state(
             "http://localhost:8080",
             "run-1",
@@ -100,7 +98,7 @@ def test_wait_for_dag_run_result_extracts_results_for_task_id() -> None:
         }
     )
     heartbeat_line = json.dumps({"state": "running"})
-    body = f"{heartbeat_line}\n{final_line}\n".encode("utf-8")
+    body = f"{heartbeat_line}\n{final_line}\n".encode()
 
     with patch(
         "scripts.dag_polling.urllib.request.urlopen",
