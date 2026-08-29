@@ -1,18 +1,18 @@
 ---
 gsd_state_version: 1.0
-current_phase: 3
+current_phase: 03
 current_phase_name: CSV Processing Engine
 status: executing
-stopped_at: Phase 3 context gathered
-last_updated: "2026-08-29T11:43:23.032Z"
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-08-29T11:58:05.741Z"
 last_activity: 2026-08-29
-last_activity_desc: Phase 02 complete, transitioned to Phase 3
-state_head: 3bae1a0978376951776a4e3aae824ce64df8ef52
+last_activity_desc: Phase 03 execution started
+state_head: 34a267f2e5c4b93c719ffa22f3e37b4a782ca678
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 15
-  completed_plans: 10
+  completed_plans: 11
   percent: 33
 ---
 
@@ -26,16 +26,16 @@ See: .planning/PROJECT.md (updated 2026-08-28)
 validates and bulk-loads its valid rows into Oracle, routes invalid rows (with error metadata)
 into a separate table, and reports back a clear processing summary — end to end, reproducibly,
 from a fresh `git clone`.
-**Current focus:** Phase 02 — Config Contract & CSV Generator
+**Current focus:** Phase 03 — CSV Processing Engine
 
 ## Current Position
 
-Phase: 3 (CSV Processing Engine) — READY TO EXECUTE
-Plan: Not started
+Phase: 03 (CSV Processing Engine) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-08-29 — Phase 02 complete, transitioned to Phase 3
+Last activity: 2026-08-29 — Phase 03 execution started
 
-Progress: [██░░░░░░░░] 17%
+Progress: [███░░░░░░░] 33%
 
 ## Performance Metrics
 
@@ -72,6 +72,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 02 P03 | 15min | 3 tasks | 11 files |
 | Phase 02 P04 | 20min | 3 tasks | 2 files |
 | Phase 02 P05 | 25min | 3 tasks | 6 files |
+| Phase 03 P01 | 10min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -120,6 +121,7 @@ Recent decisions affecting current work:
 - [Phase 02]: [Phase 02]: 02-05: Added tests/unit/test_corpus_generators.py (not in the plan's own Task 1 files list) to give the tdd=true wrapper-generator task a real RED/GREEN cycle; kept its fixtures small/synthetic rather than depending on the real 60 MiB corpus fixture
 - [Phase 02]: [Phase 02]: 02-05: Task 2's RED phase used a copy-paste bug in the negative-control buffering script rather than a mistuned RLIMIT_AS value -- verified empirically that setrlimit(RLIMIT_AS) after interpreter startup only bounds further growth, so an artificially small limit does not make the streaming reader fail
 - [Phase 02]: [Phase 02]: 02-05: profile:large dispatches to a new _generate_tabular_batched function rather than modifying _generate_tabular in place, eliminating regression risk to the 27 already-committed fixture digests
+- [Phase 03]: [Phase 03]: 03-01: Oracle ALTER TABLE MODIFY omits explicit NULL clause for already-nullable columns (birth_date, order_date, amount) to avoid ORA-01451; only NOT-NULL-to-nullable columns carry the explicit NULL keyword
 
 ### Pending Todos
 
@@ -142,6 +144,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-08-29T10:57:56.674Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-csv-processing-engine/03-CONTEXT.md
+Last session: 2026-08-29T11:58:05.676Z
+Stopped at: Completed 03-01-PLAN.md
+Resume file: None

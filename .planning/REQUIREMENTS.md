@@ -40,7 +40,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **ENGINE-05**: An invalid row does not stop processing of the rest of the file; valid and
       invalid rows are split and both counted
 
-- [ ] **ENGINE-06**: Each invalid row records `error_code`, `error_message`, `source_file`, and
+- [x] **ENGINE-06**: Each invalid row records `error_code`, `error_message`, `source_file`, and
       `row_number` alongside its original field values
 
 - [ ] **ENGINE-07**: CSV reading and validation processes rows in configurable chunks (not one row
@@ -180,7 +180,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENGINE-03 | Phase 3 | Pending |
 | ENGINE-04 | Phase 3 | Pending |
 | ENGINE-05 | Phase 3 | Pending |
-| ENGINE-06 | Phase 3 | Pending |
+| ENGINE-06 | Phase 3 | Complete |
 | ENGINE-07 | Phase 3 | Pending |
 | ENGINE-08 | Phase 4 | Pending |
 | ENGINE-09 | Phase 3 | Pending |
