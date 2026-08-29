@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 current_phase: 06
 current_phase_name: End-to-End Verification, Benchmark, CI & Docs
 status: executing
-stopped_at: Completed 06-02-PLAN.md
-last_updated: "2026-08-29T22:39:22.969Z"
+stopped_at: Completed 06-03-PLAN.md
+last_updated: "2026-08-29T22:55:53.699Z"
 last_activity: 2026-08-30
 last_activity_desc: Phase 06 execution started
-state_head: 10b3cbafcc0e6f59e4dfc4e1adfb5ab1f4221432
+state_head: 8085b4a5d4bdaebcc220d4070f1dbcb815d77ba0
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 30
-  completed_plans: 27
+  completed_plans: 28
   percent: 83
 ---
 
@@ -31,7 +31,7 @@ from a fresh `git clone`.
 ## Current Position
 
 Phase: 06 (End-to-End Verification, Benchmark, CI & Docs) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-08-30 — Phase 06 execution started
 
@@ -91,6 +91,7 @@ Progress: [████████░░] 83%
 | Phase 05 P01 | 25min | 2 tasks | 11 files |
 | Phase 06 P01 | 39min | 2 tasks | 5 files |
 | Phase 06 P02 | 25min | 2 tasks | 4 files |
+| Phase 06 P03 | ~12min | 2 tasks | 40 files |
 
 ## Accumulated Context
 
@@ -168,6 +169,8 @@ Recent decisions affecting current work:
 - [Phase 06]: 06-01: Unit tests mock urllib.request.urlopen directly (not the higher-level polling functions) to keep coverage honest about the real HTTP wire contract, and reproduce docs/airflow-dag.md's literal ndjson wait-endpoint response shape as a regression guard
 - [Phase 06]: 06-02: naive_loader.py's docstrings rephrased to avoid the literal substring 'executemany' (used 'array-bind bulk-insert call' instead) so grep -c executemany returns 0 per the plan's own acceptance criterion, not just semantically true
 - [Phase 06]: 06-02: benchmark write paths write only chunk_valid rows (never chunk_invalid) to isolate exactly the Oracle write-strategy variable under test; docs/benchmark.md records a real 182.85x speedup (bulk vs naive) at ~100K customers rows, proving TEST-04
+- [Phase 06]: [Phase 06]: 06-03: Excluded .planning/ from ruff's scope (extend-exclude) after ruff format's Markdown fenced-code-block formatting was found to reformat committed Python snippets in research/pattern docs -- reverted the unintended changes, D-14's 'whole repo' scoped to code only
+- [Phase 06]: [Phase 06]: 06-03: mypy's disallow_any_generics/disallow_untyped_defs/check_untyped_defs applied only to this project's own source modules via [[tool.mypy.overrides]] (csv_processor/generator/benchmark/scripts/_common/csv_ingest), never tests/ -- avoids a repo-wide nuclear strict=true flood on first whole-repo mypy adoption
 
 ### Pending Todos
 
@@ -189,6 +192,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-08-29T22:39:22.866Z
-Stopped at: Completed 06-02-PLAN.md
+Last session: 2026-08-29T22:55:53.593Z
+Stopped at: Completed 06-03-PLAN.md
 Resume file: None

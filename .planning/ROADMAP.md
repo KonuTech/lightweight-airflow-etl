@@ -218,14 +218,14 @@ Plans:
   3. Opening a pull request automatically runs lint, type check, and unit tests via GitHub Actions, with pass/fail visible on the PR.
   4. Following only the README and `docs/`, a new developer can go from `git clone` to a completed HTTP-triggered ingestion with no undocumented manual steps.
 
-**Plans**: 2/5 plans executed
+**Plans**: 3/5 plans executed
 
 Plans:
 **Wave 1**
 
 - [x] 06-01-PLAN.md — Tracer: automated HTTP-trigger -> deferred-wake -> Oracle-rows e2e proof (TEST-03), reusable `scripts/dag_polling.py`
 - [x] 06-02-PLAN.md — Naive-vs-bulk Oracle write benchmark at ~100K rows (TEST-04), `docs/benchmark.md`
-- [ ] 06-03-PLAN.md — GitHub Actions CI (`lint-type-unit` + `oracle-e2e`, both PR-required) + whole-repo ruff/mypy (CI-01)
+- [x] 06-03-PLAN.md — GitHub Actions CI (`lint-type-unit` + `oracle-e2e`, both PR-required) + whole-repo ruff/mypy (CI-01)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -247,7 +247,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. CSV Processing Engine | 10/10 | Complete    | 2026-08-29 |
 | 4. Oracle Bulk Load, Idempotency & Engine Entrypoint | 3/3 | Complete    | 2026-08-29 |
 | 5. Airflow DAG Wiring & Deferrable File-Wait | 2/2 | Complete    | 2026-08-29 |
-| 6. End-to-End Verification, Benchmark, CI & Docs | 2/5 | In Progress|  |
+| 6. End-to-End Verification, Benchmark, CI & Docs | 3/5 | In Progress|  |
 
 ---
 *Roadmap created: 2026-08-28*
