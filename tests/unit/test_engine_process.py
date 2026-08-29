@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import oracledb
 from pydantic import ValidationError
 
 from csv_processor.config.loader import load_config
@@ -105,6 +106,27 @@ def test_structurally_broken_file_returns_invalid_file(tmp_path: Path) -> None:
 
     mock_get_connection.assert_called_once()
     assert result.status == Status.INVALID_FILE
+    assert result.total_rows == 0
+    assert result.valid_rows == 0
+    assert result.invalid_rows == 0
+    assert result.duration_seconds > 0.0
+    assert result.checksum is not None
+    assert len(result.checksum) == 64
+
+
+def test_connection_failure_returns_database_error(tmp_path: Path) -> None:
+    config = _load_customers_config()
+    csv_path = tmp_path / "customers_20260829.csv"
+    csv_path.write_text(_WELL_FORMED_CSV, encoding="utf-8")
+
+    with patch(
+        "csv_processor.engine.load.get_connection",
+        side_effect=oracledb.OperationalError("ORA-12541: TNS:no listener"),
+    ) as mock_get_connection:
+        result = process(csv_path, config)
+
+    mock_get_connection.assert_called_once()
+    assert result.status == Status.DATABASE_ERROR
     assert result.total_rows == 0
     assert result.valid_rows == 0
     assert result.invalid_rows == 0
