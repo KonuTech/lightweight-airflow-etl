@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 current_phase: 03
 current_phase_name: CSV Processing Engine
 status: executing
-stopped_at: "Completed 03-08-PLAN.md (gap closure: CR-04, structural coverage-eligibility fix for sample-tail malformed-row loss)"
-last_updated: "2026-08-29T15:34:58.446Z"
+stopped_at: "Completed 03-09-PLAN.md (gap closure: CR-01 contiguous-run coverage gate, WR-01 truncation off-by-one)"
+last_updated: "2026-08-29T15:46:53.989Z"
 last_activity: 2026-08-29
 last_activity_desc: Phase 03 execution started
-state_head: 3cad1b6947abd0f24806d4dbcfba2fc02bbb6860
+state_head: 04fe09040dd31bdf961d23640452d96ba33a3906
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 19
-  completed_plans: 18
+  completed_plans: 19
   percent: 33
 ---
 
@@ -30,10 +30,10 @@ from a fresh `git clone`.
 
 ## Current Position
 
-Phase: 03 (CSV Processing Engine) — READY TO EXECUTE
-Plan: 8 of 8 (all plans complete; gap-closure round for CR-04 done)
-Status: All plans executed; awaiting phase transition/review
-Last activity: 2026-08-29 — Completed 03-08-PLAN.md (gap closure: CR-04)
+Phase: 03 (CSV Processing Engine) — EXECUTING
+Plan: 2 of 9
+Status: Ready to execute
+Last activity: 2026-08-29 — Phase 03 execution started
 
 Progress: [███░░░░░░░] 33%
 
@@ -80,6 +80,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 03 P06 | 25min | 3 tasks | 5 files |
 | Phase 03 P07 | 15min | 2 tasks | 2 files |
 | Phase 03 P08 | 20min | 2 tasks | 2 files |
+| Phase 03 P09 | 25min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -143,6 +144,8 @@ Recent decisions affecting current work:
 - [Phase 03]: Phase 03 Plan 07: Task 1's RED commit included Task 2's regression test alongside Task 1's own, since Task 2 (type=auto) has no independent RED/GREEN cycle and can only genuinely pass once Task 1's fix lands
 - [Phase 03]: [Phase 03]: 03-08: Closed gap CR-04 -- source.py's _filtered_rows() gates footer/repeated-header exclusion eligibility on provable sample byte/row coverage (sample_covered_row_count), checked before CR-03's content re-validation, so a genuinely malformed row at the sample's tail-adjacent position surfaces as WRONG_COLUMN_COUNT instead of vanishing
 - [Phase 03]: [Phase 03]: 03-08: Task 2's regression test uses BADROWONLYONEFIELD (no underscores) instead of the plan's literal BADROW_ONLY_ONE_FIELD -- the underscore variant tips detect/encoding.py's charset_normalizer/chardet corroboration to an unrelated undetermined-encoding LookupError at that exact sample-boundary byte position; logged to WINDOWS.md as an open deviation, out of scope for this plan
+- [Phase 03]: [Phase 03]: 03-09: Closed gap CR-01 -- source.py's _uncoverable_tail_indices() generalizes CR-04's single-index coverage-eligibility gate to the full contiguous run, computed per-source-then-unioned (footer_row_indices, repeated_header_row_indices walked separately) to prevent cross-source contamination of an unrelated interior repeated-header row
+- [Phase 03]: [Phase 03]: 03-09: Closed gap WR-01 -- prepare_source() reads SAMPLE_BYTES + 1 bytes and derives sample_was_truncated from the extra byte's actual presence, fixing a false-truncated misclassification for files whose real size exactly equals SAMPLE_BYTES
 
 ### Pending Todos
 
@@ -165,6 +168,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-08-29T15:01:09.044Z
-Stopped at: Completed 03-08-PLAN.md (gap closure: CR-04, structural coverage-eligibility fix for sample-tail malformed-row loss)
+Last session: 2026-08-29T15:46:53.941Z
+Stopped at: Completed 03-09-PLAN.md (gap closure: CR-01 contiguous-run coverage gate, WR-01 truncation off-by-one)
 Resume file: None

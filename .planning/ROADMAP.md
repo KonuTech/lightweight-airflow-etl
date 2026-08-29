@@ -198,7 +198,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|-----------------|--------|-----------|
 | 1. Environment & Oracle Foundation | 5/5 | Complete    | 2026-08-28 |
 | 2. Config Contract & CSV Generator | 5/5 | Complete    | 2026-08-29 |
-| 3. CSV Processing Engine | 8/8 | In Progress|  |
+| 3. CSV Processing Engine | 9/9 | In Progress|  |
 | 4. Oracle Bulk Load, Idempotency & Engine Entrypoint | 0/TBD | Not started | - |
 | 5. Airflow DAG Wiring & Deferrable File-Wait | 0/TBD | Not started | - |
 | 6. End-to-End Verification, Benchmark, CI & Docs | 0/TBD | Not started | - |
