@@ -195,7 +195,7 @@ Plans:
   3. A completed run's logs/report show a concise, human-readable summary — dataset, file, row counts, duration, status.
   4. The identical DAG definition runs successfully for both `customers` and `orders` purely by passing different config, with no dataset-specific code branches in the DAG.
 
-**Plans**: 1/2 plans executed
+**Plans**: 2/2 plans executed
 
 Plans:
 **Wave 1**
@@ -204,7 +204,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 05-02-PLAN.md — `scripts/trigger_dag.sh` + `make verify-phase5`, live proof of DAG-03 (deferred file-wait state) and DAG-05 (identical DAG, `orders` dataset) against the running stack, `docs/airflow-dag.md`
+- [x] 05-02-PLAN.md — `scripts/trigger_dag.sh` + `make verify-phase5`, live proof of DAG-03 (deferred file-wait state) and DAG-05 (identical DAG, `orders` dataset) against the running stack, `docs/airflow-dag.md`
 
 ### Phase 6: End-to-End Verification, Benchmark, CI & Docs
 
@@ -231,7 +231,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Config Contract & CSV Generator | 5/5 | Complete    | 2026-08-29 |
 | 3. CSV Processing Engine | 10/10 | Complete    | 2026-08-29 |
 | 4. Oracle Bulk Load, Idempotency & Engine Entrypoint | 3/3 | Complete    | 2026-08-29 |
-| 5. Airflow DAG Wiring & Deferrable File-Wait | 1/2 | In Progress|  |
+| 5. Airflow DAG Wiring & Deferrable File-Wait | 2/2 | In Progress|  |
 | 6. End-to-End Verification, Benchmark, CI & Docs | 0/TBD | Not started | - |
 
 ---
