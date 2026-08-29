@@ -40,6 +40,22 @@ converge on it is the *correct* outcome, not a bug in ``clevercsv``. Calling
 producing a clean decline, so this module treats ``None`` exactly like
 Pitfall 1's empty-string case: a declined detection, never a crash and never
 a guessed delimiter.
+
+**A third gap, found live in 03-05-PLAN.md Task 2 against corpus fixture
+``26_embedded_nul_byte``:** ``Detector().detect()`` raises
+``clevercsv.exceptions.Error: line contains NULL byte`` outright -- a sample
+containing a raw NUL (0x00) byte is not merely a degenerate/unconvergent
+result (the two cases above), it's an uncaught exception from
+``clevercsv``'s own C parser. Left unhandled, this would crash
+``source.py``'s PASS 1 detection for ANY file whose 64 KiB sample happens to
+contain a NUL byte, even though ``csv.reader`` (the actual PASS 2 real-read
+parser, and stdlib's own documented behavior) handles an embedded NUL byte
+in a field without raising at all. Treated exactly like the other two
+"nothing usable" outcomes above: caught and folded into a declined
+detection, never a crash -- ``source.py``'s cross-check already treats
+``declined`` as "defer to config" (D-28), and the real PASS 2 read never
+depends on this function's output for its own dialect, only
+``config.csv.delimiter``.
 """
 
 from __future__ import annotations
@@ -49,6 +65,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import clevercsv
+import clevercsv.exceptions
 
 from csv_processor.errors import CsvDialectDetectionError
 
@@ -112,7 +129,15 @@ def detect_dialect(sample: str, *, contract_delimiter: str | None = None) -> Dia
             declined=False,
         )
 
-    detected: SimpleDialect | None = clevercsv.Detector().detect(sample)
+    try:
+        detected: SimpleDialect | None = clevercsv.Detector().detect(sample)
+    except clevercsv.exceptions.Error:
+        # A third "nothing usable" outcome (module docstring): a sample
+        # containing a raw NUL byte makes clevercsv's own parser raise
+        # outright rather than return a degenerate/unconvergent result.
+        # Folded into the same declined outcome as the other two cases --
+        # never a crash.
+        return DialectDetection(delimiter=None, quotechar=_DEFAULT_QUOTECHAR, declined=True)
 
     # Two distinct "nothing usable" outcomes, one guard: Pitfall 1's
     # degenerate empty-delimiter dialect, and the live-verified `None`
