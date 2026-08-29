@@ -1,9 +1,12 @@
-"""``process_chunks()`` -- Phase 3's public generator surface (D-11).
+"""``process_chunks()`` -- Phase 3's public generator surface (D-11) -- and
+``process()``, the phase's public entrypoint (ENGINE-08).
 
-The full ``process()``/``ProcessingResult`` wrapper (status codes, Oracle
-loading) is explicitly Phase 4's job (ENGINE-08) -- this module only builds
-the chunked valid/invalid row split that Phase 4's future loop will consume
-directly for ``executemany()`` binding.
+``process(file_path, config) -> ProcessingResult`` owns the whole
+detect->parse->validate->normalize->chunk->load sequence and all
+status/exception translation, assembling Plan 04-01's ``load.py`` primitives
+around ``process_chunks()`` (D-07's exact generator contract). See
+04-RESEARCH.md's "System Architecture Diagram" for the exact step sequence
+this function implements.
 
 No reference-repo file analog exists for this module (03-PATTERNS.md); it
 follows ``csv_processor.config.loader``'s docstring/error-wrapping
@@ -14,14 +17,17 @@ pattern (Pattern 5).
 from __future__ import annotations
 
 import itertools
-from typing import TYPE_CHECKING, Iterator
+import time
+from pathlib import Path
+from typing import Iterator
 
-from csv_processor import errors, source, validate
+import oracledb
+from pydantic import ValidationError
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
-    from csv_processor.config.models import DatasetConfig
+from csv_processor import errors, load, source, validate
+from csv_processor.config.models import DatasetConfig
+from csv_processor.errors import StructuralValidationError
+from csv_processor.models import ProcessingResult, Status
 
 
 def process_chunks(
@@ -119,3 +125,203 @@ def process_chunks(
             yield valid_rows, invalid_rows
     finally:
         text_stream.close()
+
+
+def _build_result(
+    status: Status,
+    config: DatasetConfig,
+    file_path: Path,
+    start: float,
+    *,
+    checksum: str | None,
+    total_rows: int = 0,
+    valid_rows: int = 0,
+    invalid_rows: int = 0,
+) -> ProcessingResult:
+    """Assemble a ``ProcessingResult`` with real elapsed ``duration_seconds``
+    (``time.monotonic() - start``) -- the one construction site every
+    ``process()`` return path shares, so every field's zero/``None``
+    defaults stay consistent across status paths.
+    """
+    return ProcessingResult(
+        status=status,
+        dataset=config.dataset,
+        file_name=file_path.name,
+        total_rows=total_rows,
+        valid_rows=valid_rows,
+        invalid_rows=invalid_rows,
+        duration_seconds=time.monotonic() - start,
+        checksum=checksum,
+    )
+
+
+def process(file_path: Path, config: DatasetConfig) -> ProcessingResult:
+    """The phase's public entrypoint (ENGINE-08) -- owns the whole
+    detect->parse->validate->normalize->chunk->load sequence and all
+    status/exception translation.
+
+    Sequence (04-RESEARCH.md's "System Architecture Diagram"):
+
+    1. Re-validate ``config`` (cheap, already a Pydantic model) -- a failure
+       here means Phase 5's DAG passed a config that no longer validates
+       (e.g. stale runtime conf) -> ``CONFIGURATION_ERROR``, before any file
+       I/O or Oracle connection.
+    2. Confirm ``file_path`` exists -> ``FILE_NOT_FOUND`` if not, still
+       before any Oracle connection.
+    3. Compute the SHA-256 checksum FIRST (pure file I/O, no Oracle
+       dependency) -- this is why ``checksum`` is populated on every
+       subsequent failure path.
+    4. Open exactly ONE Oracle connection for the whole call (D-02).
+    5. Check ``ingestion_metadata`` for an existing ``(dataset, checksum)``
+       record (D-01) -- found means return the ORIGINAL recorded outcome,
+       never re-derived, without calling ``process_chunks()`` at all.
+    6. Not found: stream ``process_chunks()``'s chunks into
+       ``load.insert_rows`` for both the valid and invalid tables (D-03: one
+       ``executemany()`` call per chunk, array size == ``chunk_size``).
+    7. Record the file in ``ingestion_metadata`` and commit -- ALL of step 6
+       + this insert commit together in one transaction (D-02). A
+       concurrent winner's ``oracledb.IntegrityError``/``ORA-00001`` here is
+       not an error: roll back this call's own uncommitted inserts and
+       return the winner's already-committed result instead.
+
+    Args:
+        file_path: The CSV file to process.
+        config: The dataset's validated config.
+
+    Returns:
+        A ``ProcessingResult`` with exactly one of the 7 closed ``Status``
+        values -- never raises; every exception this function's own
+        sequence can produce is caught and translated into a status
+        instead.
+    """
+    start = time.monotonic()
+
+    try:
+        DatasetConfig.model_validate(config.model_dump(mode="json"))
+    except ValidationError:
+        return _build_result(Status.CONFIGURATION_ERROR, config, file_path, start, checksum=None)
+
+    if not file_path.is_file():
+        return _build_result(Status.FILE_NOT_FOUND, config, file_path, start, checksum=None)
+
+    checksum = load.sha256_file(file_path)
+    total_rows = valid_count = invalid_count = 0
+    connection: oracledb.Connection | None = None
+
+    try:
+        connection = load.get_connection()
+        cursor = connection.cursor()
+
+        existing = load.find_existing_ingestion(cursor, dataset=config.dataset, checksum=checksum)
+        if existing is not None:
+            return _build_result(
+                Status(existing["status"]),
+                config,
+                file_path,
+                start,
+                checksum=checksum,
+                total_rows=existing["total_rows"],
+                valid_rows=existing["valid_rows"],
+                invalid_rows=existing["invalid_rows"],
+            )
+
+        valid_columns = [c.name for c in config.columns]
+        invalid_columns = valid_columns + list(load.INVALID_ROW_SUFFIX_COLUMNS)
+
+        for chunk_valid, chunk_invalid in process_chunks(file_path, config):
+            load.insert_rows(
+                cursor, table=config.oracle.valid_table, columns=valid_columns, rows=chunk_valid
+            )
+            load.insert_rows(
+                cursor,
+                table=config.oracle.invalid_table,
+                columns=invalid_columns,
+                rows=chunk_invalid,
+            )
+            total_rows += len(chunk_valid) + len(chunk_invalid)
+            valid_count += len(chunk_valid)
+            invalid_count += len(chunk_invalid)
+
+        status = Status.SUCCESS if invalid_count == 0 else Status.SUCCESS_WITH_INVALID_ROWS
+
+        try:
+            load.record_ingestion(
+                cursor,
+                dataset=config.dataset,
+                file_name=file_path.name,
+                checksum=checksum,
+                total_rows=total_rows,
+                valid_rows=valid_count,
+                invalid_rows=invalid_count,
+                status=status.value,
+            )
+        except oracledb.IntegrityError as exc:
+            (error_obj,) = exc.args
+            if getattr(error_obj, "full_code", None) != "ORA-00001":
+                raise
+            # D-01: a concurrent process() call for the same (dataset,
+            # checksum) already won -- undo this call's own uncommitted
+            # inserts and return the winner's already-committed result.
+            connection.rollback()
+            existing = load.find_existing_ingestion(
+                cursor, dataset=config.dataset, checksum=checksum
+            )
+            if existing is None:
+                msg = "expected a recorded ingestion row after ORA-00001, found none"
+                raise RuntimeError(msg) from exc
+            return _build_result(
+                Status(existing["status"]),
+                config,
+                file_path,
+                start,
+                checksum=checksum,
+                total_rows=existing["total_rows"],
+                valid_rows=existing["valid_rows"],
+                invalid_rows=existing["invalid_rows"],
+            )
+
+        connection.commit()
+        return _build_result(
+            status,
+            config,
+            file_path,
+            start,
+            checksum=checksum,
+            total_rows=total_rows,
+            valid_rows=valid_count,
+            invalid_rows=invalid_count,
+        )
+    except StructuralValidationError:
+        connection.rollback()  # type: ignore[union-attr]
+        return _build_result(Status.INVALID_FILE, config, file_path, start, checksum=checksum)
+    except oracledb.Error:
+        connection.rollback()  # type: ignore[union-attr]
+        return _build_result(
+            Status.DATABASE_ERROR,
+            config,
+            file_path,
+            start,
+            checksum=checksum,
+            total_rows=total_rows,
+            valid_rows=valid_count,
+            invalid_rows=invalid_count,
+        )
+    except Exception:
+        if connection is not None:
+            try:
+                connection.rollback()
+            except Exception:  # noqa: BLE001 -- best-effort rollback, never masks the real error
+                pass
+        return _build_result(
+            Status.PROCESSING_ERROR,
+            config,
+            file_path,
+            start,
+            checksum=checksum,
+            total_rows=total_rows,
+            valid_rows=valid_count,
+            invalid_rows=invalid_count,
+        )
+    finally:
+        if connection is not None:
+            connection.close()
