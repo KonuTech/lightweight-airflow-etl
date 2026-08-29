@@ -8,11 +8,44 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: "admin:admin"
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    # Phase 5's own newly-discovered gap (found via a real live-triggered DAG run --
+    # no prior phase ever actually executed a task, so this was never exercised before):
+    # Airflow 3's Task SDK has every task subprocess call back into a Task Execution API
+    # server to report status. The default (core.execution_api_server_url unset) resolves
+    # to "http://localhost:8080/execution/" -- correct only for a single-container install.
+    # In this project's multi-container compose stack, `localhost` inside
+    # airflow-scheduler/airflow-triggerer does NOT route to the airflow-apiserver
+    # container; every task previously failed immediately with a SIGKILL'd subprocess and
+    # httpx.ConnectError: [Errno 111] Connection refused. `airflow-apiserver` (the compose
+    # service name) is the correct container-internal hostname.
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: "http://airflow-apiserver:8080/execution/"
+    # Companion gap to the above: each Airflow container auto-generates its own random
+    # api_auth.jwt_secret (airflow.api_fastapi.auth.tokens.get_signing_key("api_auth",
+    # "jwt_secret", ...)) on first start when unset -- fine for a single-container install,
+    # but in this multi-container compose stack it means airflow-scheduler signs a task's
+    # Task Execution API JWT with ITS random key while airflow-apiserver verifies it with A
+    # DIFFERENT random key, always failing with "Invalid auth token" (403). Every component
+    # that mints or verifies these tokens must share the identical jwt_secret.
+    # Local-dev-only value (not sensitive -- this stack is 127.0.0.1-bound, INFRA-03 scope).
+    AIRFLOW__API_AUTH__JWT_SECRET: "csv-ingest-local-dev-shared-jwt-secret-not-for-prod"
     # D-11: Oracle Connection registered purely for UI visibility (`airflow connections
     # list`/`test`) -- csv_processor itself never touches this Connection object and stays
     # Airflow-agnostic (ENGINE-09); hostname is `oracle`, the compose service name (container-
     # internal DNS), not `localhost`.
     AIRFLOW_CONN_ORACLE_DEFAULT: "oracle://${ORACLE_APP_USER:-admin}:${ORACLE_APP_USER_PASSWORD:-admin}@oracle:1521/?service_name=FREEPDB1&encoding=UTF-8&threaded=False&events=False"
+    # Phase 5 Pattern 4/Pitfall 2: csv_processor.load's oracle_dsn()/oracle_user()/
+    # oracle_password() read these three names directly (env-var-first, INFRA-03) --
+    # without them, process_csv_task falls back to oracle_dsn()'s "localhost:1521/FREEPDB1"
+    # default, which does not resolve to the `oracle` compose service from inside an
+    # Airflow container. `oracle` (not `localhost`) is the compose-network hostname.
+    ORACLE_DSN: "oracle:1521/FREEPDB1"
+    ORACLE_APP_USER: "${ORACLE_APP_USER:-admin}"
+    ORACLE_APP_USER_PASSWORD: "${ORACLE_APP_USER_PASSWORD:-admin}"
+    # Phase 5's own newly-discovered gap: airflow-init only runs `db migrate`, and
+    # Airflow 3.x's release notes confirm default connections (including fs_default)
+    # are no longer auto-created during migration -- FileSensor's FSHook(fs_conn_id=
+    # "fs_default") raises AirflowNotFoundException if no such connection exists at all.
+    AIRFLOW_CONN_FS_DEFAULT: "fs://"
     # Airflow 3 defaults `core.test_connection` to "Disabled" (a deliberate security default,
     # since the test-connection endpoint can be used to probe internal network reachability) --
     # enabled here for local-dev verification of D-11/oracle_default via
@@ -25,6 +58,10 @@ x-airflow-common: &airflow-common
     # D-06: generate_csv.py writes to ./data/<dataset>/ on the host; mounted here
     # so Phase 5's DAG can read the same files from inside the container.
     - ./data:/opt/airflow/data
+    # Phase 5's own newly-discovered gap: configs/ was never mounted into the Airflow
+    # containers at all, so load_config_task could never read
+    # /opt/airflow/configs/datasets/<dataset>.json without this.
+    - ./configs:/opt/airflow/configs:ro
   depends_on:
     airflow-init:
       condition: service_completed_successfully
