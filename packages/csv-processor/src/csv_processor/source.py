@@ -334,9 +334,24 @@ def prepare_source(
     """
     raw_stream = _open_raw_stream(file_path)
     try:
-        sample = raw_stream.read(SAMPLE_BYTES)
+        sample = raw_stream.read(SAMPLE_BYTES + 1)
     finally:
         raw_stream.close()
+
+    # WR-01: read one byte past SAMPLE_BYTES and use its actual presence to
+    # determine truncation -- `len(sample) == SAMPLE_BYTES` alone conflates
+    # "we read exactly the sample-size worth of bytes" with "there is more
+    # file beyond the sample": a file whose real (decompressed) size is
+    # exactly SAMPLE_BYTES also reads exactly SAMPLE_BYTES bytes and hits
+    # true EOF, with nothing left. Works uniformly for compressed and
+    # uncompressed streams (both are plain binary file-like objects
+    # supporting `.read(n)`; no stream-type-specific branching needed). Trim
+    # back to SAMPLE_BYTES immediately so every downstream detector
+    # (encoding cross-check, dialect detection, `sample_rows` construction)
+    # sees at most SAMPLE_BYTES bytes exactly as before this change.
+    sample_was_truncated = len(sample) > SAMPLE_BYTES
+    if sample_was_truncated:
+        sample = sample[:SAMPLE_BYTES]
 
     contract_encoding_name = codecs.lookup(config.csv.encoding).name
     enc_detection = detect.detect_encoding(sample, contract_encoding=None)
@@ -395,16 +410,16 @@ def prepare_source(
         )
     )
 
-    # CR-04: `sample_was_truncated` is true whenever there is more file
-    # beyond what PASS 1 read -- the LAST row `csv.reader` parsed from the
-    # sample can then never be proven complete (it may be a genuine, whole
-    # row that merely ends near the cutoff, or a truncated fragment; either
-    # way, it cannot be trusted as the file's real tail). Every OTHER row in
-    # `sample_rows` IS provably complete, since each is followed by more
-    # parsed content confirming it ended before the truncation point. When
-    # the sample was NOT truncated, the sample IS the entire file, so every
-    # row including the last is provably complete.
-    sample_was_truncated = len(sample) == SAMPLE_BYTES
+    # CR-04: `sample_was_truncated` (computed above, WR-01) is true whenever
+    # there is more file beyond what PASS 1 read -- the LAST row
+    # `csv.reader` parsed from the sample can then never be proven complete
+    # (it may be a genuine, whole row that merely ends near the cutoff, or a
+    # truncated fragment; either way, it cannot be trusted as the file's
+    # real tail). Every OTHER row in `sample_rows` IS provably complete,
+    # since each is followed by more parsed content confirming it ended
+    # before the truncation point. When the sample was NOT truncated, the
+    # sample IS the entire file, so every row including the last is
+    # provably complete.
     sample_covered_row_count = (
         len(sample_rows) - 1 if sample_was_truncated and sample_rows else len(sample_rows)
     )
