@@ -55,16 +55,16 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Oracle Loading
 
-- [ ] **LOAD-01**: Valid rows are bulk-inserted into the dataset's `<DATASET>_VALID` Oracle table
+- [x] **LOAD-01**: Valid rows are bulk-inserted into the dataset's `<DATASET>_VALID` Oracle table
       using `executemany()` array binding (no per-row INSERT)
 
-- [ ] **LOAD-02**: Invalid rows are bulk-inserted into the dataset's `<DATASET>_INVALID` Oracle
+- [x] **LOAD-02**: Invalid rows are bulk-inserted into the dataset's `<DATASET>_INVALID` Oracle
       table with their error metadata, using the same bulk mechanism
 
-- [ ] **LOAD-03**: Each processed file is recorded in a minimal ingestion metadata table
+- [x] **LOAD-03**: Each processed file is recorded in a minimal ingestion metadata table
       (file_name, checksum, dataset, timestamp, total/valid/invalid counts, status)
 
-- [ ] **LOAD-04**: Re-processing a file already recorded (same filename + checksum + dataset) does
+- [x] **LOAD-04**: Re-processing a file already recorded (same filename + checksum + dataset) does
       not duplicate data — retrying an Airflow task is safe
 
 ### Airflow DAG
@@ -101,7 +101,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **TEST-01**: Unit tests cover config parsing, CSV parsing, type conversion, date validation,
       valid/invalid row handling, and chunked processing
 
-- [ ] **TEST-02**: Integration tests exercise a real Oracle Database Free container (not mocked)
+- [x] **TEST-02**: Integration tests exercise a real Oracle Database Free container (not mocked)
       and verify actual resulting rows
 
 - [ ] **TEST-03**: An end-to-end test exercises the full path: HTTP request → DAG run → config →
@@ -184,10 +184,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENGINE-07 | Phase 3 | Complete |
 | ENGINE-08 | Phase 4 | Pending |
 | ENGINE-09 | Phase 3 | Complete |
-| LOAD-01 | Phase 4 | Pending |
-| LOAD-02 | Phase 4 | Pending |
-| LOAD-03 | Phase 4 | Pending |
-| LOAD-04 | Phase 4 | Pending |
+| LOAD-01 | Phase 4 | Complete |
+| LOAD-02 | Phase 4 | Complete |
+| LOAD-03 | Phase 4 | Complete |
+| LOAD-04 | Phase 4 | Complete |
 | DAG-01 | Phase 5 | Pending |
 | DAG-02 | Phase 5 | Pending |
 | DAG-03 | Phase 5 | Pending |
@@ -197,7 +197,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFRA-02 | Phase 1 | Complete |
 | INFRA-03 | Phase 1 | Complete |
 | TEST-01 | Phase 3 | Complete |
-| TEST-02 | Phase 4 | Pending |
+| TEST-02 | Phase 4 | Complete |
 | TEST-03 | Phase 6 | Pending |
 | TEST-04 | Phase 6 | Pending |
 | CI-01 | Phase 6 | Pending |

@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 current_phase: 04
 current_phase_name: Oracle Bulk Load, Idempotency & Engine Entrypoint
 status: executing
-stopped_at: Phase 4 context gathered
-last_updated: "2026-08-29T17:30:20.103Z"
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-08-29T17:42:03.904Z"
 last_activity: 2026-08-29
-last_activity_desc: Phase 03 complete, transitioned to Phase 4
-state_head: 60ba0d269d85971478da065a2f33cc2881b7f462
+last_activity_desc: Phase 04 execution started
+state_head: bcdef56bf93c032032a798a893debc292985fddc
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 22
-  completed_plans: 20
+  completed_plans: 21
   percent: 50
 ---
 
@@ -30,12 +30,12 @@ from a fresh `git clone`.
 
 ## Current Position
 
-Phase: 04 (Oracle Bulk Load, Idempotency & Engine Entrypoint) — READY TO EXECUTE
-Plan: Not started
+Phase: 04 (Oracle Bulk Load, Idempotency & Engine Entrypoint) — EXECUTING
+Plan: 2 of 2
 Status: Ready to execute
-Last activity: 2026-08-29 — Phase 03 complete, transitioned to Phase 4
+Last activity: 2026-08-29 — Phase 04 execution started
 
-Progress: [███░░░░░░░] 33%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -83,6 +83,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 03 P08 | 20min | 2 tasks | 2 files |
 | Phase 03 P09 | 25min | 2 tasks | 2 files |
 | Phase 03 P10 | 20min | 2 tasks | 6 files |
+| Phase 04 P01 | 15min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -149,6 +150,8 @@ Recent decisions affecting current work:
 - [Phase 03]: [Phase 03]: 03-09: Closed gap CR-01 -- source.py's _uncoverable_tail_indices() generalizes CR-04's single-index coverage-eligibility gate to the full contiguous run, computed per-source-then-unioned (footer_row_indices, repeated_header_row_indices walked separately) to prevent cross-source contamination of an unrelated interior repeated-header row
 - [Phase 03]: [Phase 03]: 03-09: Closed gap WR-01 -- prepare_source() reads SAMPLE_BYTES + 1 bytes and derives sample_was_truncated from the extra byte's actual presence, fixing a false-truncated misclassification for files whose real size exactly equals SAMPLE_BYTES
 - [Phase 03]: [Phase 03]: 03-10: Closed gap FTR-01 -- CsvDialectConfig.has_footer: bool = False (new per-dataset opt-in), and prepare_source() gates footer_row_indices consumption on it, so a genuinely malformed last row is never silently dropped for any dataset that never declares it expects a footer; repeated_header_row_indices consumption stays unconditionally active
+- [Phase 04]: [Phase 04]: 04-01: load.py reads ORACLE_APP_USER/ORACLE_APP_USER_PASSWORD/ORACLE_DSN via env-var-first fallbacks (never verify_environment.py's hardcoded literals), per 04-RESEARCH.md Pitfall 6
+- [Phase 04]: [Phase 04]: 04-01: is_safe_identifier() SQL-identifier allowlist enforced at two layers -- Pydantic model_validator (config-load time) on ColumnSpec.name/OracleTargetSpec.valid_table/invalid_table, plus a defense-in-depth re-check in load.insert_rows
 
 ### Pending Todos
 
@@ -171,6 +174,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-08-29T16:49:04.485Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-oracle-bulk-load-idempotency-engine-entrypoint/04-CONTEXT.md
+Last session: 2026-08-29T17:42:03.839Z
+Stopped at: Completed 04-01-PLAN.md
+Resume file: None
