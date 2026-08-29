@@ -115,11 +115,61 @@ def _rows_with_raw_line(
         yield row, wrapper.last_line
 
 
+def _uncoverable_tail_indices(
+    excluded_indices: set[int], sample_covered_row_count: int
+) -> set[int]:
+    """Compute the maximal contiguous suffix of ``excluded_indices`` ending
+    at (and including) ``sample_covered_row_count`` itself (CR-01).
+
+    Root cause this closes: content re-validation (CR-03) alone cannot
+    distinguish a genuine footer/repeated-header row from a genuinely
+    malformed data row that also happens to mismatch the header's field
+    count, whenever both are swept into the SAME contiguous backward-walk
+    ``detect/header.py``'s ``_detect_footer_rows`` produces. 03-08's own
+    CR-04 fix protected only the single index equal to
+    ``sample_covered_row_count`` -- every OTHER index in the same contiguous
+    run remained "eligible" under that single-index comparison and was only
+    checked by CR-03's content re-validation, which "confirms" a genuinely
+    malformed row exactly as readily as a genuine footer, silently dropping
+    it. This helper generalizes CR-04's single-index protection to the full
+    contiguous run.
+
+    Args:
+        excluded_indices: A SINGLE candidate-index source set (never a
+            pre-merged union of multiple sources -- see ``_filtered_rows``'s
+            own docstring for why the two candidate sources here must be
+            walked separately and unioned only after each walk completes).
+        sample_covered_row_count: The sample's own unprovable last row's
+            absolute index whenever the sample was truncated --
+            ``sample_covered_row_count`` is a COUNT of provably-covered
+            rows, so index ``sample_covered_row_count`` itself is the first
+            UNPROVABLE one.
+
+    Returns:
+        Every index in ``excluded_indices`` that is part of the unbroken
+        run ending at ``sample_covered_row_count`` -- each is ineligible for
+        exclusion regardless of what content re-validation would otherwise
+        conclude about it. Self-terminates safely at index 0 or below (a
+        negative index can never be a member of a set of non-negative row
+        indices, so no explicit bounds guard is needed) and returns an
+        empty set when ``excluded_indices`` is empty or does not touch the
+        boundary at all.
+    """
+    uncoverable: set[int] = set()
+    idx = sample_covered_row_count
+    while idx in excluded_indices:
+        uncoverable.add(idx)
+        idx -= 1
+    return uncoverable
+
+
 def _filtered_rows(
     paired_rows: Iterator[tuple[list[str], str]],
     *,
     start_index: int,
     excluded_indices: set[int],
+    footer_row_indices: set[int],
+    repeated_header_row_indices: set[int],
     header_field_count: int,
     raw_header: tuple[str, ...],
     sample_covered_row_count: int,
@@ -161,19 +211,44 @@ def _filtered_rows(
     trivially "confirms" its own exclusion under CR-03's re-validated
     criterion too (03-REVIEW.md's CR-04 reproduction: a ~125 KB file with
     one malformed row at the sample's tail-adjacent position vanished from
-    both ``valid_rows`` and ``invalid_rows``). The fix layered in front of
-    CR-03: a sample-derived candidate is only even ELIGIBLE for exclusion
-    -- before any content check runs -- when its absolute index falls
-    strictly within ``sample_covered_row_count``, i.e. among rows the
-    sample's own bytes provably captured in full. The row whose bytes
-    straddle the sample cutoff (always the sample's last parsed row when
-    truncated) is now categorically ineligible for exclusion, whether it
-    turns out to be a well-formed row (CR-03's case) or a genuinely
-    malformed one (CR-04's case) -- it flows through to PASS 2's ordinary
-    per-row validation either way. A genuine, small, within-sample
-    preamble/footer/repeated-header row (G-03-2) is always well within
-    ``sample_covered_row_count``'s provably-covered range and is still
-    excluded, unchanged.
+    both ``valid_rows`` and ``invalid_rows``). 03-08's fix layered in front
+    of CR-03 protected only the SINGLE index equal to
+    ``sample_covered_row_count`` -- flows through to PASS 2's ordinary
+    per-row validation.
+
+    (CR-01) A contiguous run of 2+ sample-derived candidates ending at the
+    boundary -- not just the single last one CR-04 protected -- must ALL be
+    treated as coverage-ineligible: ``_detect_footer_rows``'s own backward
+    walk chains contiguous field-count mismatches together (e.g. an ordinary
+    trailing blank line immediately adjacent to a genuinely-truncated row),
+    and content re-validation cannot independently distinguish a genuine
+    footer from a genuinely malformed row caught in the same chain. The fix:
+    ``_uncoverable_tail_indices()`` computes the maximal contiguous suffix of
+    a candidate-index set ending at (and including) ``sample_covered_row_count``
+    itself, and every index in that suffix is ineligible for exclusion,
+    checked BEFORE CR-03's content re-validation, exactly generalizing
+    CR-04's single-index protection to the full run.
+
+    The uncoverable-tail computation is done per-source-then-unioned, never
+    union-then-walk: ``footer_row_indices`` (``_detect_footer_rows``'s own
+    contiguous backward walk) and ``repeated_header_row_indices``
+    (``_detect_repeated_header_rows``'s unbounded full-scan, structurally
+    unrelated to boundary adjacency) are two independent detectors over the
+    SAME ``data_rows`` whose candidate indices can be numerically adjacent by
+    pure coincidence, never by any shared walk or ordering guarantee. Merging
+    them into a single set BEFORE computing the contiguous-run walk would let
+    one source's genuine boundary-touching run swallow the OTHER source's
+    unrelated interior candidate merely because the two happen to sit next to
+    each other -- so ``_uncoverable_tail_indices()`` is called TWICE, once per
+    source, each independently anchored at ``sample_covered_row_count``, and
+    only the two RESULTING sets are unioned. A genuine interior
+    repeated-header row (G-03-2) is never stripped of its exclusion-
+    eligibility merely because it happens to sit next to an unrelated,
+    independently-flagged boundary-touching footer/malformed-row candidate
+    from the other source. A genuine, small, within-sample preamble/footer/
+    repeated-header row (G-03-2) that does not touch the boundary at all is
+    always well within ``sample_covered_row_count``'s provably-covered range
+    and is still excluded, unchanged.
 
     Args:
         paired_rows: The ``(row, raw_line)`` pairs remaining after PASS 2's
@@ -185,26 +260,38 @@ def _filtered_rows(
         excluded_indices: Candidate absolute row indices (footer rows +
             repeated-header rows, both computed by ``detect_header()``
             against only the bounded sample) to re-validate before
-            excluding.
+            excluding. Used unchanged for the coarse per-row candidacy
+            membership check -- the two source sets below are what feed the
+            uncoverable-tail computation instead.
+        footer_row_indices: (CR-01) ``detect_header()``'s own
+            ``footer_row_indices`` -- one of the two candidate sources,
+            walked separately from ``repeated_header_row_indices`` (see
+            above).
+        repeated_header_row_indices: (CR-01) ``detect_header()``'s own
+            ``repeated_header_row_indices`` -- the other candidate source,
+            walked separately from ``footer_row_indices`` (see above).
         header_field_count: The real header's own field count
             (``len(raw_header)``) -- a real row's field count differing
             from this is the re-validated footer criterion.
         raw_header: The real header's own field values -- a real row whose
             values exactly equal this is the re-validated repeated-header
             criterion.
-        sample_covered_row_count: (CR-04) The count of rows PASS 1's sample
-            bytes provably read in full -- a candidate's absolute index
-            must be strictly less than this to be exclusion-eligible at
-            all, checked BEFORE the content re-validation above.
+        sample_covered_row_count: (CR-04/CR-01) The count of rows PASS 1's
+            sample bytes provably read in full -- the anchor both
+            ``_uncoverable_tail_indices()`` calls start their backward walk
+            from, checked BEFORE the content re-validation above.
 
     Yields:
         Every ``(row, raw_line)`` pair except those whose absolute index is
-        in ``excluded_indices``, strictly less than ``sample_covered_row_count``,
-        AND independently confirmed, against its own real content, to be
-        footer-shaped or a repeated header.
+        in ``excluded_indices``, NOT part of either source's
+        uncoverable-tail run, AND independently confirmed, against its own
+        real content, to be footer-shaped or a repeated header.
     """
+    uncoverable_tail = _uncoverable_tail_indices(
+        footer_row_indices, sample_covered_row_count
+    ) | _uncoverable_tail_indices(repeated_header_row_indices, sample_covered_row_count)
     for absolute_index, (row, raw_line) in enumerate(paired_rows, start=start_index):
-        if absolute_index in excluded_indices and absolute_index < sample_covered_row_count:
+        if absolute_index in excluded_indices and absolute_index not in uncoverable_tail:
             is_footer_shaped = len(row) != header_field_count
             is_repeated_header = tuple(row) == raw_header
             if is_footer_shaped or is_repeated_header:
@@ -398,6 +485,8 @@ def prepare_source(
             _rows_with_raw_line(reader, wrapper),
             start_index=header_detection.header_row_index + 1,  # type: ignore[operator]
             excluded_indices=excluded_indices,
+            footer_row_indices=set(header_detection.footer_row_indices),
+            repeated_header_row_indices=set(header_detection.repeated_header_row_indices),
             header_field_count=len(header_detection.raw_header),
             raw_header=header_detection.raw_header,
             sample_covered_row_count=sample_covered_row_count,
