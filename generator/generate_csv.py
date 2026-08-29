@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
 import random
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -225,6 +226,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=20260101,
         help="Seed for both Faker and the generator's own random.Random instance.",
     )
+    parser.add_argument(
+        "--compress",
+        action="store_true",
+        help="Gzip the generated CSV after writing (D-32).",
+    )
     return parser
 
 
@@ -243,6 +249,18 @@ def main(argv: list[str] | None = None) -> int:
     generated = generate_rows(config, args.rows, args.invalid_ratio, args.seed)
     path = output_path(args.dataset)
     write_csv(generated, config, path)
+    if args.compress:
+        # D-32: gzip the just-written CSV, then remove the plain file --
+        # mirrors the `gzip` CLI tool's own in-place-replace behavior, and
+        # matches D-31's widened file_pattern ("customers_*.csv*") expecting
+        # exactly one file per drop, not both a plain and compressed variant
+        # sitting side by side.
+        gz_path = path.with_name(f"{path.name}.gz")
+        with gzip.open(gz_path, "wb") as gz_handle:
+            gz_handle.write(path.read_bytes())
+        path.unlink()
+        print(f"compressed to {gz_path}")
+        return 0
     print(f"wrote {len(generated.rows)} rows to {path}")
     return 0
 

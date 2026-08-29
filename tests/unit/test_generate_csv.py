@@ -9,6 +9,7 @@ the module under test is loaded via `importlib.util.spec_from_file_location`.
 from __future__ import annotations
 
 import csv
+import gzip
 import importlib.util
 import random
 import sys
@@ -261,3 +262,47 @@ def test_cli_end_to_end_writes_real_csv_file_orders(tmp_path, monkeypatch) -> No
         data_rows = list(reader)
     assert header == ["order_id", "customer_id", "order_date", "amount"]
     assert len(data_rows) == 20
+
+
+# --- --compress flag (D-32, 03-04-PLAN.md Task 3) --------------------------
+
+
+def test_compress_flag_produces_gz_file_and_removes_plain_csv(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(generate_csv, "_DATA_DIR", tmp_path)
+
+    exit_code = generate_csv.main(
+        ["--dataset", "customers", "--rows", "20", "--invalid-ratio", "0.1", "--seed", "7", "--compress"]
+    )
+
+    assert exit_code == 0
+    plain_path = generate_csv.output_path("customers")
+    gz_path = plain_path.with_name(f"{plain_path.name}.gz")
+    assert gz_path.exists()
+    assert not plain_path.exists()
+
+
+def test_compress_flag_produces_valid_gzipped_csv_matching_schema(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(generate_csv, "_DATA_DIR", tmp_path)
+
+    generate_csv.main(
+        ["--dataset", "customers", "--rows", "20", "--invalid-ratio", "0.0", "--seed", "7", "--compress"]
+    )
+
+    plain_path = generate_csv.output_path("customers")
+    gz_path = plain_path.with_name(f"{plain_path.name}.gz")
+
+    with gzip.open(gz_path, "rt", newline="", encoding="utf-8") as handle:
+        reader = csv.reader(handle)
+        header = next(reader)
+        data_rows = list(reader)
+
+    assert header == ["customer_id", "name", "country", "birth_date", "event_ts", "signup_country"]
+    assert len(data_rows) == 20
+
+
+def test_compress_flag_defaults_to_false() -> None:
+    parser = generate_csv.build_parser()
+
+    args = parser.parse_args(["--dataset", "customers"])
+
+    assert args.compress is False
