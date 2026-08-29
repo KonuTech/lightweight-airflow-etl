@@ -109,7 +109,22 @@ Plans:
   4. The `csv_processor` package can be imported and its full test suite run in an environment with no Airflow installed.
   5. The unit test suite covering config parsing, CSV parsing, type conversion, date validation, valid/invalid row handling, and chunked processing passes.
 
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 03-01-PLAN.md — Oracle `_INVALID` DDL migration (widen columns, add `raw_line`) + `file_pattern` widening for compressed variants
+- [ ] 03-02-PLAN.md — Dependencies (clevercsv/charset-normalizer/chardet) + local exception hierarchy + Tier-A detect module vendoring (dialect/encoding/header/filename/schema), proven against corpus fixtures 1-8
+
+**Wave 2** *(blocked on 03-02 completion)*
+
+- [ ] 03-03-PLAN.md — Tracer: source.py/validate.py/normalize.py/engine.py wired end-to-end, full type/nullability coverage (fixtures 17-22) and full structural coverage (fixtures 9-16)
+
+**Wave 3** *(blocked on 03-03 completion)*
+
+- [ ] 03-04-PLAN.md — Compressed CSV input (magic-byte detection, streaming gzip/zip) wired into source.py + generate_csv.py --compress flag
+- [ ] 03-05-PLAN.md — Chunk-boundary/row_number/bounded-memory proof, byte_level_hard fixture coverage (23-27), ENGINE-09 no-Airflow-import enforcement, `make verify-phase3`
 
 ### Phase 4: Oracle Bulk Load, Idempotency & Engine Entrypoint
 
@@ -162,7 +177,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|-----------------|--------|-----------|
 | 1. Environment & Oracle Foundation | 5/5 | Complete    | 2026-08-28 |
 | 2. Config Contract & CSV Generator | 5/5 | Complete    | 2026-08-29 |
-| 3. CSV Processing Engine | 0/TBD | Not started | - |
+| 3. CSV Processing Engine | 0/5 | Not started | - |
 | 4. Oracle Bulk Load, Idempotency & Engine Entrypoint | 0/TBD | Not started | - |
 | 5. Airflow DAG Wiring & Deferrable File-Wait | 0/TBD | Not started | - |
 | 6. End-to-End Verification, Benchmark, CI & Docs | 0/TBD | Not started | - |
