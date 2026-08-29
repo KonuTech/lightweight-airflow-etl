@@ -69,20 +69,20 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Airflow DAG
 
-- [ ] **DAG-01**: An Airflow TaskFlow DAG (`load_config` → `wait_for_file` → `process_csv` →
+- [x] **DAG-01**: An Airflow TaskFlow DAG (`load_config` → `wait_for_file` → `process_csv` →
       `load_results` → `report_result`) orchestrates ingestion for a dataset, calling
       `csv_processor` rather than implementing CSV logic itself
 
-- [ ] **DAG-02**: The DAG can be triggered via a single HTTP request (Airflow's own REST API)
+- [x] **DAG-02**: The DAG can be triggered via a single HTTP request (Airflow's own REST API)
       passing dataset name and config path as runtime conf
 
-- [ ] **DAG-03**: The DAG waits for the expected CSV file using a deferrable operator/trigger
+- [x] **DAG-03**: The DAG waits for the expected CSV file using a deferrable operator/trigger
       (non-blocking, releases the Airflow worker slot while waiting)
 
-- [ ] **DAG-04**: After processing, the DAG reports a concise human-readable summary (dataset,
+- [x] **DAG-04**: After processing, the DAG reports a concise human-readable summary (dataset,
       file, row counts, duration, status)
 
-- [ ] **DAG-05**: The same DAG definition works for both the `customers` and `orders` datasets
+- [x] **DAG-05**: The same DAG definition works for both the `customers` and `orders` datasets
       purely by config, with no dataset-specific code branches
 
 ### Infrastructure
@@ -188,11 +188,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | LOAD-02 | Phase 4 | Complete |
 | LOAD-03 | Phase 4 | Complete |
 | LOAD-04 | Phase 4 | Complete |
-| DAG-01 | Phase 5 | Pending |
-| DAG-02 | Phase 5 | Pending |
-| DAG-03 | Phase 5 | Pending |
-| DAG-04 | Phase 5 | Pending |
-| DAG-05 | Phase 5 | Pending |
+| DAG-01 | Phase 5 | Complete |
+| DAG-02 | Phase 5 | Complete |
+| DAG-03 | Phase 5 | Complete |
+| DAG-04 | Phase 5 | Complete |
+| DAG-05 | Phase 5 | Complete |
 | INFRA-01 | Phase 1 | Complete |
 | INFRA-02 | Phase 1 | Complete |
 | INFRA-03 | Phase 1 | Complete |

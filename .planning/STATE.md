@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 current_phase: 5
 current_phase_name: Airflow DAG Wiring & Deferrable File-Wait
 status: executing
-stopped_at: Phase 5 context gathered
-last_updated: "2026-08-29T19:28:58.487Z"
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-08-29T19:49:46.287Z"
 last_activity: 2026-08-29
-last_activity_desc: Phase 04 complete, transitioned to Phase 5
-state_head: 31783835f611493e72a94476396b571641fcfa54
+last_activity_desc: Phase 5 execution started
+state_head: 4599d7c63e535352404ce329da4f183064e1efb1
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 25
-  completed_plans: 23
+  completed_plans: 24
   percent: 67
 ---
 
@@ -26,16 +26,16 @@ See: .planning/PROJECT.md (updated 2026-08-29)
 validates and bulk-loads its valid rows into Oracle, routes invalid rows (with error metadata)
 into a separate table, and reports back a clear processing summary — end to end, reproducibly,
 from a fresh `git clone`.
-**Current focus:** Phase 04 — Oracle Bulk Load, Idempotency & Engine Entrypoint
+**Current focus:** Phase 5 — Airflow DAG Wiring & Deferrable File-Wait
 
 ## Current Position
 
-Phase: 5 (Airflow DAG Wiring & Deferrable File-Wait) — READY TO EXECUTE
-Plan: Not started
+Phase: 5 (Airflow DAG Wiring & Deferrable File-Wait) — EXECUTING
+Plan: 2 of 2
 Status: Ready to execute
-Last activity: 2026-08-29 — Phase 04 complete, transitioned to Phase 5
+Last activity: 2026-08-29 — Phase 5 execution started
 
-Progress: [█████░░░░░] 50%
+Progress: [███████░░░] 67%
 
 ## Performance Metrics
 
@@ -87,6 +87,7 @@ Progress: [█████░░░░░] 50%
 | Phase 04 P01 | 15min | 2 tasks | 8 files |
 | Phase 04 P02 | 25min | 3 tasks | 5 files |
 | Phase 04 P03 | 2min | 3 tasks | 2 files |
+| Phase 05 P01 | 25min | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -158,6 +159,9 @@ Recent decisions affecting current work:
 - [Phase 04]: [Phase 04]: 04-02: process() and its oracledb/csv_processor.load imports stay at engine.py module level (not lazy) so patch("csv_processor.engine.load.get_connection") remains patchable for unit-test mocking -- a function-local lazy import was tried and rejected for breaking that patch target
 - [Phase 04]: [Phase 04]: 04-02: tests/unit/test_engine_chunks.py's RLIMIT_AS bounded-memory cap raised from 100 MiB to 128 MiB (134,217,728 bytes) after process()'s module-level oracledb import pushed process_chunks()'s own import-time memory budget over the old empirically-tuned cap
 - [Phase 04]: [Phase 04]: 04-03: Closed gap-closure BLOCKER CR-01 -- both connection.rollback() call sites in process()'s except StructuralValidationError:/except oracledb.Error: branches now guard on connection is not None, mirroring the already-correct except Exception: pattern; removed the two now-unnecessary type: ignore[union-attr] comments as a direct byproduct
+- [Phase 5]: 05-01: Used airflow.dag_processing.dagbag.BundleDagBag (bundle-aware, adds bundle_path to sys.path) for DAG-structure verification instead of the plan's literal airflow.models.DagBag -- plain DagBag never adds the dags folder to sys.path so csv_ingest.py's from _common import paths, reporting fails under it, even though Airflow's real dag-processor imports it fine
+- [Phase 5]: 05-01: docker/airflow/Dockerfile's pip install split into two calls so csv_processor's own clevercsv/charset-normalizer/chardet pins install unconstrained -- Airflow's constraints-3.3.1 branch had drifted to require an older charset-normalizer than this project's already-approved 3.5.1
+- [Phase 5]: 05-01: docker-compose.yml gained three env vars beyond the plan's own documented ORACLE_DSN/configs-mount gaps, found only by live-triggering a DAG run for the first time in this project: AIRFLOW_CONN_FS_DEFAULT, AIRFLOW__CORE__EXECUTION_API_SERVER_URL, AIRFLOW__API_AUTH__JWT_SECRET (each container was minting its own random JWT signing key)
 
 ### Pending Todos
 
@@ -180,6 +184,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-08-29T18:51:01.591Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-airflow-dag-wiring-deferrable-file-wait/05-CONTEXT.md
+Last session: 2026-08-29T19:49:46.200Z
+Stopped at: Completed 05-01-PLAN.md
+Resume file: None

@@ -195,12 +195,12 @@ Plans:
   3. A completed run's logs/report show a concise, human-readable summary — dataset, file, row counts, duration, status.
   4. The identical DAG definition runs successfully for both `customers` and `orders` purely by passing different config, with no dataset-specific code branches in the DAG.
 
-**Plans**: 2 plans
+**Plans**: 1/2 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 05-01-PLAN.md — Tracer: `csv_ingest` DAG wired end-to-end (`load_config_task` → `route_after_config` → `wait_for_file` → `process_csv_task` → `load_results_task` → `report_result_task`), `_common/paths.py`/`_common/reporting.py` helpers, `docker-compose.yml` infra fixes (`ORACLE_DSN`, `fs_default` connection, `configs/` mount), proven via one live triggered run for `customers`, plus unit tests for the pure-Python helpers
+- [x] 05-01-PLAN.md — Tracer: `csv_ingest` DAG wired end-to-end (`load_config_task` → `route_after_config` → `wait_for_file` → `process_csv_task` → `load_results_task` → `report_result_task`), `_common/paths.py`/`_common/reporting.py` helpers, `docker-compose.yml` infra fixes (`ORACLE_DSN`, `fs_default` connection, `configs/` mount), proven via one live triggered run for `customers`, plus unit tests for the pure-Python helpers
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -231,7 +231,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Config Contract & CSV Generator | 5/5 | Complete    | 2026-08-29 |
 | 3. CSV Processing Engine | 10/10 | Complete    | 2026-08-29 |
 | 4. Oracle Bulk Load, Idempotency & Engine Entrypoint | 3/3 | Complete    | 2026-08-29 |
-| 5. Airflow DAG Wiring & Deferrable File-Wait | 0/2 | Not started | - |
+| 5. Airflow DAG Wiring & Deferrable File-Wait | 1/2 | In Progress|  |
 | 6. End-to-End Verification, Benchmark, CI & Docs | 0/TBD | Not started | - |
 
 ---
