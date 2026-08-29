@@ -410,7 +410,9 @@ def _decimal_renderer(fixture_name: str, column: str, spec: dict[str, Any]) -> R
     def _render(rng: random.Random, row_index: int) -> str:
         del row_index
         units = low + min(int(rng.random() * span), span - 1)
-        return f"{units // power}{separator}{units % power:0{scale}d}"
+        sign = "-" if units < 0 else ""
+        magnitude = abs(units)
+        return f"{sign}{magnitude // power}{separator}{magnitude % power:0{scale}d}"
 
     return _render
 
