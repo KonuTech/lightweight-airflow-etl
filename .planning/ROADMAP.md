@@ -109,7 +109,8 @@ Plans:
   4. The `csv_processor` package can be imported and its full test suite run in an environment with no Airflow installed.
   5. The unit test suite covering config parsing, CSV parsing, type conversion, date validation, valid/invalid row handling, and chunked processing passes.
 
-**Plans**: 6/6 plans executed (Plan 6 is a verification gap-closure plan for CR-01/CR-02)
+**Plans**: 7/7 plans executed (Plan 6 is a verification gap-closure plan for CR-01/CR-02; Plan 7 is a
+code-review gap-closure plan for the CR-02 fix's own sample-boundary data-loss regression)
 
 Plans:
 **Wave 1**
@@ -129,6 +130,10 @@ Plans:
 **Wave 4** *(gap closure — verification CR-01/CR-02, blocked on Wave 3 completion)*
 
 - [x] 03-06-PLAN.md — Gap closure: `ColumnSpec.required` now filters `source.py`'s MISSING_REQUIRED_COLUMN check (CR-01), `detect_header()`'s preamble/footer/repeated-header row indices now consumed by PASS 2's real read (CR-02), plus a small `detect/filename.py` `dataplat`-import cleanup (WR-01)
+
+**Wave 5** *(gap closure — code review G-03-3, blocked on Wave 4 completion)*
+
+- [ ] 03-07-PLAN.md — Gap closure: `source.py`'s `_filtered_rows()` re-validates every sample-derived footer/repeated-header candidate exclusion against the real full-file row content before excluding it, closing a silent data-loss regression 03-06's own CR-02 fix introduced on files larger than the 64 KiB detection sample
 
 ### Phase 4: Oracle Bulk Load, Idempotency & Engine Entrypoint
 
@@ -181,7 +186,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|-----------------|--------|-----------|
 | 1. Environment & Oracle Foundation | 5/5 | Complete    | 2026-08-28 |
 | 2. Config Contract & CSV Generator | 5/5 | Complete    | 2026-08-29 |
-| 3. CSV Processing Engine | 6/6 | In Progress|  |
+| 3. CSV Processing Engine | 6/7 | In Progress|  |
 | 4. Oracle Bulk Load, Idempotency & Engine Entrypoint | 0/TBD | Not started | - |
 | 5. Airflow DAG Wiring & Deferrable File-Wait | 0/TBD | Not started | - |
 | 6. End-to-End Verification, Benchmark, CI & Docs | 0/TBD | Not started | - |
