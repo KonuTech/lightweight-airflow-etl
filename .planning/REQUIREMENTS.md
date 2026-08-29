@@ -30,11 +30,11 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **ENGINE-01**: `csv_processor.process(file_path, config)` validates CSV structure (column
       count / missing / unexpected columns) before validating anything else
 
-- [ ] **ENGINE-02**: Engine validates each column's type (integer/decimal/date) per the config
+- [x] **ENGINE-02**: Engine validates each column's type (integer/decimal/date) per the config
       schema
 
-- [ ] **ENGINE-03**: Engine validates required (non-nullable) fields are non-empty
-- [ ] **ENGINE-04**: Engine explicitly converts each valid CSV string field to its configured
+- [x] **ENGINE-03**: Engine validates required (non-nullable) fields are non-empty
+- [x] **ENGINE-04**: Engine explicitly converts each valid CSV string field to its configured
       Python/Oracle type (no implicit Oracle casting)
 
 - [x] **ENGINE-05**: An invalid row does not stop processing of the rest of the file; valid and
@@ -43,14 +43,14 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **ENGINE-06**: Each invalid row records `error_code`, `error_message`, `source_file`, and
       `row_number` alongside its original field values
 
-- [ ] **ENGINE-07**: CSV reading and validation processes rows in configurable chunks (not one row
+- [x] **ENGINE-07**: CSV reading and validation processes rows in configurable chunks (not one row
       at a time, not the whole file loaded into memory)
 
 - [ ] **ENGINE-08**: `process()` returns a structured `ProcessingResult` (total/valid/invalid rows,
       duration, status) with distinct status codes (SUCCESS / SUCCESS_WITH_INVALID_ROWS /
       FILE_NOT_FOUND / INVALID_FILE / CONFIGURATION_ERROR / DATABASE_ERROR / PROCESSING_ERROR)
 
-- [ ] **ENGINE-09**: `csv_processor` has no Airflow import/dependency and can be unit-tested
+- [x] **ENGINE-09**: `csv_processor` has no Airflow import/dependency and can be unit-tested
       standalone
 
 ### Oracle Loading
@@ -176,14 +176,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CONFIG-02 | Phase 2 | Complete |
 | GEN-01 | Phase 2 | Complete |
 | ENGINE-01 | Phase 3 | Complete |
-| ENGINE-02 | Phase 3 | Gaps Found |
-| ENGINE-03 | Phase 3 | Gaps Found |
-| ENGINE-04 | Phase 3 | Gaps Found |
+| ENGINE-02 | Phase 3 | Complete |
+| ENGINE-03 | Phase 3 | Complete |
+| ENGINE-04 | Phase 3 | Complete |
 | ENGINE-05 | Phase 3 | Complete |
 | ENGINE-06 | Phase 3 | Complete |
-| ENGINE-07 | Phase 3 | Gaps Found |
+| ENGINE-07 | Phase 3 | Complete |
 | ENGINE-08 | Phase 4 | Pending |
-| ENGINE-09 | Phase 3 | Gaps Found |
+| ENGINE-09 | Phase 3 | Complete |
 | LOAD-01 | Phase 4 | Pending |
 | LOAD-02 | Phase 4 | Pending |
 | LOAD-03 | Phase 4 | Pending |
