@@ -1,4 +1,4 @@
-.PHONY: up down reset logs verify smoke-test generate fixtures fixtures-verify verify-phase2
+.PHONY: up down reset logs verify smoke-test generate fixtures fixtures-verify verify-phase2 verify-phase3
 
 up:               ## Start the full stack (Airflow + Oracle)
 	docker compose up -d --wait
@@ -32,6 +32,13 @@ fixtures-verify:   ## Regenerate the corpus to a temp dir and diff SHA-256 again
 verify-phase2:     ## Phase 2's own combined local gate: full unit suite + fixture digest-oracle verification (D-16g)
 	uv run pytest tests/unit/ -x
 	$(MAKE) fixtures-verify
+
+# Phase 3 introduces no new fixture-digest mechanism beyond Phase 2's
+# already-committed tests/fixtures/CORPUS.sha256, so verify-phase3 follows
+# verify-phase2's exact shape (a plain full-suite run) with no added
+# fixtures-verify step.
+verify-phase3:     ## Phase 3's own combined local gate: full unit suite covering detect/compression/structural/type/nullability/chunking (TEST-01)
+	uv run pytest tests/unit/ -x
 
 # Later phases (2-6) add targets here (make test, make lint, make benchmark)
 # rather than inventing separate tooling -- this Makefile is the project-wide command
