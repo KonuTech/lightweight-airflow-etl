@@ -40,8 +40,8 @@ class ColumnSpec(BaseModel):
     nullable: bool
     required: bool
     format: str | None = None  # strptime string (D-08) -- required for date/timestamp only
-    precision: int | None = None  # D-10 -- decimal only
-    scale: int | None = None  # D-10 -- decimal only
+    precision: int | None = Field(default=None, gt=0)  # D-10 -- decimal only
+    scale: int | None = Field(default=None, gt=0)  # D-10 -- decimal only
 
     @model_validator(mode="after")
     def _check_type_specific_fields(self) -> ColumnSpec:
