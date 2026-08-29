@@ -122,8 +122,9 @@ def _filtered_rows(
     excluded_indices: set[int],
     header_field_count: int,
     raw_header: tuple[str, ...],
+    sample_covered_row_count: int,
 ) -> Iterator[tuple[list[str], str]]:
-    """Exclude only REAL footer/repeated-header rows from ``paired_rows`` (CR-03).
+    """Exclude only REAL footer/repeated-header rows from ``paired_rows`` (CR-03/CR-04).
 
     ``excluded_indices`` (footer rows + repeated-header rows) is computed by
     ``detect_header()`` against only a bounded 64 KiB HEAD SAMPLE
@@ -138,9 +139,9 @@ def _filtered_rows(
     surfaced anywhere). 03-06's original version (CR-02) trusted
     ``excluded_indices`` membership alone and silently dropped that row.
 
-    This version re-validates every candidate exclusion against the REAL
-    row at that position before actually excluding it: a row is only
-    skipped when its real content independently fails the SAME criterion
+    (CR-03) re-validates every candidate exclusion against the REAL row at
+    that position before actually excluding it: a row is only skipped when
+    its real content independently fails the SAME criterion
     ``detect_header()`` itself would apply here (this module never passes
     ``footer_patterns``/``skip_footer_rows`` to ``detect_header()``, so the
     only footer criterion in play is a field-count mismatch) -- real field
@@ -148,9 +149,31 @@ def _filtered_rows(
     equal the header's own raw values (repeated-header). A row whose real
     content actually matches the header proves the sample-derived flag was
     a truncation artifact, not a genuine footer/repeat, and passes through
-    untouched. A genuine, small, within-sample preamble/footer/
-    repeated-header row (G-03-2) still independently fails this
-    re-validated criterion and is still excluded, unchanged.
+    untouched.
+
+    (CR-04) Content re-validation ALONE cannot distinguish a genuinely
+    malformed data row from a real footer/repeated-header row when both
+    happen to occupy the sample's own arbitrary tail position:
+    ``detect/header.py``'s ``_detect_footer_rows`` always walks backward
+    from the LAST row of whatever ``rows`` it receives -- the sample's
+    truncation cutoff, not the real file's tail, for any file exceeding
+    ``SAMPLE_BYTES``. A genuinely malformed row that happens to land there
+    trivially "confirms" its own exclusion under CR-03's re-validated
+    criterion too (03-REVIEW.md's CR-04 reproduction: a ~125 KB file with
+    one malformed row at the sample's tail-adjacent position vanished from
+    both ``valid_rows`` and ``invalid_rows``). The fix layered in front of
+    CR-03: a sample-derived candidate is only even ELIGIBLE for exclusion
+    -- before any content check runs -- when its absolute index falls
+    strictly within ``sample_covered_row_count``, i.e. among rows the
+    sample's own bytes provably captured in full. The row whose bytes
+    straddle the sample cutoff (always the sample's last parsed row when
+    truncated) is now categorically ineligible for exclusion, whether it
+    turns out to be a well-formed row (CR-03's case) or a genuinely
+    malformed one (CR-04's case) -- it flows through to PASS 2's ordinary
+    per-row validation either way. A genuine, small, within-sample
+    preamble/footer/repeated-header row (G-03-2) is always well within
+    ``sample_covered_row_count``'s provably-covered range and is still
+    excluded, unchanged.
 
     Args:
         paired_rows: The ``(row, raw_line)`` pairs remaining after PASS 2's
@@ -169,14 +192,19 @@ def _filtered_rows(
         raw_header: The real header's own field values -- a real row whose
             values exactly equal this is the re-validated repeated-header
             criterion.
+        sample_covered_row_count: (CR-04) The count of rows PASS 1's sample
+            bytes provably read in full -- a candidate's absolute index
+            must be strictly less than this to be exclusion-eligible at
+            all, checked BEFORE the content re-validation above.
 
     Yields:
         Every ``(row, raw_line)`` pair except those whose absolute index is
-        both in ``excluded_indices`` AND independently confirmed, against
-        its own real content, to be footer-shaped or a repeated header.
+        in ``excluded_indices``, strictly less than ``sample_covered_row_count``,
+        AND independently confirmed, against its own real content, to be
+        footer-shaped or a repeated header.
     """
     for absolute_index, (row, raw_line) in enumerate(paired_rows, start=start_index):
-        if absolute_index in excluded_indices:
+        if absolute_index in excluded_indices and absolute_index < sample_covered_row_count:
             is_footer_shaped = len(row) != header_field_count
             is_repeated_header = tuple(row) == raw_header
             if is_footer_shaped or is_repeated_header:
@@ -280,6 +308,20 @@ def prepare_source(
         )
     )
 
+    # CR-04: `sample_was_truncated` is true whenever there is more file
+    # beyond what PASS 1 read -- the LAST row `csv.reader` parsed from the
+    # sample can then never be proven complete (it may be a genuine, whole
+    # row that merely ends near the cutoff, or a truncated fragment; either
+    # way, it cannot be trusted as the file's real tail). Every OTHER row in
+    # `sample_rows` IS provably complete, since each is followed by more
+    # parsed content confirming it ended before the truncation point. When
+    # the sample was NOT truncated, the sample IS the entire file, so every
+    # row including the last is provably complete.
+    sample_was_truncated = len(sample) == SAMPLE_BYTES
+    sample_covered_row_count = (
+        len(sample_rows) - 1 if sample_was_truncated and sample_rows else len(sample_rows)
+    )
+
     try:
         header_detection = detect.detect_header(rows=tuple(tuple(r) for r in sample_rows))
     except errors.FileInspectionError as exc:
@@ -358,6 +400,7 @@ def prepare_source(
             excluded_indices=excluded_indices,
             header_field_count=len(header_detection.raw_header),
             raw_header=header_detection.raw_header,
+            sample_covered_row_count=sample_covered_row_count,
         ),
         header_detection.raw_header,
     )
