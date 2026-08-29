@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 current_phase: 03
 current_phase_name: CSV Processing Engine
 status: executing
-stopped_at: Completed 03-05-PLAN.md
-last_updated: "2026-08-29T13:40:13.926Z"
+stopped_at: "Completed 03-06-PLAN.md (gap closure: G-03-1, G-03-2)"
+last_updated: "2026-08-29T13:52:27.888Z"
 last_activity: 2026-08-29
 last_activity_desc: Phase 03 execution started
-state_head: a333c05850af74634f6555321c1c14133029a52a
+state_head: b47aef5725d1a59fe3e8f61cc6ca718488bcfbbc
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 16
-  completed_plans: 15
+  completed_plans: 16
   percent: 33
 ---
 
@@ -30,8 +30,8 @@ from a fresh `git clone`.
 
 ## Current Position
 
-Phase: 03 (CSV Processing Engine) — READY TO EXECUTE
-Plan: 5 of 5
+Phase: 03 (CSV Processing Engine) — EXECUTING
+Plan: 2 of 6
 Status: Ready to execute
 Last activity: 2026-08-29 — Phase 03 execution started
 
@@ -77,6 +77,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 03 P03 | 35min | 3 tasks | 8 files |
 | Phase 03 P04 | 25min | 3 tasks | 6 files |
 | Phase 03 P05 | 40min | 4 tasks | 5 files |
+| Phase 03 P06 | 25min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -134,6 +135,8 @@ Recent decisions affecting current work:
 - [Phase 03]: [Phase 03]: 03-05: Chunk-boundary test makes ALL 12 rows deliberately invalid (not a subset) since only invalid-row dicts carry row_number (D-09) -- required to assert the complete gap-free 1..12 sequence
 - [Phase 03]: [Phase 03]: 03-05: Bounded-memory RLIMIT_AS cap raised to 100 MiB (from test_corpus_bounded_memory.py's 24 MiB), empirically determined -- the gap is process_chunks()'s own import-time overhead (pydantic-core, chardet model tables), not a memory-boundedness regression
 - [Phase 03]: [Phase 03]: 03-05: Fixed a real bug in detect_dialect() -- clevercsv.Detector().detect() raises uncaught on a NUL-byte sample, folded into the existing declined-detection pattern (never a crash)
+- [Phase 03]: [Phase 03]: 03-06: Closed gaps G-03-1/G-03-2 -- source.py's missing-column check now filters by column.required (MISSING_REQUIRED_COLUMN only for required:true columns), engine.py backfills any config-declared header-absent column with an empty string to prevent KeyError, and PASS 2 now consumes detect_header()'s header_row_index/footer_row_indices/repeated_header_row_indices instead of discarding them
+- [Phase 03]: [Phase 03]: 03-06: Removed detect/filename.py's residual TYPE_CHECKING-guarded dataplat.config.model import (WR-01), replaced with a real local FilenameMaskConfig dataclass -- closes the last dataplat coupling this phase's Tier-A vendoring left behind
 
 ### Pending Todos
 
@@ -156,6 +159,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-08-29T13:01:34.864Z
-Stopped at: Completed 03-05-PLAN.md
+Last session: 2026-08-29T13:52:27.843Z
+Stopped at: Completed 03-06-PLAN.md (gap closure: G-03-1, G-03-2)
 Resume file: None
