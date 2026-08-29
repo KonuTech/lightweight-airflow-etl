@@ -115,6 +115,37 @@ def _rows_with_raw_line(
         yield row, wrapper.last_line
 
 
+def _filtered_rows(
+    paired_rows: Iterator[tuple[list[str], str]],
+    *,
+    start_index: int,
+    excluded_indices: set[int],
+) -> Iterator[tuple[list[str], str]]:
+    """Exclude detected footer/repeated-header rows from ``paired_rows`` (CR-02).
+
+    ``start_index`` matches ``detect_header()``'s own absolute-row-index
+    convention exactly, since PASS 2 reopens and re-reads the identical
+    file from byte 0 -- the first item ``paired_rows`` yields is physically
+    at ``start_index`` in the original file.
+
+    Args:
+        paired_rows: The ``(row, raw_line)`` pairs remaining after PASS 2's
+            preamble/header skip.
+        start_index: The absolute row index of the first item in
+            ``paired_rows``.
+        excluded_indices: Absolute row indices (footer rows +
+            repeated-header rows, both already computed by
+            ``detect_header()``) to exclude from the returned iterator.
+
+    Yields:
+        Every ``(row, raw_line)`` pair whose absolute index is not in
+        ``excluded_indices``.
+    """
+    for absolute_index, item in enumerate(paired_rows, start=start_index):
+        if absolute_index not in excluded_indices:
+            yield item
+
+
 def prepare_source(
     file_path: Path, config: DatasetConfig
 ) -> tuple[TextIO, Iterator[tuple[list[str], str]], tuple[str, ...]]:
@@ -270,5 +301,21 @@ def prepare_source(
         doublequote=config.csv.doublequote,
         escapechar=config.csv.escapechar,
     )
-    next(reader)  # skip the header row -- already validated above
-    return text_stream, _rows_with_raw_line(reader, wrapper), header_detection.raw_header
+    # CR-02: skip every preamble row AND the header row itself -- not just
+    # one hardcoded row -- then exclude any detected footer/repeated-header
+    # row from the real-read iterator. `header_row_index` is guaranteed
+    # non-None here (the `has_header` check above already raised otherwise).
+    for _ in range(header_detection.header_row_index + 1):  # type: ignore[operator]
+        next(reader)
+    excluded_indices = set(header_detection.footer_row_indices) | set(
+        header_detection.repeated_header_row_indices
+    )
+    return (
+        text_stream,
+        _filtered_rows(
+            _rows_with_raw_line(reader, wrapper),
+            start_index=header_detection.header_row_index + 1,  # type: ignore[operator]
+            excluded_indices=excluded_indices,
+        ),
+        header_detection.raw_header,
+    )

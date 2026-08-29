@@ -25,6 +25,13 @@ from pathlib import Path
 import pytest
 
 from csv_processor.config.loader import load_config
+from csv_processor.config.models import (
+    ColumnSpec,
+    CsvDialectConfig,
+    DatasetConfig,
+    OracleTargetSpec,
+    ProcessingConfig,
+)
 from csv_processor.engine import process_chunks
 from csv_processor.errors import StructuralValidationError
 
@@ -176,3 +183,50 @@ def test_optional_column_absent_from_header_processes_successfully(tmp_path: Pat
     assert invalid_rows == []
     assert len(valid_rows) == 1
     assert valid_rows[0]["customer_id"] == "CUST001"
+    assert valid_rows[0]["signup_country"] is None
+
+
+def _preamble_footer_config() -> DatasetConfig:
+    """Fixture-local ad hoc config for the CR-02 preamble/footer/repeated-
+    header regression test -- mirrors test_byte_level_hard.py's
+    `_order_id_note_config()` pattern (3 required, non-nullable string
+    columns matching this test's own literal CSV header exactly)."""
+    return DatasetConfig(
+        dataset="preamble_footer",
+        file_pattern="preamble_footer_*.csv",
+        csv=CsvDialectConfig(),
+        columns=[
+            ColumnSpec(name="customer_id", type="string", nullable=False, required=True),
+            ColumnSpec(name="name", type="string", nullable=False, required=True),
+            ColumnSpec(name="country", type="string", nullable=False, required=True),
+        ],
+        oracle=OracleTargetSpec(valid_table="pf_valid", invalid_table="pf_invalid"),
+        processing=ProcessingConfig(chunk_size=10),
+    )
+
+
+def test_preamble_footer_and_repeated_header_rows_excluded_from_processing(
+    tmp_path: Path,
+) -> None:
+    """CR-02/G-03-2 regression: a genuine metadata preamble line, a footer
+    line, and a repeated interior header row must never appear in either
+    `valid_rows` or `invalid_rows` -- only the 3 real data rows should."""
+    csv_path = tmp_path / "preamble_footer.csv"
+    csv_path.write_text(
+        "Report generated 2026-08-29\n"
+        "customer_id,name,country\n"
+        "CUST001,Alice,US\n"
+        "CUST002,Bob,UK\n"
+        "customer_id,name,country\n"
+        "CUST003,Carol,DE\n"
+        "END OF REPORT\n"
+    )
+    config = _preamble_footer_config()
+
+    chunks = list(process_chunks(csv_path, config))
+
+    assert len(chunks) == 1
+    valid_rows, invalid_rows = chunks[0]
+    assert invalid_rows == []
+    assert len(valid_rows) == 3
+    assert [row["customer_id"] for row in valid_rows] == ["CUST001", "CUST002", "CUST003"]
