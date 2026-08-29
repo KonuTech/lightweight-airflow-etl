@@ -25,7 +25,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Config Contract & CSV Generator** - Pydantic v2 `config.json` contract per dataset, validated once per run, plus a deterministic CSV fixture generator covering valid and invalid rows (completed 2026-08-29)
 - [x] **Phase 3: CSV Processing Engine** - Airflow-agnostic detect/parse/validate/normalize engine that splits valid (type-converted) rows from invalid (error-tagged) rows in bounded-memory chunks (completed 2026-08-29)
 - [x] **Phase 4: Oracle Bulk Load, Idempotency & Engine Entrypoint** - `executemany()` bulk loading into `_VALID`/`_INVALID` tables, checksum-based idempotency via an ingestion metadata table, and the `process()` entrypoint with full status semantics (completed 2026-08-29)
-- [ ] **Phase 5: Airflow DAG Wiring & Deferrable File-Wait** - Thin, HTTP-triggerable TaskFlow DAG (`load_config` → `wait_for_file` → `process_csv` → `load_results` → `report_result`) with a non-blocking deferrable file-wait, identical for both datasets
+- [x] **Phase 5: Airflow DAG Wiring & Deferrable File-Wait** - Thin, HTTP-triggerable TaskFlow DAG (`load_config` → `wait_for_file` → `process_csv` → `load_results` → `report_result`) with a non-blocking deferrable file-wait, identical for both datasets (completed 2026-08-29)
 - [ ] **Phase 6: End-to-End Verification, Benchmark, CI & Docs** - HTTP-to-Oracle end-to-end proof, a ~100K-row chunked-vs-row-by-row benchmark, minimal CI, and clone-to-ingest documentation
 
 ## Phase Details
@@ -231,7 +231,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Config Contract & CSV Generator | 5/5 | Complete    | 2026-08-29 |
 | 3. CSV Processing Engine | 10/10 | Complete    | 2026-08-29 |
 | 4. Oracle Bulk Load, Idempotency & Engine Entrypoint | 3/3 | Complete    | 2026-08-29 |
-| 5. Airflow DAG Wiring & Deferrable File-Wait | 2/2 | In Progress|  |
+| 5. Airflow DAG Wiring & Deferrable File-Wait | 2/2 | Complete    | 2026-08-29 |
 | 6. End-to-End Verification, Benchmark, CI & Docs | 0/TBD | Not started | - |
 
 ---
