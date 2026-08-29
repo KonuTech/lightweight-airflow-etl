@@ -1,14 +1,11 @@
 ---
 phase: 03-csv-processing-engine
-reviewed: 2026-08-29T13:59:20Z
+reviewed: 2026-08-29T00:00:00Z
 depth: standard
-files_reviewed: 5
+files_reviewed: 2
 files_reviewed_list:
   - packages/csv-processor/src/csv_processor/source.py
-  - packages/csv-processor/src/csv_processor/engine.py
-  - packages/csv-processor/src/csv_processor/detect/filename.py
   - tests/unit/test_structural_validation.py
-  - tests/unit/test_filename_no_dataplat_import.py
 findings:
   critical: 1
   warning: 3
@@ -17,256 +14,224 @@ findings:
 status: issues_found
 ---
 
-# Phase 3: Code Review Report (focused re-review of gap-closure plan 03-06)
+# Phase 3: Code Review Report (focused re-review of gap-closure plan 03-07)
 
-**Reviewed:** 2026-08-29T13:59:20Z
+**Reviewed:** 2026-08-29T00:00:00Z
 **Depth:** standard
-**Files Reviewed:** 5
+**Files Reviewed:** 2
 **Status:** issues_found
 
-## Summary
+## Narrative Findings (AI reviewer)
 
-This is a focused re-review of the 03-06 gap-closure plan, which claimed to fix two Critical
-bugs (CR-01: `ColumnSpec.required` enforcement; CR-02: preamble/footer/repeated-header row
-exclusion) and one Warning (WR-01: residual `dataplat` import in `detect/filename.py`).
+### Summary
 
-- **WR-01 (residual `dataplat` import) is genuinely closed.** `detect/filename.py` has zero
-  `dataplat` imports; the new regression test correctly anchors on line-start to avoid
-  false-triggering on the docstring's prose mentions of `dataplat.diagnostics`/
-  `dataplat.config.model`. Verified by direct read of the full file.
+This is a focused re-review of gap-closure plan 03-07, which fixed the Critical silent-data-loss
+bug from the prior 03-REVIEW.md (03-06 wired sample-derived `footer_row_indices`/
+`repeated_header_row_indices` directly into `_filtered_rows()`, causing any file larger than the
+64 KiB detection sample to silently drop the one real row whose bytes straddled the sample
+cutoff).
 
-- **CR-01 (`required` enforcement) is genuinely and completely closed.** `source.py`'s header
-  check now correctly compares only `required_names` (not all `declared_names`) against the
-  header, and `engine.py`'s companion per-row backfill correctly prevents the `KeyError` that
-  would otherwise fire in `validate.check_row`/`normalize_row` for an optional column absent
-  from the detected header. Traced against `validate.py` and `customers.json`'s real config;
-  confirmed correct by the existing regression test.
+**03-07's re-validation approach genuinely closes the reported reproduction and does not regress
+the original G-03-2 guarantee.** `_filtered_rows()` now re-checks every sample-derived candidate
+index against the REAL row read in PASS 2 (`len(row) != header_field_count` or
+`tuple(row) == raw_header`) before excluding it. I re-ran the exact class of reproduction from the
+prior review (a 6,000+-row well-formed CSV whose sample-boundary row is truncated mid-row inside
+the 64 KiB sample only) and confirmed zero rows are lost — this matches
+`test_large_well_formed_file_loses_zero_rows_across_sample_boundary`, which passes. I also
+confirmed `test_repeated_header_row_excluded_even_when_file_exceeds_sample_size` and
+`test_preamble_footer_and_repeated_header_rows_excluded_from_processing` still pass — a genuine,
+small, within-sample preamble/footer/repeated-header row is still correctly excluded, both for
+files that fit in the sample and files that don't. All 12 tests in
+`tests/unit/test_structural_validation.py` pass.
 
-- **CR-02 (preamble/footer/repeated-header exclusion) is closed for the fixture-sized case the
-  regression test covers, but is NOT complete — it has a new, silent, and empirically
-  reproduced data-loss bug on any file larger than the 64 KiB detection sample.** See CR-02
-  below; this is the Critical finding.
+**However, the fix only closes the specific "well-formed row wrongly excluded" manifestation of
+the defect class. It does NOT close a second, still-open manifestation of the same root cause: a
+genuinely malformed data row (wrong field count, unrelated to sample truncation) that happens to
+land in the contiguous run `detect_header()`'s footer-scoring walk scans backward from the tail of
+the 64 KiB sample is silently dropped — never surfaced as `WRONG_COLUMN_COUNT`, never counted as
+valid.** This is a new Critical finding (empirically reproduced below), not a hypothetical. It
+existed under 03-06 too (03-06 dropped it unconditionally), so 03-07 does not "reopen" the bug in
+a new form so much as it leaves a narrower, previously-undocumented sub-case of the identical root
+cause unaddressed. Given the project's own precedent for classifying "row vanishes from both
+`valid_rows` and `invalid_rows` with zero trace" as Critical, this is reported at the same
+severity.
 
-I built a minimal, out-of-band reproduction (a 6,000-row, ~117 KiB CSV with a clean header and
-no footer at all) and ran it directly against `process_chunks()`: it silently drops exactly one
-legitimate data row (`ID003276`, which happens to straddle the `SAMPLE_BYTES` = 65,536-byte
-boundary) with **no** entry in either `valid_rows` or `invalid_rows` — the row simply vanishes.
-This is worse than a false-positive footer misclassification alone would suggest, because the
-row isn't reported as invalid either; it disappears from the pipeline's output entirely with no
-trace.
+The five findings carried forward from the prior 03-REVIEW.md (WR-01/WR-02/WR-03/IN-01/IN-02) were
+explicitly out of scope for 03-07 and remain present, unchanged, verified by direct re-read of the
+current file contents (and, for the two config-model-related findings, a targeted grep of
+`config/models.py`'s validators, which still has no check for either).
 
-## Critical Issues
+### Critical Issues
 
-### CR-01: Footer/repeated-header detection runs on a truncated 64 KiB sample, but exclusion is applied to the real full-file read — silently drops legitimate rows on any file > `SAMPLE_BYTES`
+#### CR-01: A genuinely malformed row coinciding with the sample-tail footer-scan window is still silently dropped instead of surfaced as `WRONG_COLUMN_COUNT`
 
-**File:** `packages/csv-processor/src/csv_processor/source.py:44, 149-321`
-(root cause interacts with `packages/csv-processor/src/csv_processor/detect/header.py:207-256`,
-not in this review's file list but necessary context)
+**File:** `packages/csv-processor/src/csv_processor/source.py:118-184` (interacts with
+`packages/csv-processor/src/csv_processor/detect/header.py:207-256`'s `_detect_footer_rows`, not
+in this review's file list but necessary context, and
+`packages/csv-processor/src/csv_processor/engine.py:69-89`'s `WRONG_COLUMN_COUNT` check, also not
+in this review's file list)
 
 **Issue:**
 
-`prepare_source()` computes `header_detection` (including `footer_row_indices` and
-`repeated_header_row_indices`) from `sample_rows`, which is built by parsing only the first
-`SAMPLE_BYTES` (65,536) bytes of the file (`source.py:184, 235-246`). For any file larger than
-that sample, the byte-65536 cutoff will, in the overwhelming majority of cases, land in the
-middle of a physical row rather than exactly on a row boundary. The resulting truncated/partial
-row (the last entry in `sample_rows`) is fed into `detect_header()`'s footer-detection walk
-(`header.py:_detect_footer_rows`), which classifies a row as "footer" whenever its field count
-differs from the header's field count — which a truncated row almost always will.
+`detect_header()`'s footer-scoring walk (`header.py:_detect_footer_rows`) scans backward from the
+LAST row of whatever `data_rows` it is given, including every contiguous row whose field count
+differs from the header's, and stopping at the first well-formed row it hits. When `source.py`
+calls `detect_header()` against only the bounded 64 KiB `sample_rows` (`source.py:284`), "the last
+row of `data_rows`" is the tail of the SAMPLE, not the tail of the real file. For any file larger
+than `SAMPLE_BYTES`, that tail is an essentially arbitrary interior position.
 
-Before this gap-closure plan, `footer_row_indices`/`repeated_header_row_indices` were computed
-but never consumed, so this sample-truncation artifact was harmless. CR-02's fix wires these
-indices directly into `_filtered_rows()` (`source.py:118-146`) as absolute row indices to
-*exclude from the real, complete PASS 2 read*. Since the absolute index of the truncated
-sample-artifact row is a real index into the true file, PASS 2 excludes whatever genuine,
-complete, well-formed row actually sits at that position — silently dropping it. It is not
-reported as `invalid_rows` either; it is simply never yielded by `_filtered_rows` at all.
+03-07's fix (`_filtered_rows()`, `source.py:178-184`) re-validates each candidate index using
+**exactly the same field-count-mismatch predicate** (`len(row) != header_field_count`) that
+`engine.py:69` uses to classify a row as `WRONG_COLUMN_COUNT`. This predicate cannot distinguish
+"this row is footer-shaped because it's a truncation artifact of the sample cutoff" from "this row
+is footer-shaped because it is a genuinely malformed data row that happens to sit at/near the
+sample's tail." Both produce `is_footer_shaped = True` under re-validation, and both are silently
+excluded by `_filtered_rows()` — the malformed row never reaches `engine.py`'s per-row
+`WRONG_COLUMN_COUNT` check at all, because `_filtered_rows()` (called from `prepare_source()`,
+upstream of `engine.py`'s row loop) has already removed it from the stream `engine.py` iterates.
+The row disappears from both `valid_rows` and `invalid_rows` with zero trace — the identical
+failure signature the prior 03-REVIEW.md classified as Critical.
 
 **Reproduction (verified, not hypothetical):**
 
+Built a ~125,570-byte, 2-column (`id,name`) CSV where data row 3,277 is genuinely malformed
+(`BADROW_ONLY_ONE_FIELD`, one field instead of two) positioned so it falls within the last few
+rows captured by the 65,536-byte detection sample, immediately followed by a row that straddles
+the sample cutoff:
+
 ```
-$ .venv/bin/python3 repro_footer_bug.py
-total bytes: 120008
-valid: 5999 invalid: 0 expected: 6000
-BUG CONFIRMED: rows lost or misclassified near sample boundary
-missing ids sample: ['ID003276'] count: 1
-invalid rows sample: []
+total bytes: 125570  SAMPLE_BYTES: 65536
+malformed row is data row number: 3277
+footer_row_indices: (3277,)          # detect_header() flags it via the sample-tail walk
+expected data rows (excluding header): 6278
+valid: 6277  invalid: 0
+sum: 6277  MISSING: 1
+WRONG_COLUMN_COUNT invalid rows found: 0
+BADROW value present anywhere in valid/invalid: False
 ```
 
-A 6,000-row `id,name` CSV with a clean header and no footer whatsoever loses exactly row
-`ID003276`, whose line begins at byte offset 65,528 — 8 bytes before the `SAMPLE_BYTES` = 65,536
-cutoff, i.e. exactly the row the sample truncates mid-line. `process_chunks()` returns 5,999
-valid rows and 0 invalid rows for a 6,000-row input, with zero indication anything went wrong.
-
-This is a genuine, silent data-loss bug for realistic production file sizes (any CSV over
-~64 KiB, which is a very small file for a bulk ETL target) — worse than the CR-02 bug it was
-meant to fix, because a false *inclusion* of a footer row is at least visible in row counts,
-whereas this is an invisible false *exclusion* of good data.
+`process_chunks()` returns 6,277 valid rows and 0 invalid rows for a 6,278-data-row input. The
+malformed row is not merely misclassified as a footer — a single-field row genuinely IS
+footer-shaped by this module's own only-available criterion — but it is real data that a
+config-driven ETL engine's own "collect-and-continue invalid-row model" (per this project's
+CLAUDE.md) is specifically designed to surface as an invalid row, not discard invisibly.
 
 **Fix:**
 
-The root problem is that footer/repeated-header detection is being done against a head-sample
-that has no reliable knowledge of the true end of file. At minimum, guard against scoring a
-sample-truncation artifact as a real row:
+The field-count-mismatch predicate alone cannot resolve this ambiguity — it is inherent to
+scoring footer-shape from a bounded head-sample instead of the real tail of the file (the same
+architectural point the prior review's Critical finding's "more complete fix" section already
+raised for the truncation case). Two options, in order of increasing completeness:
 
-```python
-# source.py, right after computing sample_rows, before calling detect_header:
-sample_was_truncated = len(sample) == SAMPLE_BYTES  # more bytes may follow in the real file
-if sample_was_truncated and sample_rows:
-    # The last row in a truncated sample may be a partial/malformed artifact of the
-    # cutoff, not a real row — never let it participate in footer/repeated-header
-    # candidacy (it can still be safely used for encoding/dialect/header detection,
-    # since those only look at the *start* of the file).
-    footer_candidate_rows = sample_rows[:-1]
-else:
-    footer_candidate_rows = sample_rows
-```
+1. **Narrow the blast radius (partial mitigation):** Only ever treat a sample-derived candidate
+   index as eligible for exclusion via `is_footer_shaped` when it is the LAST row of the sample
+   (i.e. the one truncation can plausibly have produced) or immediately adjacent to it — never an
+   entire contiguous run of "mismatched" sample-tail rows. A genuinely malformed row several
+   positions before the true sample cutoff should never be treated as a footer candidate at all;
+   only the single row whose byte range actually crosses `SAMPLE_BYTES` is a truncation-artifact
+   suspect.
 
-and pass `footer_candidate_rows` (not `sample_rows`) into whatever powers footer/repeated-header
-detection specifically, while still using the full `sample_rows` for header detection itself.
-This bounds the blast radius to "a footer that happens to fall exactly at the sample boundary is
-missed" (a false negative, safe) rather than "an arbitrary real row near the boundary is
-silently dropped" (a false positive with data loss).
+   ```python
+   # In prepare_source(), before calling detect_header(): only the row whose bytes
+   # actually straddle the sample cutoff is a truncation suspect -- never score an
+   # earlier, fully-sample-contained row as a footer candidate on field-count alone.
+   sample_was_truncated = len(sample) == SAMPLE_BYTES
+   footer_candidate_rows = sample_rows[:-1] if sample_was_truncated and sample_rows else sample_rows
+   ```
 
-The more complete fix is architectural: footer detection is inherently a "look at the tail of
-the file" problem, not a "look at the head" problem, and a fixed 64 KiB head-sample can never
-reliably see a real footer on a large file at all (a true footer on a multi-MB file is never in
-this sample to begin with — a separate, pre-existing false-negative gap this same root cause
-also produces, independent of the truncation-artifact bug above). Closing CR-02 completely would
-require reading a real tail-window of the file (or scanning the actual PASS 2 stream and
-buffering the last N rows before finalizing which are "footer"), not relying solely on the PASS
-1 head-sample for this specific check.
+   (This is the same mitigation the prior 03-REVIEW.md proposed for CR-02/CR-03; 03-07 did not
+   adopt it, choosing whole-candidate-set re-validation instead — which is necessary but not
+   sufficient.)
 
-## Warnings
+2. **Complete fix (architectural, as the prior review also noted):** Footer detection is a
+   "look at the true tail of the file" problem. Determining it correctly for a file larger than
+   one head-sample requires buffering a real look-ahead window during the PASS 2 streaming read
+   (only finalizing "these trailing N rows are footer" once EOF is actually reached) rather than
+   trusting any bounded head-sample's own tail as a proxy for the file's true tail.
 
-### WR-01: Injected per-row metadata keys can silently clobber a same-named declared column's value in `invalid_rows` output
+At minimum, add a regression test for this scenario (a genuinely malformed row positioned within
+the sample's footer-scan window in a file exceeding `SAMPLE_BYTES`) alongside the existing
+`test_large_well_formed_file_loses_zero_rows_across_sample_boundary` — no such test currently
+exists, and this exact class of file (large, mostly clean, with a small number of malformed rows
+scattered throughout) is a realistic production input for this project's stated use case.
 
-**File:** `packages/csv-processor/src/csv_processor/engine.py:77-88, 106-115`
+### Warnings
 
-**Issue:** Both invalid-row construction sites build the output dict as
-`{**row_dict, "error_code": ..., "error_message": ..., "source_file": ..., "row_number": ...,
-"raw_line": ...}`. If a dataset config ever declares a column literally named `error_code`,
-`error_message`, `source_file`, `row_number`, or `raw_line`, that column's real parsed value is
-silently overwritten by the injected metadata field — the caller has no way to recover the
-original value, and there is no validation anywhere (`config/models.py`'s `ColumnSpec`/
-`DatasetConfig`) that rejects a column name colliding with this reserved set. Neither shipped
-config (`customers.json`, `orders.json`) currently triggers this, so it is latent rather than
-active today, but this module is written as a general-purpose engine (its own docstrings
-emphasize config-driven genericity), so this is a real correctness gap for any future dataset.
+#### WR-01: Injected per-row metadata keys can silently clobber a same-named declared column's value in `invalid_rows` output
 
-**Fix:** Either (a) namespace the injected metadata keys so they can never collide with a column
-name (e.g. `"_error_code"`/`"_row_number"`, or nest them under a single `"_meta"` key rather than
-splatting at the top level), or (b) add a `DatasetConfig` validator that rejects any column name
-in a reserved-word set (`{"error_code", "error_message", "source_file", "row_number",
-"raw_line"}`) at config-load time, matching the existing `_check_column_names_are_unique`
-pattern in `config/models.py`.
+**File:** `packages/csv-processor/src/csv_processor/engine.py:77-88, 106-115` (unchanged from
+prior review — carried forward, not re-diagnosed; out of scope for 03-07)
 
-### WR-02: No `try`/`finally` around PASS 2 stream setup in `prepare_source` — file handle leak if the header-skip loop raises
+**Issue:** Both invalid-row construction sites still build the output dict as `{**row_dict,
+"error_code": ..., "error_message": ..., "source_file": ..., "row_number": ..., "raw_line":
+...}`. A dataset config declaring a column literally named one of these reserved keys would have
+that column's real value silently overwritten. `config/models.py` still has no validator
+rejecting a column name in this reserved set (confirmed by re-reading its `model_validator`
+list: `_check_type_specific_fields`, `_check_escapechar_present_when_doublequote_disabled`,
+`_check_valid_and_invalid_tables_differ`, `_check_delimiter_does_not_collide_with_decimal_separator`,
+`_check_column_names_are_unique` — none address this).
 
-**File:** `packages/csv-processor/src/csv_processor/source.py:292-321`
+**Fix:** Unchanged from prior review — namespace the injected metadata keys (e.g. `"_error_code"`,
+or nest under a single `"_meta"` key) or add a `DatasetConfig` validator rejecting a reserved
+column name at config-load time.
 
-**Issue:** `real_stream = _open_raw_stream(file_path)` opens a file handle, which is wrapped in
-`text_stream = io.TextIOWrapper(real_stream, ...)` and returned to the caller for the caller to
-close (per this function's own docstring: "the caller must close it once done, e.g. via
-`try`/`finally`"). `engine.py`'s `try`/`finally` that closes `text_stream` only begins *after*
-`source.prepare_source(...)` has already returned (`engine.py:59-61`). If anything between
-opening `real_stream` and the `return` statement raises — e.g. `next(reader)` in the
-header-skip loop at `source.py:308-309` (plausible under a TOCTOU race if an upstream process is
-still writing/truncating the file between PASS 1's sampling and PASS 2's reopen, or if
-`csv.field_size_limit` is exceeded on a row within the skipped preamble) — `real_stream`/
-`text_stream` is never closed, because no reference to it exists yet in `engine.py`'s scope and
-`prepare_source` itself has no `try`/`finally` protecting this section.
+#### WR-02: No `try`/`finally` around PASS 2 stream setup in `prepare_source` — file handle leak if the header-skip loop raises
 
-**Fix:** Wrap the PASS 2 setup in its own `try`/`except`, closing `real_stream`/`text_stream` and
-re-raising on any exception:
+**File:** `packages/csv-processor/src/csv_processor/source.py:330-363` (unchanged from prior
+review — carried forward, not re-diagnosed; out of scope for 03-07)
 
-```python
-real_stream = _open_raw_stream(file_path)
-text_stream = io.TextIOWrapper(real_stream, encoding=decode_codec, newline="", errors="strict")
-try:
-    wrapper = _LineCapturingTextStream(text_stream)
-    reader = csv.reader(wrapper, ...)
-    for _ in range(header_detection.header_row_index + 1):
-        next(reader)
-    ...
-except Exception:
-    text_stream.close()
-    raise
-```
+**Issue:** `real_stream`/`text_stream` are still opened and returned with no `try`/`finally`
+protecting the section between opening them and the `return` statement. `engine.py`'s own
+`try`/`finally` (`engine.py:60-121`) only begins after `prepare_source()` has already returned, so
+if `next(reader)` raises in the header-skip loop (`source.py:345-346`) — e.g. a TOCTOU race where
+the file is truncated/rewritten between PASS 1's sampling and PASS 2's reopen — the handle is
+never closed.
 
-### WR-03: `ColumnSpec` permits a `required: false` + `nullable: false` combination that is guaranteed to fail every row where the column is absent, with no upfront config validation
+**Fix:** Unchanged from prior review — wrap the PASS 2 setup (from `real_stream = _open_raw_stream(...)`
+through the `return` statement) in its own `try`/`except Exception: text_stream.close(); raise`.
 
-**File:** `packages/csv-processor/src/csv_processor/engine.py:92-103` (interaction with
-`config/models.py`'s `ColumnSpec`, not in this review's file list)
+#### WR-03: `ColumnSpec` permits a `required: false` + `nullable: false` combination that is guaranteed to fail every row where the column is absent, with no upfront config validation
 
-**Issue:** CR-01's companion fix in `engine.py` backfills any declared column missing from the
-detected header as an empty string (`row_dict[column.name] = ""`), so its `nullable` flag governs
-it identically to a present-but-blank value (per the fix's own docstring, this is intentional).
-However, if a column is declared `required: false` (legitimately absent from the file is allowed)
-but also `nullable: false` (a present value can never be blank), every single row of a file that
-omits that column will now deterministically fail `NULL_VIOLATION` — 100% of the time, with no
-config-time signal that this contradiction exists. `ColumnSpec`'s own `_check_type_specific_fields`
-validator (`config/models.py:46-64`) checks several other cross-field contradictions but not this
-one.
+**File:** `packages/csv-processor/src/csv_processor/config/models.py` (unchanged from prior
+review — carried forward, not re-diagnosed; out of scope for 03-07; confirmed still absent by
+re-checking `ColumnSpec`'s validator list, same as WR-01 above)
 
-**Fix:** Add a cross-field check to `ColumnSpec` (or `DatasetConfig`) rejecting `required=False`
-combined with `nullable=False` at config-load time, e.g.:
+**Issue:** Unchanged — a column declared `required: false` but `nullable: false` will
+deterministically fail `NULL_VIOLATION` on every row of a file that omits it, with no config-time
+signal.
 
-```python
-@model_validator(mode="after")
-def _check_optional_column_is_nullable(self) -> ColumnSpec:
-    if not self.required and not self.nullable:
-        msg = (
-            f"column {self.name!r}: 'required: false' with 'nullable: false' is "
-            "contradictory — an absent optional column is always treated as blank, "
-            "which 'nullable: false' would then always reject"
-        )
-        raise ValueError(msg)
-    return self
-```
+**Fix:** Unchanged from prior review — add a cross-field `model_validator` on `ColumnSpec`
+rejecting `required=False` combined with `nullable=False` at config-load time.
 
-## Info
+### Info
 
-### IN-01: `# type: ignore[operator]` used to suppress a real `int | None` type mismatch instead of a runtime assertion
+#### IN-01: `# type: ignore[operator]` used to suppress a real `int | None` type mismatch instead of a runtime assertion
 
-**File:** `packages/csv-processor/src/csv_processor/source.py:308, 317`
+**File:** `packages/csv-processor/src/csv_processor/source.py:345, 357` (unchanged in substance
+from prior review, line numbers shifted from 308/317 due to 03-07's added docstring/parameters —
+carried forward, not re-diagnosed; out of scope for 03-07)
 
-**Issue:** `header_detection.header_row_index` is typed `int | None`. The code relies on the
-earlier `if not header_detection.has_header: raise ...` check (line 253) to guarantee it is
-non-`None` by this point, but expresses that guarantee only via two `# type: ignore[operator]`
-comments rather than a runtime-checkable assertion. If a future refactor changes
-`has_header`'s semantics without updating both mypy-suppression sites, this would silently
-resurface as a `TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'` at runtime
-instead of a caught invariant violation.
+**Issue:** Unchanged — `header_detection.header_row_index` is relied on to be non-`None` at both
+sites via the earlier `has_header` check, expressed only via `# type: ignore[operator]` rather
+than a runtime-checkable assertion.
 
-**Fix:** Bind it once with an assertion mypy can also use as a type-narrowing signal:
+**Fix:** Unchanged from prior review — bind it once with `assert header_detection.header_row_index
+is not None` immediately after the `has_header` check, and reuse the narrowed local in both call
+sites instead of two separate `# type: ignore` comments.
 
-```python
-assert header_detection.header_row_index is not None  # has_header check above guarantees this
-for _ in range(header_detection.header_row_index + 1):
-    next(reader)
-...
-start_index=header_detection.header_row_index + 1,
-```
+#### IN-02: Module-level `csv.field_size_limit(1_048_576)` call mutates process-wide global state as an import side effect
 
-### IN-02: Module-level `csv.field_size_limit(1_048_576)` call mutates process-wide global state as an import side effect
+**File:** `packages/csv-processor/src/csv_processor/source.py:40` (unchanged from prior review —
+carried forward, not re-diagnosed; out of scope for 03-07)
 
-**File:** `packages/csv-processor/src/csv_processor/source.py:40`
+**Issue:** Unchanged — importing `csv_processor.source` for any reason still silently changes the
+process-wide `csv` module field-size limit for every other consumer in the same process.
 
-**Issue:** `csv.field_size_limit()` is a process-global setting, not scoped to this module or to
-`csv.reader` instances constructed here. Calling it unconditionally at import time means any
-other code in the same process (a test suite, another package, a notebook) that imports
-`csv_processor.source` for any reason silently has its own CSV field-size limit changed as a
-side effect, which can be surprising and hard to trace if a different limit is expected
-elsewhere in the same process. (Not part of this gap-closure plan's changes — pre-existing —
-flagged here since the file was read in full for this review.)
-
-**Fix:** Consider setting this inside `prepare_source()` (or `_open_raw_stream`) rather than at
-import time, or documenting explicitly in the module docstring that importing this module has
-this global side effect so future maintainers aren't surprised by it.
+**Fix:** Unchanged from prior review — move the call inside `prepare_source()`/`_open_raw_stream`,
+or document the import-time side effect explicitly in the module docstring.
 
 ---
 
-_Reviewed: 2026-08-29T13:59:20Z_
+_Reviewed: 2026-08-29T00:00:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
