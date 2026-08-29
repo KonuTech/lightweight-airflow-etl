@@ -1,4 +1,4 @@
-.PHONY: up down reset logs verify smoke-test generate fixtures fixtures-verify verify-phase2 verify-phase3 verify-phase4
+.PHONY: up down reset logs verify smoke-test generate fixtures fixtures-verify verify-phase2 verify-phase3 verify-phase4 verify-phase5
 
 up:               ## Start the full stack (Airflow + Oracle)
 	docker compose up -d --wait
@@ -47,6 +47,25 @@ verify-phase3:     ## Phase 3's own combined local gate: full unit suite coverin
 verify-phase4:     ## Phase 4's own combined local gate: unit + real-Oracle integration suites (requires `make up` first)
 	uv run pytest tests/unit/ -x
 	uv run pytest tests/integration/ -x
+
+# Phase 5 needs a running Airflow container to structurally validate the DAG --
+# requires `make up` first, same as verify-phase4. The DagBag structure check
+# uses BundleDagBag (not the plain airflow.models.DagBag) -- 05-01-SUMMARY.md's
+# own recorded deviation found that plain DagBag never adds the dags folder to
+# sys.path, so csv_ingest.py's `from _common import paths, reporting` fails
+# under it even though it imports cleanly under Airflow's real dag-processor.
+verify-phase5:     ## Phase 5's own combined local gate: unit suite + live DagBag structure check (requires `make up` first)
+	uv run pytest tests/unit/ -x
+	docker compose exec -T airflow-scheduler python -c "\
+from pathlib import Path; \
+from airflow.dag_processing.dagbag import BundleDagBag; \
+b = BundleDagBag(bundle_path=Path('/opt/airflow/dags'), dag_folder='/opt/airflow/dags'); \
+assert not b.import_errors, b.import_errors; \
+dag = b.dags['csv_ingest']; \
+required = {'load_config_task','wait_for_file','process_csv_task','load_results_task','report_result_task'}; \
+assert required.issubset(set(dag.task_ids)), dag.task_ids; \
+assert dag.get_task('wait_for_file').deferrable is True; \
+print('DAGBAG_OK')"
 
 # Later phases (2-6) add targets here (make test, make lint, make benchmark)
 # rather than inventing separate tooling -- this Makefile is the project-wide command
