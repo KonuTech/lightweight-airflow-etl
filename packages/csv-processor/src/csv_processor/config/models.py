@@ -99,6 +99,16 @@ class OracleTargetSpec(BaseModel):
     valid_table: str
     invalid_table: str
 
+    @model_validator(mode="after")
+    def _check_valid_and_invalid_tables_differ(self) -> OracleTargetSpec:
+        if self.valid_table.lower() == self.invalid_table.lower():
+            msg = (
+                f"oracle.valid_table and oracle.invalid_table must differ, "
+                f"both are {self.valid_table!r}"
+            )
+            raise ValueError(msg)
+        return self
+
 
 class ProcessingConfig(BaseModel):
     """Per-dataset processing knobs (D-13)."""
