@@ -107,7 +107,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **TEST-03**: An end-to-end test exercises the full path: HTTP request → DAG run → config →
       file detection → `csv_processor` → Oracle VALID/INVALID tables
 
-- [ ] **TEST-04**: A performance benchmark at ~100K rows compares row-by-row vs. chunked/bulk
+- [x] **TEST-04**: A performance benchmark at ~100K rows compares row-by-row vs. chunked/bulk
       processing and records rows/sec, peak memory, and Oracle load time
 
 ### CI & Docs
@@ -199,7 +199,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TEST-01 | Phase 3 | Complete |
 | TEST-02 | Phase 4 | Complete |
 | TEST-03 | Phase 6 | Complete |
-| TEST-04 | Phase 6 | Pending |
+| TEST-04 | Phase 6 | Complete |
 | CI-01 | Phase 6 | Pending |
 | DOC-01 | Phase 6 | Pending |
 
