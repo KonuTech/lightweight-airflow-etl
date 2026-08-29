@@ -1,0 +1,70 @@
+# D-11/D-12/D-13: regenerate README.md's live Executive Summary after every
+# merge to `main` -- re-runs a real ingestion, captures the deferred-wake
+# proof, queries Oracle for the customers-JOIN-orders business report
+# (scripts/regenerate_readme_summary.py), and commits the refreshed section
+# back using the default GITHUB_TOKEN.
+#
+# Trust boundary (T-06-07/T-06-08/T-06-09, threat_model in 06-04-PLAN.md):
+# `push: branches: [main]` only -- runs after a PR's required checks already
+# passed and merged, never on untrusted fork PR code. `permissions:
+# contents: write` is scoped to ONLY this job (never workflow-level) -- the
+# narrowest write scope this phase introduces, kept separate from
+# ci.yml's `lint-type-unit`/`oracle-e2e` jobs (which run on untrusted forks
+# and have no `permissions:` block at all).
+#
+# Default GITHUB_TOKEN, never a PAT (Pitfall 2): a commit authored by the
+# default GITHUB_TOKEN structurally does not trigger further push-based
+# workflow runs, which prevents D-13's feared infinite loop by construction.
+# `[skip ci]` is kept in the commit message anyway as defense-in-depth
+# documentation of intent (D-13's literal ask), even though it costs nothing
+# extra given the token-type mitigation above.
+name: readme-summary
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  regenerate-executive-summary:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      # docs/environment.md "First-Clone Setup Gaps" -- the exact two-file
+      # bootstrap every fresh clone needs before `docker compose up` (copied
+      # verbatim from ci.yml's oracle-e2e job, per 06-RESEARCH.md Pattern 4
+      # "reuses the same docker compose up + trigger pattern as Pattern 3" --
+      # never re-derived independently, so the two workflows never silently
+      # drift apart).
+      - name: Recreate first-clone-only local files
+        run: |
+          cp .env.example .env
+          mkdir -p docker/airflow
+          echo '{"admin": "admin"}' > docker/airflow/simple_auth_manager_passwords.json.generated
+
+      - name: Bring up the full stack
+        run: docker compose up -d --wait
+
+      - uses: astral-sh/setup-uv@v10.0.1
+      - run: uv sync --locked
+
+      # Runs a real ingestion for both datasets, captures the deferred-wake
+      # proof, queries Oracle, and splices the regenerated Executive Summary
+      # into README.md -- see scripts/regenerate_readme_summary.py's module
+      # docstring for the full step-by-step contract. Exits non-zero (and
+      # leaves README.md untouched) on any failure, so a broken regeneration
+      # fails this job loudly rather than silently leaving stale/misleading
+      # evidence in place.
+      - name: Regenerate README.md's Executive Summary
+        run: uv run python scripts/regenerate_readme_summary.py
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+      - uses: stefanzweifel/git-auto-commit-action@v7.2.0
+        with:
+          commit_message: "docs(readme): regenerate Executive Summary [skip ci]"
+          file_pattern: README.md
