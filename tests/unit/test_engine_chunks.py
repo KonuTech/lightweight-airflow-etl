@@ -6,15 +6,45 @@ Proves ``csv_processor.engine.process_chunks()`` wires ``source.py``,
 ``validate.py``, and ``normalize.py`` together correctly for the first
 time in this phase, against a real, loaded ``customers.json`` config --
 not just "no exception raised".
+
+03-05-PLAN.md Task 1 extends this file with two more proofs against the
+already-built ``process_chunks()``:
+
+- Chunk-boundary / cross-chunk ``row_number`` continuity: an ad hoc 12-row
+  fixture with ``chunk_size=5`` proves ``row_number`` counts sequentially
+  ``1..12`` across all 3 chunk boundaries, never resetting per chunk.
+- ENGINE-07's bounded-memory guarantee, empirically: reusing
+  ``tests/unit/test_corpus_bounded_memory.py``'s exact ``RLIMIT_AS``/
+  subprocess technique, but calling ``process_chunks()`` against the
+  corpus's real ~60 MiB fixture 28 instead of a raw line iterator.
 """
 
 from __future__ import annotations
 
 import datetime as dt
+import subprocess
+import sys
 from pathlib import Path
 
+import pytest
+
 from csv_processor.config.loader import load_config
+from csv_processor.config.models import (
+    ColumnSpec,
+    CsvDialectConfig,
+    DatasetConfig,
+    OracleTargetSpec,
+    ProcessingConfig,
+)
 from csv_processor.engine import process_chunks
+
+try:
+    import resource
+except ImportError:  # pragma: no cover - non-POSIX platform (e.g. Windows)
+    resource = None  # type: ignore[assignment]
+
+from tools.corpus.generators import generate_fixture, stream_for
+from tools.corpus.manifest import load_manifest_with_seed
 
 _CONFIGS_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
 _CUSTOMERS_PATH = _CONFIGS_DIR / "datasets" / "customers.json"
@@ -116,3 +146,203 @@ def test_convert_value_invalid_date_format() -> None:
 
     assert value is None
     assert error_code == "INVALID_DATE_FORMAT"
+
+
+# ---------------------------------------------------------------------------
+# 03-05-PLAN.md Task 1: chunk boundaries + cross-chunk row_number continuity
+# ---------------------------------------------------------------------------
+
+
+def test_chunk_boundaries_and_cross_chunk_row_number_continuity(tmp_path: Path) -> None:
+    """12 data rows at ``chunk_size=5`` -> exactly 3 chunks, sizes [5, 5, 2],
+    and ``row_number`` forms the literal sequence 1..12 across all 3 chunks
+    with no resets at a chunk boundary.
+
+    Every one of the 12 rows is made deliberately invalid (an empty
+    ``id``, which ``id``'s ``nullable=False`` rejects) so ``row_number`` --
+    only ever present on an invalid-row dict (D-09), never on a valid row's
+    typed dict -- is directly inspectable for the FULL sequence, not just a
+    sampled subset.
+    """
+    config = DatasetConfig.model_validate(
+        {
+            "dataset": "chunktest",
+            "file_pattern": "chunktest_*.csv",
+            "columns": [
+                {"name": "id", "type": "string", "nullable": False, "required": True},
+                {"name": "value", "type": "string", "nullable": True, "required": True},
+            ],
+            "oracle": {"valid_table": "chunktest_valid", "invalid_table": "chunktest_invalid"},
+            "processing": {"chunk_size": 5},
+        }
+    )
+
+    lines = ["id,value"] + [f",value{i}" for i in range(1, 13)]
+    csv_path = tmp_path / "chunktest.csv"
+    csv_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    chunks = list(process_chunks(csv_path, config))
+
+    assert len(chunks) == 3
+    chunk_sizes = [len(valid_rows) + len(invalid_rows) for valid_rows, invalid_rows in chunks]
+    assert chunk_sizes == [5, 5, 2]
+
+    row_numbers: list[object] = []
+    for valid_rows, invalid_rows in chunks:
+        assert valid_rows == []  # every row is deliberately invalid
+        assert all(row["error_code"] == "NULL_VIOLATION" for row in invalid_rows)
+        row_numbers.extend(row["row_number"] for row in invalid_rows)
+
+    assert row_numbers == list(range(1, 13))
+
+
+# ---------------------------------------------------------------------------
+# 03-05-PLAN.md Task 1: ENGINE-07 bounded-memory guarantee, proven
+# empirically against the corpus's real ~60 MiB fixture 28, reusing
+# test_corpus_bounded_memory.py's exact RLIMIT_AS/subprocess technique.
+# ---------------------------------------------------------------------------
+
+_MANIFEST_PATH = Path("tests/fixtures/corpus.yaml")
+_LARGE_FIXTURE_NAME = "28_large_streaming_profile"
+_LARGE_FIXTURE_PATH = Path("tests/fixtures/csv") / _LARGE_FIXTURE_NAME
+
+# 100 MiB (104,857,600 bytes) -- empirically determined this session, NOT
+# test_corpus_bounded_memory.py's own 24 MiB (25,165,824-byte) cap.
+#
+# That module's cap only has to bound a raw ``for line in handle`` iterator
+# over stdlib ``open()`` -- no third-party imports at all. This module's
+# streaming variant must additionally IMPORT the full detection stack
+# (pydantic/pydantic-core, clevercsv, charset-normalizer, chardet) before a
+# single row is ever read, and chardet's own bundled probability-model
+# tables alone need tens of MiB of address space just to decompress at
+# import time. Verified empirically this session via a standalone probe
+# script: caps of 24/41/52/62/73/90 MiB all die -- either inside
+# ``pydantic_core``'s compiled extension failing to ``mmap`` itself, or
+# inside ``chardet.models._decompress_tables`` -- entirely BEFORE
+# ``process_chunks()`` itself ever runs a single iteration; this is
+# import-time overhead, not a bounded-memory bug in ``process_chunks()``.
+# 100 MiB reliably succeeds for the streaming variant (3 repeated runs, this
+# session) while the buffering negative control reliably dies with a
+# ``MemoryError`` under the SAME 100 MiB cap -- so 104_857_600 is the
+# smallest empirically-verified cap that keeps this pair of tests
+# meaningful (streaming survives, buffering does not, same cap).
+_RLIMIT_AS_BYTES = 104_857_600
+
+# Both scripts set their own RLIMIT_AS cap *inside* the subprocess, exactly
+# like test_corpus_bounded_memory.py's own scripts -- setting it after the
+# interpreter has already started only bounds further growth, which is
+# what makes the streaming/buffering contrast meaningful here too.
+_STREAMING_SCRIPT = """
+import resource, sys
+resource.setrlimit(resource.RLIMIT_AS, (int(sys.argv[2]), int(sys.argv[2])))
+from pathlib import Path
+from csv_processor.config.models import (
+    ColumnSpec, CsvDialectConfig, DatasetConfig, OracleTargetSpec, ProcessingConfig,
+)
+from csv_processor.engine import process_chunks
+
+config = DatasetConfig(
+    dataset="large_streaming_profile",
+    file_pattern="large_streaming_profile_*.csv",
+    csv=CsvDialectConfig(),
+    columns=[
+        ColumnSpec(name="id", type="string", nullable=False, required=True),
+        ColumnSpec(name="payload", type="string", nullable=False, required=True),
+    ],
+    oracle=OracleTargetSpec(valid_table="large_valid", invalid_table="large_invalid"),
+    processing=ProcessingConfig(chunk_size=5000),
+)
+
+# This IS ENGINE-07's actual bounded-memory contract: only ever hold one
+# chunk's rows, discard immediately -- never append a chunk to a growing
+# list.
+total = valid = invalid = 0
+for valid_rows, invalid_rows in process_chunks(Path(sys.argv[1]), config):
+    total += len(valid_rows) + len(invalid_rows)
+    valid += len(valid_rows)
+    invalid += len(invalid_rows)
+
+assert total == 62915, total
+assert invalid == 0, invalid
+"""
+
+_BUFFERING_SCRIPT = """
+import resource, sys
+resource.setrlimit(resource.RLIMIT_AS, (int(sys.argv[2]), int(sys.argv[2])))
+from pathlib import Path
+from csv_processor.config.models import (
+    ColumnSpec, CsvDialectConfig, DatasetConfig, OracleTargetSpec, ProcessingConfig,
+)
+from csv_processor.engine import process_chunks
+
+config = DatasetConfig(
+    dataset="large_streaming_profile",
+    file_pattern="large_streaming_profile_*.csv",
+    csv=CsvDialectConfig(),
+    columns=[
+        ColumnSpec(name="id", type="string", nullable=False, required=True),
+        ColumnSpec(name="payload", type="string", nullable=False, required=True),
+    ],
+    oracle=OracleTargetSpec(valid_table="large_valid", invalid_table="large_invalid"),
+    processing=ProcessingConfig(chunk_size=5000),
+)
+
+# Negative control: accumulate every chunk's rows for the whole ~62,915-row
+# file before ever summing anything -- the exact anti-pattern ENGINE-07
+# forbids.
+list(process_chunks(Path(sys.argv[1]), config))
+"""
+
+
+@pytest.fixture(scope="module")
+def large_fixture_path() -> Path:
+    """Ensure the real 28_large_streaming_profile fixture is materialized.
+
+    Mirrors ``test_corpus_bounded_memory.py``'s own self-materializing
+    fixture -- ``tests/fixtures/csv/**`` is gitignored (only the manifest +
+    digest oracle are committed), so this generates the one fixture
+    directly from the committed manifest if a prior ``make fixtures`` run
+    hasn't already produced it.
+    """
+    if _LARGE_FIXTURE_PATH.is_file():
+        return _LARGE_FIXTURE_PATH
+
+    manifest = load_manifest_with_seed(_MANIFEST_PATH)
+    fixture = next(f for f in manifest.fixtures if f.name == _LARGE_FIXTURE_NAME)
+    rng = stream_for(manifest.master_seed, fixture.name)
+    content = generate_fixture(fixture, rng)
+    _LARGE_FIXTURE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _LARGE_FIXTURE_PATH.write_bytes(content)
+    return _LARGE_FIXTURE_PATH
+
+
+def test_process_chunks_streaming_survives_the_rlimit_as_cap(
+    large_fixture_path: Path,
+) -> None:
+    if resource is None:
+        pytest.skip("RLIMIT_AS bounded-memory test requires a POSIX resource module")
+
+    result = subprocess.run(
+        [sys.executable, "-c", _STREAMING_SCRIPT, str(large_fixture_path), str(_RLIMIT_AS_BYTES)],
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr.decode(errors="replace")
+
+
+def test_process_chunks_buffering_dies_under_the_identical_rlimit_as_cap(
+    large_fixture_path: Path,
+) -> None:
+    """Negative control: the same fixture, the same cap, but accumulating
+    every chunk into one growing list must fail (typically SIGKILL/137 or a
+    MemoryError-carrying non-zero exit) -- proving the cap is actually
+    constraining something, not vacuously passing either variant."""
+    if resource is None:
+        pytest.skip("RLIMIT_AS bounded-memory test requires a POSIX resource module")
+
+    result = subprocess.run(
+        [sys.executable, "-c", _BUFFERING_SCRIPT, str(large_fixture_path), str(_RLIMIT_AS_BYTES)],
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode != 0
