@@ -156,3 +156,12 @@ class DatasetConfig(BaseModel):
             )
             raise ValueError(msg)
         return self
+
+    @model_validator(mode="after")
+    def _check_column_names_are_unique(self) -> DatasetConfig:
+        names = [c.name for c in self.columns]
+        if len(names) != len(set(names)):
+            dupes = sorted({n for n in names if names.count(n) > 1})
+            msg = f"duplicate column name(s) in 'columns': {dupes}"
+            raise ValueError(msg)
+        return self
