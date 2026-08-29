@@ -78,6 +78,16 @@ class CsvDialectConfig(BaseModel):
     lineterminator: str = "\n"  # D-02
     decimal_separator: str = "."  # D-17 gap resolution, see 02-01-PLAN.md's planner_gap_note
 
+    @model_validator(mode="after")
+    def _check_escapechar_present_when_doublequote_disabled(self) -> CsvDialectConfig:
+        if not self.doublequote and not self.escapechar:
+            msg = (
+                "csv.doublequote is false but csv.escapechar is unset; a field "
+                "requiring escaping would crash at write/parse time with no way to represent it"
+            )
+            raise ValueError(msg)
+        return self
+
 
 class OracleTargetSpec(BaseModel):
     """Oracle target/invalid table names only -- never connection details or
