@@ -109,7 +109,7 @@ Plans:
   4. The `csv_processor` package can be imported and its full test suite run in an environment with no Airflow installed.
   5. The unit test suite covering config parsing, CSV parsing, type conversion, date validation, valid/invalid row handling, and chunked processing passes.
 
-**Plans**: 5/5 plans executed
+**Plans**: 6/6 plans executed (Plan 6 is a verification gap-closure plan for CR-01/CR-02)
 
 Plans:
 **Wave 1**
@@ -125,6 +125,10 @@ Plans:
 
 - [x] 03-04-PLAN.md — Compressed CSV input (magic-byte detection, streaming gzip/zip) wired into source.py + generate_csv.py --compress flag
 - [x] 03-05-PLAN.md — Chunk-boundary/row_number/bounded-memory proof, byte_level_hard fixture coverage (23-27), ENGINE-09 no-Airflow-import enforcement, `make verify-phase3`
+
+**Wave 4** *(gap closure — verification CR-01/CR-02, blocked on Wave 3 completion)*
+
+- [x] 03-06-PLAN.md — Gap closure: `ColumnSpec.required` now filters `source.py`'s MISSING_REQUIRED_COLUMN check (CR-01), `detect_header()`'s preamble/footer/repeated-header row indices now consumed by PASS 2's real read (CR-02), plus a small `detect/filename.py` `dataplat`-import cleanup (WR-01)
 
 ### Phase 4: Oracle Bulk Load, Idempotency & Engine Entrypoint
 
