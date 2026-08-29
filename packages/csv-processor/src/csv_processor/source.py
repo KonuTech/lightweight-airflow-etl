@@ -26,7 +26,7 @@ import csv
 import io
 from typing import TYPE_CHECKING, BinaryIO, Iterator, TextIO
 
-from csv_processor import detect, errors
+from csv_processor import compression, detect, errors
 from csv_processor.errors import StructuralValidationError
 
 if TYPE_CHECKING:
@@ -45,14 +45,30 @@ SAMPLE_BYTES = 65_536
 
 
 def _open_raw_stream(file_path: Path) -> BinaryIO:
-    """Open ``file_path``'s raw byte stream.
+    """Open ``file_path``'s raw byte stream, transparently decompressing if needed.
 
-    This task's own body -- no compression awareness yet. 03-04 replaces
-    only this function's implementation with magic-byte-sniffed gzip/zip
-    opening (D-29/D-30); every other function in this module keeps calling
-    this function by name, so nothing else changes when that lands.
+    Peeks the first 4 bytes to magic-byte-sniff a compression kind
+    (D-29/D-30) via ``compression.detect_compression``, then seeks back to
+    the start. An uncompressed file (``detect_compression`` returns
+    ``None``) returns this SAME already-open, seeked-back handle directly --
+    no second ``open()`` call, keeping the uncompressed path byte-for-byte
+    identical to every 03-03 test's already-passing behavior. A compressed
+    file closes this peek handle and delegates to
+    ``compression.open_compressed_stream`` for true streaming decompression
+    (D-29's "never extract-to-a-temp-file" requirement).
+
+    No other function in this module changes -- every caller keeps calling
+    this function by name, so wiring compression in here is the only change
+    03-04 makes to ``source.py``.
     """
-    return file_path.open("rb")
+    handle = file_path.open("rb")
+    magic = handle.read(4)
+    handle.seek(0)
+    detected = compression.detect_compression(magic)
+    if detected is None:
+        return handle
+    handle.close()
+    return compression.open_compressed_stream(file_path, compression=detected)
 
 
 class _LineCapturingTextStream:

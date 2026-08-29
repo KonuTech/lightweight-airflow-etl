@@ -18,12 +18,26 @@ from pathlib import Path
 import pytest
 
 from csv_processor.compression import detect_compression, open_compressed_stream
+from csv_processor.config.loader import load_config
+from csv_processor.engine import process_chunks
 from csv_processor.errors import FileInspectionError
 
 from tools.corpus.generators import generate_fixture, stream_for
 from tools.corpus.manifest import Fixture, load_manifest_with_seed
 
 _MANIFEST_PATH = Path("tests/fixtures/corpus.yaml")
+_CONFIGS_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
+_CUSTOMERS_PATH = _CONFIGS_DIR / "datasets" / "customers.json"
+_DEFAULTS_PATH = _CONFIGS_DIR / "defaults.json"
+
+# Same tracer content as test_engine_chunks.py's 03-03 Task 1 tracer -- one
+# valid, one invalid customers row -- gzipped here to prove process_chunks()
+# reads compressed input through the exact same entrypoint (03-04 Task 2).
+_TRACER_CSV = (
+    "customer_id,name,country,birth_date,event_ts,signup_country\n"
+    "CUST001,Alice Smith,DE,1990-01-01,2026-01-01T00:00:00+0000,FR\n"
+    ",Bob Jones,DE,1990-01-01,2026-01-01T00:00:00+0000,FR\n"
+)
 
 
 def _load_fixture(name: str) -> Fixture:
@@ -223,3 +237,26 @@ def test_decompression_bomb_ceiling_allows_a_payload_under_the_limit(tmp_path: P
         stream.close()
 
     assert content == payload
+
+
+# --- source.py's _open_raw_stream seam: process_chunks() through gzip -----
+
+
+def test_process_chunks_reads_gzip_wrapped_tracer_fixture_transparently(tmp_path: Path) -> None:
+    """A gzip-wrapped copy of 03-03 Task 1's tracer fixture, run through the
+    SAME process_chunks() entrypoint as the plain version, yields the
+    identical (valid_rows, invalid_rows) shape -- proving source.py's
+    _open_raw_stream seam (03-04 Task 2) makes compressed input transparent
+    to every function downstream of it."""
+    gz_path = tmp_path / "customers_20260829.csv.gz"
+    gz_path.write_bytes(gzip.compress(_TRACER_CSV.encode("utf-8")))
+    config = load_config(_CUSTOMERS_PATH, defaults_path=_DEFAULTS_PATH)
+
+    chunks = list(process_chunks(gz_path, config))
+
+    assert len(chunks) == 1
+    valid_rows, invalid_rows = chunks[0]
+    assert len(valid_rows) == 1
+    assert len(invalid_rows) == 1
+    assert valid_rows[0]["customer_id"] == "CUST001"
+    assert invalid_rows[0]["error_code"] == "NULL_VIOLATION"
