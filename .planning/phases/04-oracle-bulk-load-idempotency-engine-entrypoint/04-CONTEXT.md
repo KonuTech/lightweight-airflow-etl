@@ -55,21 +55,22 @@ already-settled design, logged here for the researcher/planner to act on without
 
 ### Carried forward from Phase 1 (`01-CONTEXT.md`)
 
-- **D-04** [= Phase 1 D-01]: `<DATASET>_VALID`/`<DATASET>_INVALID` table shapes are already DDL'd;
-  `_INVALID` carries original columns plus `ERROR_CODE`/`ERROR_MESSAGE`/`SOURCE_FILE`/`ROW_NUMBER`.
-- **D-05** [= Phase 1 D-04]: `INGESTION_METADATA` already has a `UNIQUE(dataset, checksum)`
+- **D-04 [informational]:** (= Phase 1 D-01) `<DATASET>_VALID`/`<DATASET>_INVALID` table shapes are
+  already DDL'd (Phase 1's work, not a decision this phase makes); `_INVALID` carries original
+  columns plus `ERROR_CODE`/`ERROR_MESSAGE`/`SOURCE_FILE`/`ROW_NUMBER`.
+- **D-05:** (= Phase 1 D-04) `INGESTION_METADATA` already has a `UNIQUE(dataset, checksum)`
   DB-level constraint — the idempotency guard this phase's application-level check (D-02) sits
   **in addition to**, not instead of.
-- **D-06** [= Phase 1 D-05]: `scripts/verify_environment.py`'s `oracledb`-based verification
+- **D-06:** (= Phase 1 D-05) `scripts/verify_environment.py`'s `oracledb`-based verification
   pattern is the precedent for this phase's own Oracle integration tests (TEST-02).
 
 ### Carried forward from Phase 3 (`03-CONTEXT.md`)
 
-- **D-07** [= Phase 3 D-11]: `process_chunks(file_path, config) -> Iterator[tuple[list[dict], list[dict]]]`
+- **D-07:** (= Phase 3 D-11) `process_chunks(file_path, config) -> Iterator[tuple[list[dict], list[dict]]]`
   is the exact generator this phase's loader consumes chunk-by-chunk — valid rows as
   `{col_name: typed_value, ...}`, invalid rows as `{col_name: original_string, ..., error_code,
   error_message, source_file, row_number}`.
-- **D-08** [= Phase 3 D-23]: A whole-file structural reject surfaces as a plain
+- **D-08:** (= Phase 3 D-23) A whole-file structural reject surfaces as a plain
   `StructuralValidationError` (or subclass) from the engine — `process()` is the function that
   catches it and translates it into `ProcessingResult(status=INVALID_FILE)`. `csv_processor` stays
   Airflow-agnostic; no exception type in this package may import Airflow.
