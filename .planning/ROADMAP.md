@@ -109,7 +109,7 @@ Plans:
   4. The `csv_processor` package can be imported and its full test suite run in an environment with no Airflow installed.
   5. The unit test suite covering config parsing, CSV parsing, type conversion, date validation, valid/invalid row handling, and chunked processing passes.
 
-**Plans**: 7/8 plans executed, Plan 8 pending execution (Plan 6 is a verification gap-closure plan for
+**Plans**: 8/8 plans executed, Plan 8 pending execution (Plan 6 is a verification gap-closure plan for
 CR-01/CR-02; Plan 7 is a code-review gap-closure plan for the CR-02 fix's own sample-boundary
 data-loss regression; Plan 8 is a code-review gap-closure plan for a genuinely malformed row silently
 dropped at the same sample-tail boundary CR-03/Plan 7 fixed for well-formed rows)
@@ -139,7 +139,7 @@ Plans:
 
 **Wave 6** *(gap closure — code review CR-04, blocked on Wave 5 completion)*
 
-- [ ] 03-08-PLAN.md — Gap closure: `_filtered_rows()`'s footer/repeated-header exclusion is now gated by a new `sample_covered_row_count` (provable sample-byte coverage), checked before 03-07's own content re-validation — closes a genuinely malformed row being silently dropped whenever it coincides with the sample's own arbitrary tail-scan position, without reopening G-03-2 or CR-03
+- [x] 03-08-PLAN.md — Gap closure: `_filtered_rows()`'s footer/repeated-header exclusion is now gated by a new `sample_covered_row_count` (provable sample-byte coverage), checked before 03-07's own content re-validation — closes a genuinely malformed row being silently dropped whenever it coincides with the sample's own arbitrary tail-scan position, without reopening G-03-2 or CR-03
 
 ### Phase 4: Oracle Bulk Load, Idempotency & Engine Entrypoint
 
@@ -192,7 +192,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|-----------------|--------|-----------|
 | 1. Environment & Oracle Foundation | 5/5 | Complete    | 2026-08-28 |
 | 2. Config Contract & CSV Generator | 5/5 | Complete    | 2026-08-29 |
-| 3. CSV Processing Engine | 7/8 | In Progress|  |
+| 3. CSV Processing Engine | 8/8 | In Progress|  |
 | 4. Oracle Bulk Load, Idempotency & Engine Entrypoint | 0/TBD | Not started | - |
 | 5. Airflow DAG Wiring & Deferrable File-Wait | 0/TBD | Not started | - |
 | 6. End-to-End Verification, Benchmark, CI & Docs | 0/TBD | Not started | - |

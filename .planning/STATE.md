@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 current_phase: 03
 current_phase_name: CSV Processing Engine
 status: executing
-stopped_at: "Completed 03-07-PLAN.md (gap closure: G-03-3, CR-03 sample-boundary data-loss regression)"
-last_updated: "2026-08-29T14:45:03.200Z"
+stopped_at: "Completed 03-08-PLAN.md (gap closure: CR-04, structural coverage-eligibility fix for sample-tail malformed-row loss)"
+last_updated: "2026-08-29T15:01:09.107Z"
 last_activity: 2026-08-29
 last_activity_desc: Phase 03 execution started
-state_head: be0bc6f7ebac448881e8e1ad62668125f4e3ce63
+state_head: 16ba8302b0bd74cd89ed421a15166726b607f734
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 18
-  completed_plans: 17
+  completed_plans: 18
   percent: 33
 ---
 
@@ -30,10 +30,10 @@ from a fresh `git clone`.
 
 ## Current Position
 
-Phase: 03 (CSV Processing Engine) — READY TO EXECUTE
-Plan: 2 of 7
-Status: Ready to execute
-Last activity: 2026-08-29 — Phase 03 execution started
+Phase: 03 (CSV Processing Engine) — EXECUTING
+Plan: 8 of 8 (all plans complete; gap-closure round for CR-04 done)
+Status: All plans executed; awaiting phase transition/review
+Last activity: 2026-08-29 — Completed 03-08-PLAN.md (gap closure: CR-04)
 
 Progress: [███░░░░░░░] 33%
 
@@ -79,6 +79,7 @@ Progress: [███░░░░░░░] 33%
 | Phase 03 P05 | 40min | 4 tasks | 5 files |
 | Phase 03 P06 | 25min | 3 tasks | 5 files |
 | Phase 03 P07 | 15min | 2 tasks | 2 files |
+| Phase 03 P08 | 20min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -140,6 +141,8 @@ Recent decisions affecting current work:
 - [Phase 03]: [Phase 03]: 03-06: Removed detect/filename.py's residual TYPE_CHECKING-guarded dataplat.config.model import (WR-01), replaced with a real local FilenameMaskConfig dataclass -- closes the last dataplat coupling this phase's Tier-A vendoring left behind
 - [Phase 03]: Phase 03 Plan 07: source.py's _filtered_rows() re-validates every sample-derived footer/repeated-header candidate exclusion against the REAL, full-file row content before excluding it (CR-03) -- closes 03-REVIEW.md's Critical silent-data-loss regression where a >64KiB file's sample-truncated boundary row was falsely excluded
 - [Phase 03]: Phase 03 Plan 07: Task 1's RED commit included Task 2's regression test alongside Task 1's own, since Task 2 (type=auto) has no independent RED/GREEN cycle and can only genuinely pass once Task 1's fix lands
+- [Phase 03]: [Phase 03]: 03-08: Closed gap CR-04 -- source.py's _filtered_rows() gates footer/repeated-header exclusion eligibility on provable sample byte/row coverage (sample_covered_row_count), checked before CR-03's content re-validation, so a genuinely malformed row at the sample's tail-adjacent position surfaces as WRONG_COLUMN_COUNT instead of vanishing
+- [Phase 03]: [Phase 03]: 03-08: Task 2's regression test uses BADROWONLYONEFIELD (no underscores) instead of the plan's literal BADROW_ONLY_ONE_FIELD -- the underscore variant tips detect/encoding.py's charset_normalizer/chardet corroboration to an unrelated undetermined-encoding LookupError at that exact sample-boundary byte position; logged to WINDOWS.md as an open deviation, out of scope for this plan
 
 ### Pending Todos
 
@@ -162,6 +165,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-08-29T14:18:02.102Z
-Stopped at: Completed 03-07-PLAN.md (gap closure: G-03-3, CR-03 sample-boundary data-loss regression)
+Last session: 2026-08-29T15:01:09.044Z
+Stopped at: Completed 03-08-PLAN.md (gap closure: CR-04, structural coverage-eligibility fix for sample-tail malformed-row loss)
 Resume file: None
