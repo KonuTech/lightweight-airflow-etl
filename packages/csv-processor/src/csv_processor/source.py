@@ -355,26 +355,36 @@ def prepare_source(
 
     contract_encoding_name = codecs.lookup(config.csv.encoding).name
     enc_detection = detect.detect_encoding(sample, contract_encoding=None)
-    detected_name = codecs.lookup(enc_detection.encoding).name
-    if (
-        enc_detection.source == "detected"
-        and detected_name != contract_encoding_name
-        # A sample containing only ASCII bytes decodes identically under
-        # any ASCII-superset codec (utf-8, latin-1, cp1252, ...) -- a
-        # "detected ascii" result is never a real conflict with a
-        # declared "utf-8" (or similar) encoding, only a genuine
-        # non-ASCII-vs-declared mismatch (e.g. detected cp1250) is.
-        and detected_name != "ascii"
-    ):
-        raise StructuralValidationError(
-            f"detected encoding {enc_detection.encoding!r} disagrees with "
-            f"config.json's declared encoding {config.csv.encoding!r}",
-            context={
-                "error_code": errors.DETECT_ENCODING_MISMATCH,
-                "detected": enc_detection.encoding,
-                "configured": config.csv.encoding,
-            },
-        )
+    # Bug fix (found live during Phase 5 Plan 02's orders-dataset trigger,
+    # matches the open WINDOWS.md deviation logged in Phase 3 Plan 08):
+    # detect_encoding() documents enc_detection.encoding as the literal
+    # string "undetermined" (not a real codec name) whenever
+    # source == "undetermined" -- codecs.lookup() must never be called on
+    # that sentinel, or it raises an uncaught LookupError. Only compute
+    # detected_name (and therefore only ever compare it) when
+    # source == "detected"; "undetermined" defers to config silently (D-28)
+    # exactly as the comment below already documented, but the prior code
+    # computed detected_name unconditionally, one line before that guard.
+    if enc_detection.source == "detected":
+        detected_name = codecs.lookup(enc_detection.encoding).name
+        if (
+            detected_name != contract_encoding_name
+            # A sample containing only ASCII bytes decodes identically under
+            # any ASCII-superset codec (utf-8, latin-1, cp1252, ...) -- a
+            # "detected ascii" result is never a real conflict with a
+            # declared "utf-8" (or similar) encoding, only a genuine
+            # non-ASCII-vs-declared mismatch (e.g. detected cp1250) is.
+            and detected_name != "ascii"
+        ):
+            raise StructuralValidationError(
+                f"detected encoding {enc_detection.encoding!r} disagrees with "
+                f"config.json's declared encoding {config.csv.encoding!r}",
+                context={
+                    "error_code": errors.DETECT_ENCODING_MISMATCH,
+                    "detected": enc_detection.encoding,
+                    "configured": config.csv.encoding,
+                },
+            )
     # source == "undetermined" defers to config silently (D-28); "bom" and
     # "contract" never conflict by construction.
 

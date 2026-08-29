@@ -43,10 +43,13 @@ if [ -z "${JWT_TOKEN}" ] || [ "${JWT_TOKEN}" = "null" ]; then
 fi
 
 echo "Triggering DAG run: POST ${AIRFLOW_TRIGGER_URL}" >&2
+# Airflow 3.3.1's TriggerDAGRunPostBody schema marks logical_date as a
+# required (but nullable) field -- passing an explicit null lets Airflow
+# auto-assign the trigger time, matching UI/CLI-triggered runs.
 DAG_RUN_ID=$(curl -s -X POST "${AIRFLOW_TRIGGER_URL}" \
   -H "Authorization: Bearer ${JWT_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d "{\"conf\": {\"dataset\": \"${DATASET}\", \"config_path\": \"${CONFIG_PATH}\"}}" \
+  -d "{\"conf\": {\"dataset\": \"${DATASET}\", \"config_path\": \"${CONFIG_PATH}\"}, \"logical_date\": null}" \
   | jq -r '.dag_run_id')
 
 if [ -z "${DAG_RUN_ID}" ] || [ "${DAG_RUN_ID}" = "null" ]; then
