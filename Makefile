@@ -1,4 +1,4 @@
-.PHONY: up down reset logs verify smoke-test generate fixtures fixtures-verify verify-phase2 verify-phase3
+.PHONY: up down reset logs verify smoke-test generate fixtures fixtures-verify verify-phase2 verify-phase3 verify-phase4
 
 up:               ## Start the full stack (Airflow + Oracle)
 	docker compose up -d --wait
@@ -39,6 +39,14 @@ verify-phase2:     ## Phase 2's own combined local gate: full unit suite + fixtu
 # fixtures-verify step.
 verify-phase3:     ## Phase 3's own combined local gate: full unit suite covering detect/compression/structural/type/nullability/chunking (TEST-01)
 	uv run pytest tests/unit/ -x
+
+# Phase 4 is this project's first phase-gate that genuinely needs a running Oracle
+# container (`make up` first) -- unlike verify-phase2/verify-phase3, which never touch
+# Oracle, verify-phase4 runs BOTH the unit suite and the real-Oracle integration suite
+# (LOAD-01..04, ENGINE-08, TEST-02).
+verify-phase4:     ## Phase 4's own combined local gate: unit + real-Oracle integration suites (requires `make up` first)
+	uv run pytest tests/unit/ -x
+	uv run pytest tests/integration/ -x
 
 # Later phases (2-6) add targets here (make test, make lint, make benchmark)
 # rather than inventing separate tooling -- this Makefile is the project-wide command

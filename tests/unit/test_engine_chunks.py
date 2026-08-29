@@ -206,27 +206,30 @@ _MANIFEST_PATH = Path("tests/fixtures/corpus.yaml")
 _LARGE_FIXTURE_NAME = "28_large_streaming_profile"
 _LARGE_FIXTURE_PATH = Path("tests/fixtures/csv") / _LARGE_FIXTURE_NAME
 
-# 100 MiB (104,857,600 bytes) -- empirically determined this session, NOT
-# test_corpus_bounded_memory.py's own 24 MiB (25,165,824-byte) cap.
+# 128 MiB (134,217,728 bytes) -- raised from this module's original 100 MiB
+# (104,857,600-byte) cap during 04-02-PLAN.md Task 3.
 #
-# That module's cap only has to bound a raw ``for line in handle`` iterator
-# over stdlib ``open()`` -- no third-party imports at all. This module's
-# streaming variant must additionally IMPORT the full detection stack
-# (pydantic/pydantic-core, clevercsv, charset-normalizer, chardet) before a
-# single row is ever read, and chardet's own bundled probability-model
-# tables alone need tens of MiB of address space just to decompress at
-# import time. Verified empirically this session via a standalone probe
-# script: caps of 24/41/52/62/73/90 MiB all die -- either inside
-# ``pydantic_core``'s compiled extension failing to ``mmap`` itself, or
-# inside ``chardet.models._decompress_tables`` -- entirely BEFORE
-# ``process_chunks()`` itself ever runs a single iteration; this is
-# import-time overhead, not a bounded-memory bug in ``process_chunks()``.
-# 100 MiB reliably succeeds for the streaming variant (3 repeated runs, this
-# session) while the buffering negative control reliably dies with a
-# ``MemoryError`` under the SAME 100 MiB cap -- so 104_857_600 is the
-# smallest empirically-verified cap that keeps this pair of tests
-# meaningful (streaming survives, buffering does not, same cap).
-_RLIMIT_AS_BYTES = 104_857_600
+# `from csv_processor.engine import process_chunks` now also transitively
+# imports `csv_processor.load` (Plan 04-01) -- and, through it, the
+# `oracledb` driver -- because engine.py's own `process()` (ENGINE-08, this
+# phase's public entrypoint) is a module-level function in the SAME file,
+# and `csv_processor.engine.load.get_connection` must be patchable as a
+# plain module attribute for tests/unit/test_engine_process.py's mocking to
+# work (a lazy, function-local `import oracledb`/`from csv_processor import
+# load` inside `process()` was tried and rejected for exactly this reason --
+# it breaks `patch("csv_processor.engine.load.get_connection")`). This adds
+# genuine import-time memory overhead on top of the pydantic/pydantic-core,
+# clevercsv, charset-normalizer, chardet stack the original 100 MiB comment
+# already accounted for -- verified empirically this session via a
+# standalone probe script: 100/110/120 MiB all die with a `MemoryError`
+# during the real file-streaming read (not at import time), while 125 MiB
+# is flaky (1 failure in 3 runs) and 128 MiB reliably succeeds (3/3 runs).
+# The buffering negative control below still reliably dies with a
+# ``MemoryError`` under this SAME 128 MiB cap (re-verified this session) --
+# so 134_217_728 is the smallest empirically-verified cap that keeps this
+# pair of tests meaningful (streaming survives, buffering does not, same
+# cap) now that `process_chunks()` and `process()` share one module.
+_RLIMIT_AS_BYTES = 134_217_728
 
 # Both scripts set their own RLIMIT_AS cap *inside* the subprocess, exactly
 # like test_corpus_bounded_memory.py's own scripts -- setting it after the
