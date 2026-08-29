@@ -310,10 +310,11 @@ bring-up (documented above), which any fresh `make up` will need to repeat per
 - Two environment-specific Airflow 3.3.1 REST API quirks (`logical_date` required-but-nullable on
   trigger, `interval` required-with-no-default on `wait`) are documented in `docs/airflow-dag.md`
   for Phase 6's own automated test to account for.
-- This worktree's docker-compose stack was left running (not torn down) so the plan's own
-  `verify-phase5`/live-trigger evidence remains reproducible for inspection; a fresh `make up`
-  from the merged main checkout will need the same one-time `simple_auth_manager_passwords.json.
-  generated` pre-seed + `data/` chown steps documented above and in `docs/environment.md`.
+- This worktree's docker-compose stack was brought back down (`docker compose down`, no `-v` --
+  Oracle/Postgres volumes untouched) after this plan's own live verification completed, freeing
+  the host ports it shared with the main checkout's stack; a fresh `make up` from the merged main
+  checkout will need the same one-time `simple_auth_manager_passwords.json.generated` pre-seed +
+  `data/` chown steps documented above and in `docs/environment.md`.
 
 ## Known Stubs
 
