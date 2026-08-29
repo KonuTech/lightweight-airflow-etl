@@ -378,6 +378,7 @@ dependencies = [
     { name = "chardet" },
     { name = "charset-normalizer" },
     { name = "clevercsv" },
+    { name = "oracledb" },
     { name = "pydantic" },
 ]
 
@@ -386,6 +387,7 @@ requires-dist = [
     { name = "chardet", specifier = "==7.6.0" },
     { name = "charset-normalizer", specifier = "==3.5.1" },
     { name = "clevercsv", specifier = "==0.8.5" },
+    { name = "oracledb", specifier = "==4.0.2" },
     { name = "pydantic", specifier = "==2.13.4" },
 ]
 

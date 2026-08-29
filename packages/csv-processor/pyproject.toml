@@ -21,4 +21,5 @@ dependencies = [
     "clevercsv==0.8.5",
     "charset-normalizer==3.5.1",
     "chardet==7.6.0",
+    "oracledb==4.0.2",
 ]

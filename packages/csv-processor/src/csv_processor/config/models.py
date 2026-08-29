@@ -16,11 +16,32 @@ repo's illustrative ``.yaml`` files -- see 02-RESEARCH.md's "Config Model Shape"
 
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 _COLUMN_TYPES = Literal["string", "integer", "decimal", "date", "timestamp", "boolean"]  # D-11
+
+# T-04-01: Oracle has no bind-parameter mechanism for SQL identifiers (table/column
+# names) -- only VALUES bind safely. Every dynamically-built INSERT statement in
+# this project (csv_processor.load) interpolates config-sourced identifiers
+# directly into the SQL string, so this allowlist is the only defense available
+# against a malformed/malicious identifier reaching a live SQL statement. Applied
+# at TWO layers: here (config-load time, below) and again in load.insert_rows()
+# immediately before building the INSERT string (defense-in-depth).
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
+
+
+def is_safe_identifier(name: str) -> bool:
+    """Return True iff ``name`` is safe to interpolate as a bare SQL identifier.
+
+    Matches ``^[A-Za-z_][A-Za-z0-9_]{0,127}$`` -- a leading letter/underscore,
+    then up to 127 more letters/digits/underscores. Rejects anything shaped
+    like a SQL-injection attempt (``"x; DROP TABLE"``), a numeric-leading name
+    (``"1bad"``), or a comment marker (``"good--comment"``).
+    """
+    return bool(_IDENTIFIER_RE.match(name))
 
 
 class ColumnSpec(BaseModel):
@@ -60,6 +81,19 @@ class ColumnSpec(BaseModel):
                 raise ValueError(msg)
         elif self.precision is not None or self.scale is not None:
             msg = f"column {self.name!r}: 'precision'/'scale' are only valid for type 'decimal'"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _check_name_is_safe_sql_identifier(self) -> ColumnSpec:
+        if not is_safe_identifier(self.name):
+            msg = (
+                f"column name {self.name!r} is not a safe SQL identifier "
+                f"(must match {_IDENTIFIER_RE.pattern!r}) -- Oracle has no "
+                "bind-parameter mechanism for identifiers, only values, and this "
+                "name is interpolated directly into a dynamically-built INSERT "
+                "statement (T-04-01)"
+            )
             raise ValueError(msg)
         return self
 
@@ -115,6 +149,23 @@ class OracleTargetSpec(BaseModel):
                 f"both are {self.valid_table!r}"
             )
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _check_table_names_are_safe_sql_identifiers(self) -> OracleTargetSpec:
+        for field_name, value in (
+            ("valid_table", self.valid_table),
+            ("invalid_table", self.invalid_table),
+        ):
+            if not is_safe_identifier(value):
+                msg = (
+                    f"oracle.{field_name} {value!r} is not a safe SQL identifier "
+                    f"(must match {_IDENTIFIER_RE.pattern!r}) -- Oracle has no "
+                    "bind-parameter mechanism for identifiers, only values, and this "
+                    "name is interpolated directly into a dynamically-built INSERT "
+                    "statement (T-04-01)"
+                )
+                raise ValueError(msg)
         return self
 
 
