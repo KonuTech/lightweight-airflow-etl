@@ -46,7 +46,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **ENGINE-07**: CSV reading and validation processes rows in configurable chunks (not one row
       at a time, not the whole file loaded into memory)
 
-- [ ] **ENGINE-08**: `process()` returns a structured `ProcessingResult` (total/valid/invalid rows,
+- [x] **ENGINE-08**: `process()` returns a structured `ProcessingResult` (total/valid/invalid rows,
       duration, status) with distinct status codes (SUCCESS / SUCCESS_WITH_INVALID_ROWS /
       FILE_NOT_FOUND / INVALID_FILE / CONFIGURATION_ERROR / DATABASE_ERROR / PROCESSING_ERROR)
 
@@ -182,7 +182,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENGINE-05 | Phase 3 | Complete |
 | ENGINE-06 | Phase 3 | Complete |
 | ENGINE-07 | Phase 3 | Complete |
-| ENGINE-08 | Phase 4 | Pending |
+| ENGINE-08 | Phase 4 | Complete |
 | ENGINE-09 | Phase 3 | Complete |
 | LOAD-01 | Phase 4 | Complete |
 | LOAD-02 | Phase 4 | Complete |

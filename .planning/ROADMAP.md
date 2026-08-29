@@ -166,7 +166,7 @@ Plans:
   3. Re-processing the same file (same filename + checksum + dataset) a second time does not duplicate rows in either target table.
   4. Calling `csv_processor.process(file_path, config)` returns a `ProcessingResult` carrying the correct status (SUCCESS / SUCCESS_WITH_INVALID_ROWS / FILE_NOT_FOUND / INVALID_FILE / CONFIGURATION_ERROR / DATABASE_ERROR / PROCESSING_ERROR) for each corresponding scenario.
 
-**Plans**: 1/2 plans executed
+**Plans**: 2/2 plans executed
 
 Plans:
 **Wave 1**
@@ -175,7 +175,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 04-02-PLAN.md — Tracer: `csv_processor.process()` entrypoint assembling Plan 04-01's loader with Phase 3's `process_chunks()`, proving all 7 `ProcessingResult` status codes (ENGINE-08, TEST-02)
+- [x] 04-02-PLAN.md — Tracer: `csv_processor.process()` entrypoint assembling Plan 04-01's loader with Phase 3's `process_chunks()`, proving all 7 `ProcessingResult` status codes (ENGINE-08, TEST-02)
 
 ### Phase 5: Airflow DAG Wiring & Deferrable File-Wait
 
@@ -215,7 +215,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Environment & Oracle Foundation | 5/5 | Complete    | 2026-08-28 |
 | 2. Config Contract & CSV Generator | 5/5 | Complete    | 2026-08-29 |
 | 3. CSV Processing Engine | 10/10 | Complete    | 2026-08-29 |
-| 4. Oracle Bulk Load, Idempotency & Engine Entrypoint | 1/2 | In Progress|  |
+| 4. Oracle Bulk Load, Idempotency & Engine Entrypoint | 2/2 | In Progress|  |
 | 5. Airflow DAG Wiring & Deferrable File-Wait | 0/TBD | Not started | - |
 | 6. End-to-End Verification, Benchmark, CI & Docs | 0/TBD | Not started | - |
 
