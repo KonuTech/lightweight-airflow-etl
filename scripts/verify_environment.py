@@ -82,6 +82,39 @@ def verify_columns(cursor: oracledb.Cursor, table: str, expected_columns: set[st
     assert not missing, f"Table {table} missing columns: {missing}"
 
 
+def verify_widened_invalid_columns(
+    cursor: oracledb.Cursor, table: str, data_columns: set[str]
+) -> None:
+    """Assert that every column in `data_columns` on `table` (owned by ADMIN) is a
+    nullable VARCHAR2, confirmed via ALL_TAB_COLUMNS (D-01/D-04/D-05, Plan 03-01).
+
+    Raises AssertionError naming any column that fails either the data_type == 'VARCHAR2'
+    or nullable == 'Y' check. Mirrors verify_columns()'s assert-and-name-the-culprit style;
+    reusable by Phase 4's Oracle integration tests exactly like verify_columns() already is.
+    """
+    column_binds = {f"col{i}": name for i, name in enumerate(data_columns)}
+    placeholders = ", ".join(f":{key}" for key in column_binds)
+    cursor.execute(
+        f"SELECT column_name, data_type, nullable FROM all_tab_columns "
+        f"WHERE table_name = :table_name AND owner = 'ADMIN' "
+        f"AND column_name IN ({placeholders})",
+        {"table_name": table, **column_binds},
+    )
+    rows = {row[0]: (row[1], row[2]) for row in cursor.fetchall()}
+    missing = data_columns - rows.keys()
+    assert not missing, f"Table {table} missing expected data columns: {missing}"
+
+    not_varchar2 = {
+        name for name, (data_type, _nullable) in rows.items() if data_type != "VARCHAR2"
+    }
+    assert not not_varchar2, f"Table {table} columns not VARCHAR2: {not_varchar2}"
+
+    not_nullable = {
+        name for name, (_data_type, nullable) in rows.items() if nullable != "Y"
+    }
+    assert not not_nullable, f"Table {table} columns not nullable: {not_nullable}"
+
+
 def verify_airflow_auth() -> None:
     """Assert that admin/admin authenticates against Airflow's REST API and returns
     a JWT (access_token field).
@@ -171,6 +204,30 @@ def main() -> int:
             expected_columns={"ORDER_ID", "CUSTOMER_ID", "AMOUNT", "INGESTED_AT"},
         )
         print("OK: CUSTOMERS_VALID and ORDERS_VALID have expected representative columns")
+
+        verify_widened_invalid_columns(
+            cursor,
+            table="CUSTOMERS_INVALID",
+            data_columns={
+                "CUSTOMER_ID",
+                "NAME",
+                "COUNTRY",
+                "BIRTH_DATE",
+                "EVENT_TS",
+                "SIGNUP_COUNTRY",
+            },
+        )
+        verify_widened_invalid_columns(
+            cursor,
+            table="ORDERS_INVALID",
+            data_columns={"ORDER_ID", "CUSTOMER_ID", "ORDER_DATE", "AMOUNT"},
+        )
+        verify_columns(cursor, table="CUSTOMERS_INVALID", expected_columns={"RAW_LINE"})
+        verify_columns(cursor, table="ORDERS_INVALID", expected_columns={"RAW_LINE"})
+        print(
+            "OK: CUSTOMERS_INVALID and ORDERS_INVALID data columns are nullable VARCHAR2 "
+            "at their original sizes, with a RAW_LINE column present"
+        )
     finally:
         conn.close()
 
