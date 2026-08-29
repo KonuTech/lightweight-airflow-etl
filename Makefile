@@ -1,4 +1,4 @@
-.PHONY: up down reset logs verify smoke-test generate fixtures fixtures-verify verify-phase2 verify-phase3 verify-phase4 verify-phase5
+.PHONY: up down reset logs verify smoke-test generate fixtures fixtures-verify verify-phase2 verify-phase3 verify-phase4 verify-phase5 benchmark lint verify-evidence verify-phase6
 
 up:               ## Start the full stack (Airflow + Oracle)
 	docker compose up -d --wait
@@ -72,3 +72,20 @@ print('DAGBAG_OK')"
 # entrypoint (D-14), not scoped to Phase 1 only. Wiring verify-phase2 (or its
 # successors) into GitHub Actions CI is explicitly Phase 6's job (CI-01), not
 # touched here.
+
+benchmark:         ## Naive-vs-bulk Oracle write comparison at ~100K rows (TEST-04, requires `make up` first)
+	uv run python -m benchmark.run_benchmark --mode bulk --rows 100000
+
+lint:              ## Whole-repo lint + format-check + type-check (D-14, CI-01's lint-type-unit job)
+	uv run ruff check . && uv run ruff format --check . && uv run mypy .
+
+verify-evidence:   ## Reproducible Oracle evidence capture: latest ingestion + customers x orders business report (D-09/D-10, requires `make up` first)
+	docker compose exec -T oracle sqlplus -s admin/admin@//localhost:1521/FREEPDB1 < scripts/verify_evidence.sql
+
+# Phase 6's own combined local gate -- mirrors verify-phase4/verify-phase5's exact
+# shape (unit suite first, then phase-specific live checks), requires `make up` first.
+verify-phase6:     ## Phase 6's own combined local gate: unit + e2e suites, lint, and evidence verification (requires `make up` first)
+	uv run pytest tests/unit/ -x
+	uv run pytest tests/e2e/ -x
+	$(MAKE) lint
+	$(MAKE) verify-evidence

@@ -44,8 +44,13 @@ for the full, un-truncated report and `make verify-evidence` to reproduce it.
 # Lightweight Airflow CSV→Oracle ETL Platform
 
 A small, local Airflow environment that detects, parses, validates, and bulk-loads generated CSV
-files into Oracle Database Free, orchestrated by a thin Airflow TaskFlow DAG. See `.planning/PROJECT.md`
-for the full project context and scope.
+files into Oracle Database Free, orchestrated by a thin Airflow TaskFlow DAG that delegates all
+parsing/validation/loading logic to a reusable, Airflow-agnostic Python CSV processing engine. It
+is the deliberately-small sibling of an existing production-shaped Airflow platform — see
+`.planning/PROJECT.md` for the full project context, requirements, and scope.
+
+This README is a short summary with links into the topic docs below — the actual command
+sequences live in `docs/*.md`, never duplicated here.
 
 ## Getting Started
 
@@ -72,8 +77,32 @@ For CPU/RAM/disk requirements, `.wslconfig` sizing, networking caveats, and firs
 troubleshooting (including a known permission gotcha on first boot), see
 **[docs/environment.md](docs/environment.md)**.
 
-This README covers only what Phase 1 (environment setup) delivers — the full clone-to-first-ingest
-walkthrough (DAG triggering, CSV processing, Oracle loading) is documented once those phases land.
+Once the stack is up, trigger a real HTTP-triggered ingestion end to end:
+
+```bash
+uv run python generator/generate_csv.py --dataset customers
+scripts/trigger_dag.sh customers configs/datasets/customers.json
+make verify-evidence
+```
+
+See **[docs/airflow-dag.md](docs/airflow-dag.md)** for the exact triggering/polling flow and
+live-verification evidence of this working. This is intentionally the full clone-to-first-ingest
+path in one place — the linked docs below cover every deeper detail (architecture, config
+contract, engine internals, Oracle schema, local dev workflow) without repeating the same
+commands twice.
+
+## Documentation
+
+| Doc | Covers |
+|---|---|
+| [docs/environment.md](docs/environment.md) | CPU/RAM/disk sizing, `.wslconfig`, networking caveats, first-boot troubleshooting |
+| [docs/architecture.md](docs/architecture.md) | The full HTTP→DAG→engine→Oracle path, the `airflow/dags/` vs. `packages/csv-processor/` boundary, the two-tier reference-repo reuse decision, and the `docker-compose.yml` topology |
+| [docs/configuration.md](docs/configuration.md) | The `config.json` contract shape, `defaults.json` merge semantics, and the two real dataset configs |
+| [docs/csv-engine.md](docs/csv-engine.md) | The detect→parse→validate→normalize→chunk sequence, the 7 closed `Status` values, and the bounded-memory chunking guarantee |
+| [docs/oracle.md](docs/oracle.md) | The 5-table schema, `_invalid` column widening, `INTERVAL` partitioning, `executemany()` bulk loading, and checksum-based idempotency |
+| [docs/airflow-dag.md](docs/airflow-dag.md) | The DAG's task graph, how to trigger it, and live-verification evidence (deferred-wake proof, both datasets) |
+| [docs/development.md](docs/development.md) | Local dev workflow (tests, reset, fixtures, lint/type-check), code layout, adding a new dataset, and CI/troubleshooting |
+| [docs/benchmark.md](docs/benchmark.md) | The naive-vs-bulk Oracle write comparison at ~100K rows, with per-chunk timing |
 
 ## Notes & Q&A
 
