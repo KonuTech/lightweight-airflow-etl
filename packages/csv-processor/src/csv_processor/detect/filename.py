@@ -50,12 +50,18 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import TYPE_CHECKING
 
 from csv_processor.errors import FilenameParsingError
 
-if TYPE_CHECKING:
-    from dataplat.config.model import FilenameMaskConfig
+
+@dataclass(frozen=True, slots=True)
+class FilenameMaskConfig:
+    """Local replacement for the removed ``dataplat.config.model`` import
+    (CLAUDE.md's never-import-``dataplat`` rule) -- carries only the single
+    ``.mask`` attribute ``parse_filename`` actually reads.
+    """
+
+    mask: str
 
 # The one pattern compile_mask scans a mask with, in a single left-to-right
 # pass (finditer). Alternatives, tried in order at each position:
