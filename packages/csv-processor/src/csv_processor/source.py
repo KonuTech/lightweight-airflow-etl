@@ -120,30 +120,68 @@ def _filtered_rows(
     *,
     start_index: int,
     excluded_indices: set[int],
+    header_field_count: int,
+    raw_header: tuple[str, ...],
 ) -> Iterator[tuple[list[str], str]]:
-    """Exclude detected footer/repeated-header rows from ``paired_rows`` (CR-02).
+    """Exclude only REAL footer/repeated-header rows from ``paired_rows`` (CR-03).
 
-    ``start_index`` matches ``detect_header()``'s own absolute-row-index
-    convention exactly, since PASS 2 reopens and re-reads the identical
-    file from byte 0 -- the first item ``paired_rows`` yields is physically
-    at ``start_index`` in the original file.
+    ``excluded_indices`` (footer rows + repeated-header rows) is computed by
+    ``detect_header()`` against only a bounded 64 KiB HEAD SAMPLE
+    (``SAMPLE_BYTES``) of the file, not the real file this generator reads.
+    On any file larger than that sample, the row whose bytes straddle the
+    sample's byte cutoff is truncated MID-ROW WITHIN THE SAMPLE ONLY --
+    ``detect_header()``'s footer-scoring walk sees a malformed field count
+    for that truncated copy and flags its absolute index as "footer" or
+    "repeated-header", even though the SAME row, read here in full from the
+    real file, is a perfectly well-formed data row (03-REVIEW.md's Critical
+    finding: a clean 6,000-row CSV losing exactly 1 row with zero error
+    surfaced anywhere). 03-06's original version (CR-02) trusted
+    ``excluded_indices`` membership alone and silently dropped that row.
+
+    This version re-validates every candidate exclusion against the REAL
+    row at that position before actually excluding it: a row is only
+    skipped when its real content independently fails the SAME criterion
+    ``detect_header()`` itself would apply here (this module never passes
+    ``footer_patterns``/``skip_footer_rows`` to ``detect_header()``, so the
+    only footer criterion in play is a field-count mismatch) -- real field
+    count differs from the header's own field count, or real values exactly
+    equal the header's own raw values (repeated-header). A row whose real
+    content actually matches the header proves the sample-derived flag was
+    a truncation artifact, not a genuine footer/repeat, and passes through
+    untouched. A genuine, small, within-sample preamble/footer/
+    repeated-header row (G-03-2) still independently fails this
+    re-validated criterion and is still excluded, unchanged.
 
     Args:
         paired_rows: The ``(row, raw_line)`` pairs remaining after PASS 2's
             preamble/header skip.
         start_index: The absolute row index of the first item in
-            ``paired_rows``.
-        excluded_indices: Absolute row indices (footer rows +
-            repeated-header rows, both already computed by
-            ``detect_header()``) to exclude from the returned iterator.
+            ``paired_rows``. Matches ``detect_header()``'s own
+            absolute-row-index convention exactly, since PASS 2 reopens and
+            re-reads the identical file from byte 0.
+        excluded_indices: Candidate absolute row indices (footer rows +
+            repeated-header rows, both computed by ``detect_header()``
+            against only the bounded sample) to re-validate before
+            excluding.
+        header_field_count: The real header's own field count
+            (``len(raw_header)``) -- a real row's field count differing
+            from this is the re-validated footer criterion.
+        raw_header: The real header's own field values -- a real row whose
+            values exactly equal this is the re-validated repeated-header
+            criterion.
 
     Yields:
-        Every ``(row, raw_line)`` pair whose absolute index is not in
-        ``excluded_indices``.
+        Every ``(row, raw_line)`` pair except those whose absolute index is
+        both in ``excluded_indices`` AND independently confirmed, against
+        its own real content, to be footer-shaped or a repeated header.
     """
-    for absolute_index, item in enumerate(paired_rows, start=start_index):
-        if absolute_index not in excluded_indices:
-            yield item
+    for absolute_index, (row, raw_line) in enumerate(paired_rows, start=start_index):
+        if absolute_index in excluded_indices:
+            is_footer_shaped = len(row) != header_field_count
+            is_repeated_header = tuple(row) == raw_header
+            if is_footer_shaped or is_repeated_header:
+                continue
+        yield row, raw_line
 
 
 def prepare_source(
@@ -302,20 +340,24 @@ def prepare_source(
         escapechar=config.csv.escapechar,
     )
     # CR-02: skip every preamble row AND the header row itself -- not just
-    # one hardcoded row -- then exclude any detected footer/repeated-header
-    # row from the real-read iterator. `header_row_index` is guaranteed
-    # non-None here (the `has_header` check above already raised otherwise).
+    # one hardcoded row. `header_row_index` is guaranteed non-None here (the
+    # `has_header` check above already raised otherwise).
     for _ in range(header_detection.header_row_index + 1):  # type: ignore[operator]
         next(reader)
     excluded_indices = set(header_detection.footer_row_indices) | set(
         header_detection.repeated_header_row_indices
     )
+    # CR-03: `excluded_indices` is only a sample-derived CANDIDATE set --
+    # `_filtered_rows()` re-validates each candidate against the real row at
+    # that position before excluding it (see its own docstring).
     return (
         text_stream,
         _filtered_rows(
             _rows_with_raw_line(reader, wrapper),
             start_index=header_detection.header_row_index + 1,  # type: ignore[operator]
             excluded_indices=excluded_indices,
+            header_field_count=len(header_detection.raw_header),
+            raw_header=header_detection.raw_header,
         ),
         header_detection.raw_header,
     )
