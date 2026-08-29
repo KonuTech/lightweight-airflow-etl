@@ -344,6 +344,21 @@ class TestFrozenInstanceEnforcement:
             processing.chunk_size = 2  # type: ignore[misc]
 
 
+# --- SQL identifier allowlist (T-04-01) -----------------------------------------
+
+
+class TestSqlIdentifierAllowlist:
+    def test_column_name_rejects_unsafe_identifier(self) -> None:
+        with pytest.raises(ValidationError):
+            ColumnSpec.model_validate(_minimal_column(name="1bad; DROP TABLE"))
+
+    def test_oracle_target_spec_rejects_unsafe_table_name(self) -> None:
+        with pytest.raises(ValidationError):
+            OracleTargetSpec.model_validate(
+                {"valid_table": "ok_valid", "invalid_table": "bad; --"}
+            )
+
+
 # --- credential-field-name mechanical scan (T-02-02, privacy prohibition) -------
 
 
