@@ -113,7 +113,7 @@ Requirements for initial release. Each maps to roadmap phases.
 ### CI & Docs
 
 - [x] **CI-01**: A minimal GitHub Actions pipeline runs lint, type check, and unit tests on every PR
-- [ ] **DOC-01**: README and `docs/` let a new developer go from `git clone` to a completed
+- [x] **DOC-01**: README and `docs/` let a new developer go from `git clone` to a completed
       HTTP-triggered ingestion with no undocumented manual steps
 
 ## v2 Requirements
@@ -201,7 +201,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TEST-03 | Phase 6 | Complete |
 | TEST-04 | Phase 6 | Complete |
 | CI-01 | Phase 6 | Complete |
-| DOC-01 | Phase 6 | Pending |
+| DOC-01 | Phase 6 | Complete |
 
 **Coverage:**
 

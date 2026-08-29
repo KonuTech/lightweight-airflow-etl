@@ -218,7 +218,7 @@ Plans:
   3. Opening a pull request automatically runs lint, type check, and unit tests via GitHub Actions, with pass/fail visible on the PR.
   4. Following only the README and `docs/`, a new developer can go from `git clone` to a completed HTTP-triggered ingestion with no undocumented manual steps.
 
-**Plans**: 3/5 plans executed
+**Plans**: 4/5 plans executed
 
 Plans:
 **Wave 1**
@@ -229,7 +229,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 06-04-PLAN.md — Oracle evidence script + business report + live-regenerated README Executive Summary + CI auto-commit job (TEST-03/DOC-01)
+- [x] 06-04-PLAN.md — Oracle evidence script + business report + live-regenerated README Executive Summary + CI auto-commit job (TEST-03/DOC-01)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -247,7 +247,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. CSV Processing Engine | 10/10 | Complete    | 2026-08-29 |
 | 4. Oracle Bulk Load, Idempotency & Engine Entrypoint | 3/3 | Complete    | 2026-08-29 |
 | 5. Airflow DAG Wiring & Deferrable File-Wait | 2/2 | Complete    | 2026-08-29 |
-| 6. End-to-End Verification, Benchmark, CI & Docs | 3/5 | In Progress|  |
+| 6. End-to-End Verification, Benchmark, CI & Docs | 4/5 | In Progress|  |
 
 ---
 *Roadmap created: 2026-08-28*
