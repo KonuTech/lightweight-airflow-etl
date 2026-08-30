@@ -7,18 +7,18 @@ Live evidence of a working HTTP-trigger -> Airflow DAG -> Oracle ETL pipeline
 (D-11/D-12) by `scripts/regenerate_readme_summary.py`, landed via a PR
 `.github/workflows/readme-summary.yml` opens and auto-merges once
 `lint-type-unit`/`oracle-e2e` genuinely pass against it (D-13). Last
-regenerated: `2026-08-30T13:27:02.733731+00:00`.
+regenerated: `2026-08-30T13:43:13.506192+00:00`.
 
 ### Latest ingestion per dataset
 
 | Dataset | File Name | Total Rows | Valid Rows | Invalid Rows | Status | Processed At (UTC) |
 |---|---|---|---|---|---|---|
-| customers | customers_20260830.csv | 15 | 12 | 3 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T13:26:48.517958 |
-| orders | orders_20260830.csv | 250 | 200 | 50 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T13:27:00.390136 |
+| customers | customers_20260830.csv | 15 | 12 | 3 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T13:42:58.494887 |
+| orders | orders_20260830.csv | 250 | 200 | 50 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T13:43:10.394249 |
 
 ### Deferred-wake proof
 
-`wait_for_file` reported Airflow task state `deferred` for the `customers` dataset (`dag_run_id=manual__2026-08-30T13:26:27.976383+00:00`) at `2026-08-30T13:26:36.416671+00:00` -- confirmed BEFORE the fixture file existed on disk, proving the non-blocking file-wait genuinely deferred rather than short-circuited against an already-present file.
+`wait_for_file` reported Airflow task state `deferred` for the `customers` dataset (`dag_run_id=manual__2026-08-30T13:42:45.823058+00:00`) at `2026-08-30T13:42:54.229374+00:00` -- confirmed BEFORE the fixture file existed on disk, proving the non-blocking file-wait genuinely deferred rather than short-circuited against an already-present file.
 
 ### Customers x Orders business report (top 10)
 
@@ -29,16 +29,16 @@ for the full, un-truncated report and `make verify-evidence` to reproduce it.
 
 | Region | Order Month | Order Count | Total Amount | Avg Amount |
 |---|---|---|---|---|
-| Canada | 2026-01 | 5 | 16135.05 | 3227.01 |
-| Canada | 2026-02 | 3 | 8752.39 | 2917.46 |
-| Canada | 2026-03 | 1 | 2597.36 | 2597.36 |
-| Kuwait | 2026-01 | 4 | 23725.61 | 5931.4 |
-| Kuwait | 2026-02 | 6 | 21164.34 | 3527.39 |
-| New Zealand | 2026-01 | 3 | 8304.97 | 2768.32 |
-| New Zealand | 2026-02 | 8 | 25207.78 | 3150.97 |
-| Saint Helena | 2026-01 | 10 | 39877.61 | 3987.76 |
-| Saint Helena | 2026-02 | 12 | 46355.78 | 3862.98 |
-| Saint Helena | 2026-03 | 1 | 4850.91 | 4850.91 |
+| Albania | 2026-01 | 5 | 36610.33 | 7322.07 |
+| Albania | 2026-02 | 6 | 26794.17 | 4465.7 |
+| Armenia | 2026-01 | 38 | 229024.8 | 6026.97 |
+| Armenia | 2026-02 | 33 | 187870.28 | 5693.04 |
+| Armenia | 2026-03 | 3 | 13639.91 | 4546.64 |
+| Falkland Islands (Malvinas) | 2026-01 | 1 | 626.12 | 626.12 |
+| Falkland Islands (Malvinas) | 2026-02 | 1 | 9499.97 | 9499.97 |
+| Japan | 2026-01 | 4 | 12714.79 | 3178.7 |
+| Japan | 2026-02 | 2 | 7240.03 | 3620.02 |
+| Kenya | 2026-01 | 7 | 27905.53 | 3986.5 |
 
 <!-- EXEC-SUMMARY:END -->
 
