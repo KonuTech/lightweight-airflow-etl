@@ -243,6 +243,28 @@ setup and any later schema change.
 | `orders.amount` precision narrowed (12→6 digits) and `order_date` confined to a narrow, recent window (supersedes nothing — first time these were tuned) so realistic row counts produce multiple orders per (region, month) business-report bucket | Every bucket held exactly one order at the old precision/date-range combination, so the report's Avg Amount always trivially equaled Total Amount — not a bug in the report SQL, a data-generation gap | ✓ Applied — post-Phase-7 |
 | `readme-summary.yml` opens a PR (via a repo-scoped `README_BOT_PAT`) and auto-merges it once `lint-type-unit`/`oracle-e2e` genuinely pass, rather than committing straight to `master` with the default `GITHUB_TOKEN` (supersedes the Phase 6 "default GITHUB_TOKEN, never a PAT" decision above) | Confirmed live: a GITHUB_TOKEN-authored push can never satisfy `master`'s required status checks (they only ever run via `pull_request`, and GitHub Actions app bypass actors are org-only — unavailable on this personal-account repo); a GITHUB_TOKEN-opened PR also can't trigger those checks itself (anti-recursion) or dispatch them via API (needs `workflow` scope). `README_BOT_PAT` is scoped to only this repo with only Contents/PR write, used solely to open this one PR — never to push `master` directly. D-13's actual concern (an infinite regenerate-commit loop) is closed by `[skip ci]` on the final squash-merge commit instead, a token-independent mechanism — confirmed live: the merge commit does not re-trigger `readme-summary.yml` | ✓ Applied — post-Phase-7 |
 
+## Current State
+
+**Shipped: v1.0 MVP** (2026-08-30) — 7 phases, 36 plans, 41/41 requirements validated. Full detail
+archived at `.planning/milestones/v1.0-ROADMAP.md`/`v1.0-REQUIREMENTS.md`; retrospective at
+`.planning/RETROSPECTIVE.md`.
+
+The platform does everything the Core Value promises today: an HTTP request triggers `csv_ingest`,
+which validates and bulk-loads CSV rows into Oracle with checksum-keyed idempotency; a second DAG
+(`report_ready`) and `scripts/regenerate_readme_summary.py` both prove a live, non-empty
+`customers ⋈ orders` business report; CI (`ci.yml` + `readme-summary.yml`, PR-based with a scoped
+PAT — see Key Decisions) enforces this on every change.
+
+### Next Milestone Goals
+
+No v2 scope has been chosen yet. Two seeds are on file for when a next milestone is planned:
+- `SEED-001-python-to-plsql-migration` — moving more data-processing logic from Python to Oracle
+  PL/SQL, dormant until a concrete performance/complexity trigger appears
+- The Airflow UI/logging robustness gap flagged in Phase 7's code review (`OraclePartitionReadyTrigger`
+  has no retry/backoff around its Oracle polling calls) remains open as a known gap, not yet scoped
+
+Run `/gsd-new-milestone` to start requirements gathering for v1.1/v2.0.
+
 ## Evolution
 
 This document evolves at phase transitions and milestone boundaries.
@@ -261,4 +283,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-30 after Phase 7 (Correlated Customer-Order Business Report) — roadmap complete, all 7 phases finished*
+*Last updated: 2026-08-30 after v1.0 milestone completion — all 7 phases shipped, archived, and tagged*
