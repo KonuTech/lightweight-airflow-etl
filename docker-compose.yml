@@ -7,6 +7,20 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__AUTH_MANAGER: airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager
     AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: "admin:admin"
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    # Phase 6's own newly-discovered gap (found via PR #1's real, genuinely-fresh
+    # oracle-e2e run -- no prior phase ever tested a truly cold metadata DB, only
+    # an already-long-warm one where a DAG had been manually unpaused once and
+    # stayed that way). Airflow's default `dags_are_paused_at_creation: True`
+    # means a DAG freshly discovered on a brand-new metadata DB starts PAUSED,
+    # and the scheduler will not schedule ANY task instances for a paused DAG's
+    # run -- not even a manually/API-triggered one. Confirmed live: the exact
+    # HTTP-triggered run this project's TEST-03/D-08 e2e proof depends on stayed
+    # at task state `None` forever until the DAG was unpaused; unpausing alone
+    # (no restart) let the same stuck run complete within seconds. Without this,
+    # DOC-01's "fresh clone to a completed HTTP-triggered ingestion, no
+    # undocumented manual steps" claim would silently break for every real new
+    # developer, not just CI.
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
     # Phase 5's own newly-discovered gap (found via a real live-triggered DAG run --
     # no prior phase ever actually executed a task, so this was never exercised before):
