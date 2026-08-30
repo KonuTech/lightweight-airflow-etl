@@ -138,10 +138,10 @@ against the already-`Complete` DOC-01/TEST-03 from Phase 6.
       (`make generate`, `scripts/regenerate_readme_summary.py`, the live e2e test's fixture setup)
       — `make generate` becomes a single combined invocation, not two independent per-dataset calls
 
-- [ ] **DB-01**: `customers_valid`/`orders_valid` (never the `_invalid` tables) gain a `PRIMARY KEY`
+- [x] **DB-01**: `customers_valid`/`orders_valid` (never the `_invalid` tables) gain a `PRIMARY KEY`
       on their own id column plus a plain index on `customer_id` for the JOIN workload
 
-- [ ] **DB-02**: An `orders_valid` `BEFORE INSERT` trigger validates the inserted `customer_id`
+- [x] **DB-02**: An `orders_valid` `BEFORE INSERT` trigger validates the inserted `customer_id`
       exists in `customers_valid` as a DB-level safety net on top of the Python-side correlation —
       a violation fails the whole insert batch, matching Oracle's default `executemany()` behavior
 
@@ -257,8 +257,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DATA-01 | Phase 7 | Complete |
 | DATA-02 | Phase 7 | Complete |
 | GEN-02 | Phase 7 | Complete |
-| DB-01 | Phase 7 | Planned |
-| DB-02 | Phase 7 | Planned |
+| DB-01 | Phase 7 | Complete |
+| DB-02 | Phase 7 | Complete |
 | TEST-05 | Phase 7 | Complete |
 | TEST-06 | Phase 7 | Planned |
 | INFRA-04 | Phase 7 | Complete |

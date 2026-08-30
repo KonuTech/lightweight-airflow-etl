@@ -266,7 +266,7 @@ loudly.
 **Requirements**: DATA-01, DATA-02, GEN-02, DB-01, DB-02, TEST-05, TEST-06, INFRA-04, DAG-06,
 BENCH-01, DOC-02 (new REQ IDs added to REQUIREMENTS.md during planning per D-30)
 **Depends on:** Phase 6
-**Plans:** 3/6 plans executed
+**Plans:** 4/6 plans executed
 
 Success Criteria (what must be TRUE):
 
@@ -304,7 +304,7 @@ Plans:
 **Wave 3** *(gap-free DDL wave — blocked on 07-02 and 07-03 completion, to avoid a `make reset`
 race against either plan's own live-stack verification)*
 
-- [ ] 07-04-PLAN.md — PK/index/trigger DDL on `customers_valid`/`orders_valid` only (gated by a
+- [x] 07-04-PLAN.md — PK/index/trigger DDL on `customers_valid`/`orders_valid` only (gated by a
   `checkpoint:decision` — one-way, requires `make reset`), live-Oracle proof of enforcement
 
 **Wave 4** *(blocked on 07-02 and 07-04 completion)*
