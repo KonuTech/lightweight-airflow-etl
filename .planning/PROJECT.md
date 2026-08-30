@@ -64,22 +64,26 @@ table, and reports back a clear processing summary — end to end, reproducibly,
       unmodified `csv_ingest` DAG completing successfully for both datasets against the real
       running stack (orders' `customer_id` FK to customers is NOT enforced here — see Out of
       Scope).
+- ✓ Automated end-to-end test (HTTP → DAG → CSV → Oracle → VALID/INVALID tables), permanent
+      regression coverage for TEST-03 — Phase 6. Live-verified on a genuinely fresh GitHub Actions
+      runner (PR #1), not just locally — see the `AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION` Key
+      Decision below for what a "warm dev stack only" verification habit had been masking.
+- ✓ Performance/benchmark at ~100K rows, row-by-row vs. chunked/bulk, all three required metrics
+      (rows/sec, peak memory, Oracle load time) — Phase 6. Chunked/bulk measured **182.85×** faster
+      (780,429 rows/sec vs. 4,268 rows/sec), committed with a per-chunk timing breakdown to
+      `docs/benchmark.md`.
+- ✓ GitHub Actions CI: lint, type check, unit tests on every PR (`lint-type-unit`) — Phase 6.
+      Scope deliberately widened beyond CI-01's literal text to a second required check,
+      `oracle-e2e`, that stands up the real Oracle+Airflow stack and runs the e2e suite on every
+      PR — see Key Decisions.
+- ✓ Docs: README (Executive Summary + clone-to-first-ingest walkthrough) + `docs/architecture.md`,
+      `configuration.md`, `csv-engine.md`, `oracle.md`, `development.md` — Phase 6, alongside
+      Phase 5's `docs/airflow-dag.md`/`docs/environment.md`.
 
 ### Active
 
-- [ ] Tests: unit (config/parsing/type-conversion/validation) and Oracle integration (real
-      container, not mocked) are done (Phases 1-5); the one **automated** end-to-end test
-      (HTTP → DAG → CSV → Oracle → VALID/INVALID tables) is still Phase 6's job (TEST-03) — Phase
-      5 proved the same path via manual/live verification, not an automated regression test
-- [ ] Performance/benchmark test at ~100K rows comparing row-by-row vs chunked/bulk approach,
-      recording rows/sec, peak memory, Oracle load time
-- [ ] Minimal GitHub Actions CI: lint, type check, unit tests, build/check
-- [ ] Minimal docs: README (clone-to-first-ingest walkthrough) + architecture/configuration/
-      csv-engine/oracle/development notes (`docs/airflow-dag.md` already exists from Phase 5,
-      documenting the DAG itself and its live-verification evidence — the remaining docs are
-      README + the other topic notes)
 - [ ] Everything run from WSL (Linux filesystem, not `/mnt/c/...`); Docker Desktop as the host —
-      ongoing environmental requirement, continuously true through Phase 5, not a one-time
+      ongoing environmental requirement, continuously true through Phase 6, not a one-time
       deliverable to check off
 
 ### Out of Scope
@@ -181,12 +185,17 @@ setup and any later schema change.
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
 | HTTP trigger via Airflow's own REST API, not a custom FastAPI wrapper | No extra service to build/maintain; Airflow's stable REST API already supports POST /dags/{dag_id}/dagRuns with a conf payload | ✓ Applied — Phase 5 |
-| Benchmark target ~100K rows | Matches spec's own §32 example; big enough to show bulk-loading wins, small enough to run fast on Oracle Free locally | — Pending |
+| Benchmark target ~100K rows | Matches spec's own §32 example; big enough to show bulk-loading wins, small enough to run fast on Oracle Free locally | ✓ Applied — Phase 6 |
 | Two datasets: customers + orders | Mirrors reference repo's real `csv_ingest_customers.py`/`csv_ingest_orders.py` and `configs/datasets/*.yaml` — proves config-drivenness generalizes without inventing a new domain | ✓ Applied — Phase 5 |
-| docker-compose is a project deliverable, not pre-provisioned | Spec §22-23, 47-50 and DoD §59.1-4 expect the environment to be stood up from this repo | — Pending |
-| Two-tier reuse of reference repo's csv-processor/dataplat (vendor pure detection files; reimplement pipeline-coupled normalize/validate logic) | Verified by reading actual imports — csv-processor's detect/* and compression.py have near-zero dataplat coupling (1-2 lines); dataplat's normalize/validate are fully wired into a custom streaming pipeline that has no place here | — Pending |
-| orders.customer_id → customers.customer_id FK not enforced | Referential integrity validation is explicitly out of scope per spec §28, even though the reference repo enforces it | — Pending |
-| Single `admin`/`admin` dev credential everywhere, via env vars | Lightweight local project, Vault is explicitly out of scope; a single consistent credential keeps setup simple without scattering ad hoc secrets across configs | — Pending |
+| docker-compose is a project deliverable, not pre-provisioned | Spec §22-23, 47-50 and DoD §59.1-4 expect the environment to be stood up from this repo | ✓ Applied — Phase 1 |
+| Two-tier reuse of reference repo's csv-processor/dataplat (vendor pure detection files; reimplement pipeline-coupled normalize/validate logic) | Verified by reading actual imports — csv-processor's detect/* and compression.py have near-zero dataplat coupling (1-2 lines); dataplat's normalize/validate are fully wired into a custom streaming pipeline that has no place here | ✓ Applied — Phase 3 |
+| orders.customer_id → customers.customer_id FK not enforced | Referential integrity validation is explicitly out of scope per spec §28, even though the reference repo enforces it | ✓ Applied — Phase 3 |
+| Single `admin`/`admin` dev credential everywhere, via env vars | Lightweight local project, Vault is explicitly out of scope; a single consistent credential keeps setup simple without scattering ad hoc secrets across configs | ✓ Applied — Phase 1 |
+| Genuine naive-loop Oracle baseline (single `cursor.execute()` per row), never `executemany(chunk_size=1)`, isolated in a new `benchmark/` dir | A `chunk_size=1` run still goes through `executemany()` and wouldn't reproduce the actual per-round-trip cost the benchmark exists to demonstrate; both write strategies share the identical `csv_processor.engine.process_chunks()` parse pass so only the write strategy varies | ✓ Applied — Phase 6 |
+| CI runs a real Oracle+Airflow `oracle-e2e` job as a second required check, beyond CI-01's literal "lint, type check, unit tests" | User-approved scope expansion (D-06) — GitHub Actions' native `services:` key can't express this project's `docker compose` dependency chain (no `depends_on` health-condition ordering, starts before checkout), so it reuses this project's own unmodified `docker-compose.yml` via `docker compose up -d --wait` as a CI step instead | ✓ Applied — Phase 6 |
+| README Executive Summary is live/regenerated via a CI auto-commit job on every merge to `main`/`master`, not a static snapshot | User explicitly chose this over a simpler "snapshot with a last-verified date" option; the `readme-summary.yml` job uses the default `GITHUB_TOKEN` (never a PAT) so its own commit structurally cannot re-trigger further Actions runs, with `[skip ci]` as defense-in-depth | ✓ Applied — Phase 6 |
+| `AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"` in `docker-compose.yml` | Discovered via PR #1's first genuinely-fresh CI run: Airflow's default (`true`) pauses `csv_ingest` the instant it's first parsed on a brand-new metadata DB, and the scheduler schedules zero task instances for a paused DAG's run — even a manually/API-triggered one. Every prior manual verification (Phase 5's own live evidence, and every earlier attempt this session) ran against an already-long-warm stack whose DAG had been unpaused once and stayed that way, masking a real gap that would have silently broken DOC-01's "fresh clone to a completed HTTP-triggered ingestion, no undocumented manual steps" promise for every actual new developer, not just CI. Confirmed live: unpausing mid-hang (no restart) let an already-stuck run complete within seconds. | ✓ Applied — Phase 6 |
+| CI bootstrap must `chmod 666` the auth-manager passwords file and pre-create `data/customers`/`data/orders` before `docker compose up` | Both are Docker-bind-mount-ownership gotchas invisible on a long-warm local dev machine (files/dirs already had permissive ownership from earlier manual fixes) but deterministic on a genuinely fresh CI checkout: a plain `echo >` creates the passwords file at the container-unreadable default 644, and `./data` gets auto-created as `root` by Docker Engine on first bind-mount use, blocking the non-root CI runner from `mkdir`-ing a dataset subdirectory inside it | ✓ Applied — Phase 6 |
 | Every docker-compose service must declare an explicit `healthcheck:` if anything depends on its readiness | UAT (Phase 1) found `docker compose up --wait` reports a service Healthy the instant its process starts when no `healthcheck:` exists — not when it's actually ready. Airflow's `apiserver` had none; caused a real, reproducible cold-start race (~12s false-positive window) against `/auth/token`. Fixed via gap-closure Plan 01-05. | ✓ Applied — Phase 1 |
 | `apache-airflow-providers-oracle` added mid-Phase-1 (not in the original plan) | Discovered that `airflow connections test` needs a registered Hook class for `conn_type=oracle`, which only ships in this provider package — the raw `oracledb` driver alone isn't enough for Airflow's own connection-testing UI/CLI | ✓ Applied — Phase 1 |
 | Footer-row detection requires an explicit per-dataset opt-in (`CsvDialectConfig.has_footer: bool = False`); never runs by heuristic alone | A 5-round gap-closure chain in Phase 3 (plans 03-06 through 03-10) found that heuristic footer/preamble detection running unconditionally on every dataset silently drops a genuinely malformed last row of ANY file — reproduced concretely via this project's own generator (`customers.json`, seed=11: 50 rows generated, only 49 accounted for). Root-caused to the heuristic having no way to distinguish "genuine footer" from "corrupted last row" without a config signal. | ✓ Applied — Phase 3 |
@@ -214,4 +223,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-29 after Phase 5 (Airflow DAG Wiring & Deferrable File-Wait)*
+*Last updated: 2026-08-30 after Phase 6 (End-to-End Verification, Benchmark, CI & Docs) — milestone complete, all 6 phases finished*
