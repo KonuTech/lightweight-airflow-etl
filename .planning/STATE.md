@@ -215,11 +215,6 @@ None yet.
   unrelated to Phase 7's correlation fix. Deferred, needs its own investigation (e.g. `/gsd-debug`)
   after Phase 7.
 
-- Future direction (not a Phase 7 task): consider moving more data-processing logic from Python to
-  Oracle PL/SQL — raised during Phase 7 discuss-phase (2026-08-30), explicitly deferred as its own
-  architectural decision needing dedicated research, since it would reverse this project's current
-  shipped "thin Python engine" design (PROJECT.md). See `07-CONTEXT.md`'s Deferred Ideas.
-
 (Phase 4's `setinputsizes()`/`batcherrors` question and Phase 5's `FileSensor(deferrable=True)`
 sufficiency question — both flagged in research/SUMMARY.md "Research Flags" — were resolved during
 their respective phases' research/execution.)
