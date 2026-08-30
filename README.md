@@ -3,21 +3,22 @@
 # Executive Summary
 
 Live evidence of a working HTTP-trigger -> Airflow DAG -> Oracle ETL pipeline
-(TEST-03/DOC-01), regenerated automatically after every merge to `master`
-(D-11/D-12) by `scripts/regenerate_readme_summary.py` via
-`.github/workflows/readme-summary.yml`, using the default `GITHUB_TOKEN`
-(never a PAT -- D-13). Last regenerated: `2026-08-30T13:17:48.516472+00:00`.
+(TEST-03/DOC-01), regenerated automatically after every push to `master`
+(D-11/D-12) by `scripts/regenerate_readme_summary.py`, landed via a PR
+`.github/workflows/readme-summary.yml` opens and auto-merges once
+`lint-type-unit`/`oracle-e2e` genuinely pass against it (D-13). Last
+regenerated: `2026-08-30T13:27:02.733731+00:00`.
 
 ### Latest ingestion per dataset
 
 | Dataset | File Name | Total Rows | Valid Rows | Invalid Rows | Status | Processed At (UTC) |
 |---|---|---|---|---|---|---|
-| customers | customers_20260830.csv | 15 | 12 | 3 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T13:17:32.233416 |
-| orders | orders_20260830.csv | 250 | 200 | 50 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T13:17:45.247777 |
+| customers | customers_20260830.csv | 15 | 12 | 3 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T13:26:48.517958 |
+| orders | orders_20260830.csv | 250 | 200 | 50 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T13:27:00.390136 |
 
 ### Deferred-wake proof
 
-`wait_for_file` reported Airflow task state `deferred` for the `customers` dataset (`dag_run_id=manual__2026-08-30T13:17:18.983341+00:00`) at `2026-08-30T13:17:28.185459+00:00` -- confirmed BEFORE the fixture file existed on disk, proving the non-blocking file-wait genuinely deferred rather than short-circuited against an already-present file.
+`wait_for_file` reported Airflow task state `deferred` for the `customers` dataset (`dag_run_id=manual__2026-08-30T13:26:27.976383+00:00`) at `2026-08-30T13:26:36.416671+00:00` -- confirmed BEFORE the fixture file existed on disk, proving the non-blocking file-wait genuinely deferred rather than short-circuited against an already-present file.
 
 ### Customers x Orders business report (top 10)
 
@@ -28,16 +29,16 @@ for the full, un-truncated report and `make verify-evidence` to reproduce it.
 
 | Region | Order Month | Order Count | Total Amount | Avg Amount |
 |---|---|---|---|---|
-| Benin | 2026-01 | 27 | 146649.12 | 5431.45 |
-| Benin | 2026-02 | 27 | 135883.17 | 5032.71 |
-| Benin | 2026-03 | 2 | 5821.8 | 2910.9 |
-| Chad | 2026-01 | 4 | 13317.25 | 3329.31 |
-| Chad | 2026-02 | 3 | 10889.27 | 3629.76 |
-| Dominica | 2026-01 | 2 | 17822.04 | 8911.02 |
-| Dominica | 2026-02 | 1 | 8960.46 | 8960.46 |
-| Gibraltar | 2026-01 | 13 | 61247.05 | 4711.31 |
-| Gibraltar | 2026-02 | 11 | 61377.8 | 5579.8 |
-| Guam | 2026-01 | 5 | 24793.95 | 4958.79 |
+| Canada | 2026-01 | 5 | 16135.05 | 3227.01 |
+| Canada | 2026-02 | 3 | 8752.39 | 2917.46 |
+| Canada | 2026-03 | 1 | 2597.36 | 2597.36 |
+| Kuwait | 2026-01 | 4 | 23725.61 | 5931.4 |
+| Kuwait | 2026-02 | 6 | 21164.34 | 3527.39 |
+| New Zealand | 2026-01 | 3 | 8304.97 | 2768.32 |
+| New Zealand | 2026-02 | 8 | 25207.78 | 3150.97 |
+| Saint Helena | 2026-01 | 10 | 39877.61 | 3987.76 |
+| Saint Helena | 2026-02 | 12 | 46355.78 | 3862.98 |
+| Saint Helena | 2026-03 | 1 | 4850.91 | 4850.91 |
 
 <!-- EXEC-SUMMARY:END -->
 
