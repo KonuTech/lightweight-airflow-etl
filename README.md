@@ -270,6 +270,54 @@ path in one place — the linked docs below cover every deeper detail (architect
 contract, engine internals, Oracle schema, local dev workflow) without repeating the same
 commands twice.
 
+## Querying Oracle Directly
+
+With the stack up (`make up`), connect to Oracle from your host via `sqlplus` inside the
+running container — no local Oracle client install needed:
+
+```bash
+docker compose exec oracle sqlplus admin/admin@//localhost:1521/FREEPDB1
+```
+
+This drops you into an interactive `SQL>` prompt (`exit` or `quit` to leave). From there:
+
+```sql
+-- List every table in the schema
+SELECT table_name FROM user_tables ORDER BY table_name;
+
+-- Inspect a table's columns
+DESCRIBE customers_valid;
+
+-- Row counts across the pipeline's tables
+SELECT 'customers_valid' AS table_name, COUNT(*) AS row_count FROM customers_valid
+UNION ALL SELECT 'customers_invalid', COUNT(*) FROM customers_invalid
+UNION ALL SELECT 'orders_valid', COUNT(*) FROM orders_valid
+UNION ALL SELECT 'orders_invalid', COUNT(*) FROM orders_invalid
+UNION ALL SELECT 'ingestion_metadata', COUNT(*) FROM ingestion_metadata;
+
+-- The customers ⋈ orders business report itself (see scripts/verify_evidence.sql
+-- for the full, canonical version of this query)
+SELECT c.country AS region, TRUNC(o.order_date, 'MM') AS order_month,
+       COUNT(*) AS order_count, SUM(o.amount) AS total_amount, ROUND(AVG(o.amount), 2) AS avg_amount
+FROM customers_valid c JOIN orders_valid o ON o.customer_id = c.customer_id
+GROUP BY c.country, TRUNC(o.order_date, 'MM')
+ORDER BY region, order_month;
+```
+
+For one-shot, non-interactive queries (e.g. from a script), pipe SQL in via stdin instead —
+this is exactly what `make verify-evidence` and CI do under the hood:
+
+```bash
+docker compose exec -T oracle sqlplus -s admin/admin@//localhost:1521/FREEPDB1 <<'SQL'
+SELECT table_name FROM user_tables ORDER BY table_name;
+SQL
+```
+
+`-T` disables pseudo-TTY allocation (required when piping stdin non-interactively) and `-s`
+runs `sqlplus` in silent mode (suppresses the banner/prompt clutter, output only). See
+**[docs/oracle.md](docs/oracle.md)** for the full 5-table schema, the correlation
+constraints (PK/index/trigger), partitioning, and idempotency details behind these tables.
+
 ## Documentation
 
 | Doc | Covers |
