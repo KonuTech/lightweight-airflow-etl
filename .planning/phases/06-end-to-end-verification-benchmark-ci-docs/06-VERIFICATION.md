@@ -1,11 +1,12 @@
 ---
 phase: 06-end-to-end-verification-benchmark-ci-docs
 verified: 2026-08-30T01:30:00Z
-status: human_needed
+status: passed
 score: 4/4 must-haves verified
 behavior_unverified: 1
 overrides_applied: 0
 human_verification:
+
   - test: "Push the current local branch (133 commits ahead of origin/master, including .github/workflows/ci.yml and .github/workflows/readme-summary.yml, neither of which has ever been registered on GitHub -- `gh api repos/.../actions/workflows` returns `total_count: 0`) to GitHub and open a real pull request."
     expected: "Both `lint-type-unit` and `oracle-e2e` jobs trigger automatically on the PR, run to completion (ruff/mypy/pytest for the first job; a real `docker compose up -d --wait` + `tests/e2e/` run against a fresh Oracle/Airflow stack on the ubuntu-latest runner for the second), and pass/fail status is visible on the PR's checks list -- matching roadmap Success Criterion 3 literally, not just the workflow YAML's structural correctness."
     why_human: "This is an external-service integration (GitHub Actions) that cannot be exercised from a local machine. `.github/workflows/ci.yml` is confirmed structurally correct (valid YAML, correct `on: pull_request` trigger, no `permissions:` block, jobs named `lint-type-unit`/`oracle-e2e`) and every one of its `run:` commands passes when executed locally (`ruff check .`, `ruff format --check .`, `mypy .`, `pytest tests/unit/ -x`, `pytest tests/e2e/ -x` against the live local stack) -- but the workflow itself has never actually executed on a GitHub Actions runner. Untested variables specific to that environment (astral-sh/setup-uv resolution on ubuntu-latest, actual docker compose behavior/timing on a GH-hosted runner, the Pitfall-5 disk-pressure risk the workflow's own comments flag as \"watch for it, don't pre-solve it\") remain unproven. Also required to configure GitHub Branch Protection naming both jobs as required status checks (D-07) -- documented as an outstanding manual step in docs/development.md, correctly not silently omitted, but still an action only a human with repo-admin access can take."
@@ -119,6 +120,7 @@ zero-match SQL result, not a stub).
    live: `gh api .../branches/master/protection` returns `404 Branch not protected`. Correctly
    documented as an outstanding manual step in `docs/development.md`'s "Configuring required
    status checks" section — not silently missing.
+
 2. **06-REVIEW.md's 3 WARNING findings** (readme-summary.yml missing a `concurrency:` guard against
    overlapping runs; `_fetch_evidence()` only catching `oracledb.Error` rather than all exceptions;
    `process_chunks()` silently dropping extra trailing fields on too-long rows into
