@@ -6,18 +6,18 @@ Live evidence of a working HTTP-trigger -> Airflow DAG -> Oracle ETL pipeline
 (TEST-03/DOC-01), regenerated automatically after every merge to `main`
 (D-11/D-12) by `scripts/regenerate_readme_summary.py` via
 `.github/workflows/readme-summary.yml`, using the default `GITHUB_TOKEN`
-(never a PAT -- D-13). Last regenerated: `2026-08-30T10:49:16.066085+00:00`.
+(never a PAT -- D-13). Last regenerated: `2026-08-30T11:58:32.467375+00:00`.
 
 ### Latest ingestion per dataset
 
 | Dataset | File Name | Total Rows | Valid Rows | Invalid Rows | Status | Processed At (UTC) |
 |---|---|---|---|---|---|---|
-| customers | customers_20260830.csv | 25 | 20 | 5 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T10:49:02.255956 |
-| orders | orders_20260830.csv | 25 | 20 | 5 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T10:49:12.939838 |
+| customers | customers_20260830.csv | 25 | 20 | 5 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T11:58:19.109488 |
+| orders | orders_20260830.csv | 25 | 20 | 5 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T11:58:28.754807 |
 
 ### Deferred-wake proof
 
-`wait_for_file` reported Airflow task state `deferred` for the `customers` dataset (`dag_run_id=manual__2026-08-30T10:48:56.226709+00:00`) at `2026-08-30T10:48:58.846668+00:00` -- confirmed BEFORE the fixture file existed on disk, proving the non-blocking file-wait genuinely deferred rather than short-circuited against an already-present file.
+`wait_for_file` reported Airflow task state `deferred` for the `customers` dataset (`dag_run_id=manual__2026-08-30T11:58:11.469420+00:00`) at `2026-08-30T11:58:15.534831+00:00` -- confirmed BEFORE the fixture file existed on disk, proving the non-blocking file-wait genuinely deferred rather than short-circuited against an already-present file.
 
 ### Customers x Orders business report (top 10)
 
@@ -28,16 +28,16 @@ for the full, un-truncated report and `make verify-evidence` to reproduce it.
 
 | Region | Order Month | Order Count | Total Amount | Avg Amount |
 |---|---|---|---|---|
-| Belarus | 2004-02 | 1 | 5432347131.23 | 5432347131.23 |
-| Belarus | 2012-01 | 1 | 6719676318.48 | 6719676318.48 |
-| Belarus | 2018-09 | 1 | 6821522424.84 | 6821522424.84 |
-| Belarus | 2019-08 | 1 | 4722315071.09 | 4722315071.09 |
-| Benin | 2003-01 | 1 | 7313987316.24 | 7313987316.24 |
-| Benin | 2009-10 | 1 | 2541498855.95 | 2541498855.95 |
-| Bhutan | 2009-06 | 1 | 9459952699.26 | 9459952699.26 |
-| Cayman Islands | 2001-08 | 1 | 4551904473.9 | 4551904473.9 |
-| Cayman Islands | 2016-09 | 1 | 6072592984.56 | 6072592984.56 |
-| Fiji | 2020-12 | 1 | 7401766266.87 | 7401766266.87 |
+| Andorra | 2002-10 | 1 | 8045836528.99 | 8045836528.99 |
+| Andorra | 2019-04 | 1 | 4411186453.86 | 4411186453.86 |
+| Austria | 2009-05 | 1 | 3226527319.56 | 3226527319.56 |
+| Bahamas | 2010-03 | 1 | 6631899609.86 | 6631899609.86 |
+| Bangladesh | 2010-03 | 1 | 1162434943.39 | 1162434943.39 |
+| Bangladesh | 2013-10 | 1 | 777453145.75 | 777453145.75 |
+| Barbados | 2016-12 | 1 | 2409084010.78 | 2409084010.78 |
+| Belgium | 2006-06 | 1 | 6659246441.83 | 6659246441.83 |
+| Belize | 2011-08 | 1 | 235070335.49 | 235070335.49 |
+| Belize | 2016-11 | 1 | 3450247788.65 | 3450247788.65 |
 
 <!-- EXEC-SUMMARY:END -->
 
@@ -99,8 +99,8 @@ commands twice.
 | [docs/architecture.md](docs/architecture.md) | The full HTTP→DAG→engine→Oracle path, the `airflow/dags/` vs. `packages/csv-processor/` boundary, the two-tier reference-repo reuse decision, and the `docker-compose.yml` topology |
 | [docs/configuration.md](docs/configuration.md) | The `config.json` contract shape, `defaults.json` merge semantics, and the two real dataset configs |
 | [docs/csv-engine.md](docs/csv-engine.md) | The detect→parse→validate→normalize→chunk sequence, the 7 closed `Status` values, and the bounded-memory chunking guarantee |
-| [docs/oracle.md](docs/oracle.md) | The 5-table schema, `_invalid` column widening, `INTERVAL` partitioning, `executemany()` bulk loading, and checksum-based idempotency |
-| [docs/airflow-dag.md](docs/airflow-dag.md) | The DAG's task graph, how to trigger it, and live-verification evidence (deferred-wake proof, both datasets) |
+| [docs/oracle.md](docs/oracle.md) | The 5-table schema, `_invalid` column widening, `INTERVAL` partitioning, `executemany()` bulk loading, checksum-based idempotency, the business report, and its DB-level PK/index/trigger correlation safety net |
+| [docs/airflow-dag.md](docs/airflow-dag.md) | Both DAGs' task graphs (`csv_ingest` and the report-sensing `report_ready`), how to trigger them, and live-verification evidence |
 | [docs/development.md](docs/development.md) | Local dev workflow (tests, reset, fixtures, lint/type-check), code layout, adding a new dataset, and CI/troubleshooting |
 | [docs/benchmark.md](docs/benchmark.md) | The naive-vs-bulk Oracle write comparison at ~100K rows, with per-chunk timing |
 

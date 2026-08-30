@@ -40,6 +40,32 @@ the exact `scripts/trigger_dag.sh` flow). The DAG never branches on which datase
 unmodified `csv_ingest.py` handles both `customers` and `orders` purely by the runtime `conf` it's
 given (DAG-05).
 
+## The `report_ready` DAG (business report)
+
+A second, independent DAG — `airflow/dags/report_ready.py` — senses when both `customers` and
+`orders` have ingested data for the current day's partition, then materializes the same
+customers⋈orders business report every other path in this project produces (see
+`docs/oracle.md`'s "Business Report Evidence"):
+
+```
+report_ready DAG (airflow/dags/report_ready.py)
+        |
+        +-- wait_for_both_datasets  -- ReportReadySensor, a deferrable BaseSensorOperator
+        |       |
+        |       v
+        |   OraclePartitionReadyTrigger (airflow/dags/_common/oracle_partition_trigger.py)
+        |       -- polls ingestion_metadata via oracledb.connect_async() until COUNT(DISTINCT
+        |          dataset) = 2 for today's TRUNC(SYSDATE) partition, then fires
+        |
+        +-- build_report_task       -- runs the business-report SQL, logs each returned row
+```
+
+`apache-airflow-providers-oracle` ships no sensor of its own, so `OraclePartitionReadyTrigger` is a
+custom, non-blocking (`connect_async()`) `BaseTrigger` — the only way to get a deferrable
+"both datasets ready" check without occupying a worker slot while waiting. This DAG runs alongside
+`scripts/regenerate_readme_summary.py`'s CI-triggered README regeneration, not replacing it — both
+paths independently materialize the identical, never-re-authored business-report SQL.
+
 ## Component Boundary: `airflow/dags/` vs. `packages/csv-processor/`
 
 This is the single most load-bearing architectural line in the project:
@@ -126,11 +152,15 @@ All five Airflow processes (`airflow-init`, `airflow-apiserver`, `airflow-schedu
 `x-airflow-common` anchor) — `csv-processor` is installed directly into that image so
 `process_csv_task` calls it as a plain in-process Python function under `LocalExecutor`, with no
 `DockerOperator`/`KubernetesPodOperator` indirection (see README.md's Notes & Q&A for the full
-reasoning). `airflow-init` runs once (`db migrate`) and every other Airflow service depends on it
-completing successfully, plus on `oracle` reporting `service_healthy` via its own
-`healthcheck.sh`-based check. Both exposed ports (`1521` for Oracle, `8080` for Airflow's
-API/UI) are bound to `127.0.0.1` only, never `0.0.0.0` — see `docs/environment.md`'s "Port
+reasoning). The same shared env block also carries a single, identical `AIRFLOW__API_AUTH__JWT_SECRET`
+(task-token verification) and `AIRFLOW__API__SECRET_KEY` (`[api] secret_key`, log-fetch request
+signing) across every component, and every component mounts one shared named volume
+(`airflow-logs:/opt/airflow/logs`) so a task's logs remain fetchable from any component regardless
+of which container originally wrote them. `airflow-init` runs once (`db migrate`) and every other
+Airflow service depends on it completing successfully, plus on `oracle` reporting `service_healthy`
+via its own `healthcheck.sh`-based check. Both exposed ports (`1521` for Oracle, `8080` for
+Airflow's API/UI) are bound to `127.0.0.1` only, never `0.0.0.0` — see `docs/environment.md`'s "Port
 Bindings" section for the reasoning (T-01-02).
 
-For CPU/RAM/disk sizing and first-boot troubleshooting, see `docs/environment.md`. For the DAG's
-own task graph and live-verification evidence, see `docs/airflow-dag.md`.
+For CPU/RAM/disk sizing and first-boot troubleshooting, see `docs/environment.md`. For both DAGs'
+own task graphs and live-verification evidence, see `docs/airflow-dag.md`.

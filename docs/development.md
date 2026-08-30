@@ -64,7 +64,9 @@ sequence CI runs).
 ```
 packages/csv-processor/   -- the reusable, Airflow-agnostic CSV engine (ENGINE-09).
                               Zero airflow.* imports anywhere in this tree.
-airflow/dags/              -- the one, config-driven csv_ingest DAG + _common/ helpers.
+airflow/dags/              -- the config-driven csv_ingest DAG, the report_ready DAG (senses both
+                              datasets' ingestion, materializes the business report), and
+                              _common/ helpers (including the custom OraclePartitionReadyTrigger).
                               Thin orchestration only -- zero CSV/Oracle logic of its own.
 benchmark/                 -- throwaway naive-vs-bulk Oracle write comparison (TEST-04).
                               Never imported by csv_processor; deliberately outside it.

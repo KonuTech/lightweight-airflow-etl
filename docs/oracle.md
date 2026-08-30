@@ -2,9 +2,11 @@
 
 This document covers the 5-table Oracle schema (`docker/oracle/init/*.sql`), why the `_invalid`
 tables widen every data column to nullable `VARCHAR2`, the `INTERVAL` daily-partitioning scheme,
-the `executemany()` bulk-insert mechanism (LOAD-01/LOAD-02), and the checksum-based idempotency
-round trip (LOAD-04). See `docs/csv-engine.md` for what produces the rows this document describes
-loading, and `docs/configuration.md` for where table names come from (`OracleTargetSpec`).
+the `executemany()` bulk-insert mechanism (LOAD-01/LOAD-02), the checksum-based idempotency
+round trip (LOAD-04), the customers⋈orders business report evidence, and the DB-level correlation
+constraints (PK/index/trigger) backing that report. See `docs/csv-engine.md` for what produces the
+rows this document describes loading, and `docs/configuration.md` for where table names come from
+(`OracleTargetSpec`).
 
 ## The 5-Table Schema
 
@@ -23,7 +25,9 @@ Native, typed columns matching `config.json`'s `ColumnSpec` list exactly (`custo
 VARCHAR2(64) NOT NULL`, `birth_date DATE`, `event_ts TIMESTAMP WITH TIME ZONE NOT NULL`, etc.) —
 `docker/oracle/init/02_customers.sql`/`03_orders.sql`. A row only ever reaches this table after
 passing `csv_processor.validate.check_row()`'s structural/type/nullability checks and
-`normalize_row()`'s type conversion.
+`normalize_row()`'s type conversion. `customers_valid.customer_id` and `orders_valid.order_id`
+each carry a `PRIMARY KEY`; `orders_valid.customer_id` carries a supporting index and a
+`BEFORE INSERT` FK-existence trigger — see "Correlation Constraints" below.
 
 ### `<dataset>_invalid`
 
@@ -143,11 +147,34 @@ task-retry count.
 
 ## Business Report Evidence (`scripts/verify_evidence.sql`)
 
-`make verify-evidence` runs a committed, read-only SQL script (D-09) that queries
-`ingestion_metadata` for the latest run per dataset and joins `customers_valid` to `orders_valid`
-on `customer_id`, grouped by `(customers.country, TRUNC(orders.order_date, 'MM'))` — a
-customers⋈orders business report (D-10; `country` stands in for "region" since no literal
-`region` column exists in this schema, an explicit substitution, not a silent assumption). This is
-a **read-only reporting JOIN**, not a referential-integrity validator — it does not reopen the
-"`orders.customer_id → customers.customer_id` FK not enforced" out-of-scope decision recorded in
-`PROJECT.md`.
+The same, single business-report SQL text — `ingestion_metadata`'s latest run per dataset, joined
+against a `customers_valid`⋈`orders_valid` JOIN on `customer_id`, grouped by
+`(customers.country, TRUNC(orders.order_date, 'MM'))` (`country` stands in for "region" since no
+literal `region` column exists in this schema, an explicit substitution, not a silent assumption)
+— is mirrored verbatim across every path that materializes it, never re-authored independently:
+
+- `scripts/verify_evidence.sql`, run ad hoc via `make verify-evidence`
+- `scripts/regenerate_readme_summary.py`, which live-regenerates README's Executive Summary table
+  after every merge to `main` (`.github/workflows/readme-summary.yml`)
+- the `report_ready` Airflow DAG (`airflow/dags/report_ready.py`, see `docs/airflow-dag.md`), whose
+  `build_report_task` runs it once a deferrable trigger confirms both `customers` and `orders` have
+  ingested data for the current day's partition, and logs the result
+
+`customers_valid⋈orders_valid` returns real, non-empty rows because `orders.customer_id` is a
+Zipf-weighted sample drawn from the actual pool of `customer_id` values generated for
+`customers_valid` in the same run — never independently random (see "Correlation constraints"
+below). This is a **read-only reporting JOIN**, not the mechanism that enforces the relationship —
+that enforcement lives at the DB level (see below).
+
+## Correlation Constraints (`docker/oracle/init/05_correlation_constraints.sql`)
+
+`customers_valid` carries a `PRIMARY KEY` on `customer_id`; `orders_valid` carries a `PRIMARY KEY`
+on `order_id` plus a plain index on `customer_id` supporting the JOIN workload above. A
+`BEFORE INSERT` trigger on `orders_valid` (`trg_orders_valid_customer_exists`) rejects — failing
+the whole insert batch — any row whose `customer_id` does not already exist in `customers_valid`.
+This is a DB-level safety net on top of the Python-side correlation `generator/generate_csv.py`
+already guarantees, catching any future generator regression as a load failure instead of silent
+bad data; it does not reintroduce the `csv_processor` validation engine's own referential-validator
+exclusion (still out of scope per `PROJECT.md`, spec §28) — this trigger is a separate DDL layer,
+not a new engine-side validator. `customers_invalid`/`orders_invalid` remain completely
+unconstrained: no PK, index, or trigger of any kind applies to either.

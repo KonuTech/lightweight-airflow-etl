@@ -1,13 +1,17 @@
-# The `csv_ingest` DAG: Task Graph, Triggering, and Live Verification Evidence
+# The Airflow DAGs: Task Graphs, Triggering, and Live Verification Evidence
 
-This document covers the one, config-driven `csv_ingest` Airflow DAG (`airflow/dags/csv_ingest.py`,
-D-01) — its task graph, how to trigger it, and the reproducible commands used to prove DAG-03
-(deferrable file-wait genuinely reports Airflow state `deferred`) and DAG-05 (the identical,
-unmodified DAG file supports a second dataset by construction) against the real running
-docker-compose stack. Full HTTP-to-Oracle-rows automated end-to-end testing is Phase 6's job
-(TEST-03) — this document only records this phase's own manual/live verification evidence.
+This document covers both Airflow DAGs this project runs: the config-driven `csv_ingest` DAG
+(`airflow/dags/csv_ingest.py`, D-01) — its task graph, how to trigger it, and the reproducible
+commands used to prove DAG-03 (deferrable file-wait genuinely reports Airflow state `deferred`)
+and DAG-05 (the identical, unmodified DAG file supports a second dataset by construction) — and
+the `report_ready` DAG (`airflow/dags/report_ready.py`, D-26), which senses when both datasets
+have ingested data and materializes the business report. Full HTTP-to-Oracle-rows automated
+end-to-end testing is Phase 6's job (TEST-03) — this document only records manual/live
+verification evidence gathered directly against the real running docker-compose stack.
 
-## Task Graph
+## `csv_ingest` DAG
+
+### Task Graph
 
 ```
 load_config_task -> route_after_config -> wait_for_file -> process_csv_task -> load_results_task -> report_result_task
@@ -33,7 +37,7 @@ load_config_task -> route_after_config -> wait_for_file -> process_csv_task -> l
   `duration=` (DAG-04). Runs on `trigger_rule="none_failed_min_one_success"` so it fires on both
   the success path and the config-error early-exit path.
 
-## Triggering the DAG
+### Triggering the DAG
 
 `scripts/trigger_dag.sh <dataset> <config_path>` reuses the exact `/auth/token` → `Authorization:
 Bearer` auth flow already proven in `scripts/verify_environment.py` (`AIRFLOW_AUTH_TOKEN_URL` =
@@ -64,9 +68,9 @@ curl -s -X PATCH "http://localhost:8080/api/v2/dags/csv_ingest" \
 `make verify-phase5` (unit suite + a live `BundleDagBag` structure check) requires `make up`
 first, same as `verify-phase4`.
 
-## Live Verification Evidence (this session)
+### Live Verification Evidence
 
-### DAG-03: `wait_for_file` genuinely reports Airflow state `deferred`
+#### DAG-03: `wait_for_file` genuinely reports Airflow state `deferred`
 
 Triggered the `orders` dataset **before** any `orders_*.csv*` fixture file existed on disk, then
 polled the task instance endpoint every ~3s:
@@ -103,7 +107,7 @@ Observed on the second poll (`state` field, live REST response — not a class a
 This confirms the sensor is genuinely triggerer-managed (the `trigger`/`triggerer_job` fields are
 only ever populated for a deferred task instance) — not a worker-slot poll loop.
 
-### DAG-05: the identical, unmodified `csv_ingest.py` completes the `orders` dataset
+#### DAG-05: the identical, unmodified `csv_ingest.py` completes the `orders` dataset
 
 Once `deferred` was observed, the fixture file was generated (`uv run python
 generator/generate_csv.py --dataset orders`), and the same run was polled to completion:
@@ -144,15 +148,48 @@ Final response:
 dataset using the exact same, unmodified `csv_ingest.py` already proven for `customers` in
 Plan 05-01, with zero dataset-specific code paths.
 
-### API note: `POST .../dagRuns` requires an explicit `logical_date`
+#### API note: `POST .../dagRuns` requires an explicit `logical_date`
 
 This environment's Airflow 3.3.1 REST API marks `logical_date` as a **required** (but nullable)
 field on `TriggerDAGRunPostBody` — omitting it entirely returns HTTP 422 (`Field required`).
 `scripts/trigger_dag.sh` passes `"logical_date": null` explicitly in the trigger body so Airflow
 auto-assigns the trigger time, matching UI/CLI-triggered runs.
 
+## `report_ready` DAG
+
+`airflow/dags/report_ready.py` (D-26) is dataset-agnostic — it takes no runtime `conf` and is
+triggered on demand or run on a schedule, independently of any `csv_ingest` run.
+
+### Task Graph
+
+```
+wait_for_both_datasets -> build_report_task
+```
+
+- `wait_for_both_datasets` — a `ReportReadySensor` (`airflow/dags/_common/oracle_partition_trigger.py`).
+  Its `execute()` immediately defers to `OraclePartitionReadyTrigger`, a custom `BaseTrigger` —
+  `apache-airflow-providers-oracle` ships no sensor of its own, so this is the only path to a
+  deferrable check here. The trigger polls (`oracledb.connect_async()`, never a blocking call, so
+  it never stalls the triggerer's shared event loop) `SELECT COUNT(DISTINCT dataset) FROM
+  ingestion_metadata WHERE dataset IN ('customers', 'orders') AND TRUNC(processed_at) =
+  TRUNC(SYSDATE)` every 30 seconds until the count reaches 2, then yields a `TriggerEvent`.
+  `TRUNC(SYSDATE)` — the real wall-clock date — is used throughout, never `logical_date`/
+  `data_interval` (this DAG has no meaningful logical date of its own).
+- `build_report_task` — a plain `@task` that opens a normal (blocking) Oracle connection (correct
+  here — it's a worker task, not the triggerer), runs the same business-report SQL every other
+  path in this project shares (`docs/oracle.md`'s "Business Report Evidence"), and logs each
+  returned row via `logging.getLogger("airflow.task")`.
+
+### Live Verification Evidence
+
+`tests/e2e/test_report_ready_dag.py` proves, against the real running stack: the sensor reaches
+Airflow task state `deferred` before either dataset has ingested; it remains `deferred` after only
+ONE dataset has ingested (proving it waits for both, not either); and the DAG run completes
+successfully once BOTH datasets have ingested data for the current partition.
+
 ## Full HTTP-to-Oracle-rows automated testing
 
-This document records this phase's own manual/live verification evidence only. A fully automated
-end-to-end test (HTTP trigger → DAG → CSV → Oracle → VALID/INVALID tables, asserted via a real
-test runner rather than manual curl commands) is Phase 6's job (TEST-03).
+This document records this phase's own manual/live verification evidence only. Fully automated
+end-to-end tests (HTTP trigger → DAG → CSV → Oracle → VALID/INVALID tables for `csv_ingest`,
+asserted via a real test runner rather than manual curl commands, plus the `report_ready`
+deferral/completion proof above) live under `tests/e2e/`.
