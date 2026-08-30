@@ -123,13 +123,13 @@ Added during Phase 7 planning per CONTEXT.md D-30 — the phase grew well beyond
 DAG, benchmark re-verification), so it is scoped against its own REQ IDs rather than force-fit
 against the already-`Complete` DOC-01/TEST-03 from Phase 6.
 
-- [ ] **DATA-01**: `orders.customer_id` is sampled with replacement, Zipf-weighted (weight ∝
+- [x] **DATA-01**: `orders.customer_id` is sampled with replacement, Zipf-weighted (weight ∝
       1/rank), from the pool of `customer_id` values that will land in `customers_valid` for the
       same generation run — never independently random — and the assignment is fully
       deterministic/byte-identical given the same `--seed`; generating orders against an empty
       valid-customer pool raises immediately rather than silently falling back to uncorrelated IDs
 
-- [ ] **DATA-02**: `customer_id`/`order_id` move from a random Faker word to a seed-derived
+- [x] **DATA-02**: `customer_id`/`order_id` move from a random Faker word to a seed-derived
       structured ID (`CUST-{seed_hash}-{sequence}` / `ORD-{seed_hash}-{sequence}`) so numbering
       never collides across accumulating Oracle runs
 
@@ -145,7 +145,7 @@ against the already-`Complete` DOC-01/TEST-03 from Phase 6.
       exists in `customers_valid` as a DB-level safety net on top of the Python-side correlation —
       a violation fails the whole insert batch, matching Oracle's default `executemany()` behavior
 
-- [ ] **TEST-05**: A fast unit test suite proves the correlation function's properties directly:
+- [x] **TEST-05**: A fast unit test suite proves the correlation function's properties directly:
       `orders.customer_id` is a subset of the valid-customer pool, the Zipf-weighting is observable,
       and the same seed produces identical output across runs
 
@@ -254,12 +254,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TEST-04 | Phase 6 | Complete |
 | CI-01 | Phase 6 | Complete |
 | DOC-01 | Phase 6 | Complete |
-| DATA-01 | Phase 7 | Planned |
-| DATA-02 | Phase 7 | Planned |
+| DATA-01 | Phase 7 | Complete |
+| DATA-02 | Phase 7 | Complete |
 | GEN-02 | Phase 7 | Planned |
 | DB-01 | Phase 7 | Planned |
 | DB-02 | Phase 7 | Planned |
-| TEST-05 | Phase 7 | Planned |
+| TEST-05 | Phase 7 | Complete |
 | TEST-06 | Phase 7 | Planned |
 | INFRA-04 | Phase 7 | Planned |
 | DAG-06 | Phase 7 | Planned |
