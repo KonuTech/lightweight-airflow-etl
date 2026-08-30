@@ -36,11 +36,21 @@ jobs:
       # docs/environment.md "First-Clone Setup Gaps" -- the exact two-file
       # bootstrap every fresh clone needs before `docker compose up` (copied
       # verbatim, not paraphrased, per 06-RESEARCH.md Pattern 3/Pitfall 7).
+      #
+      # chmod 666 is required, not cosmetic: docs/environment.md's "Known
+      # First-Boot Gotcha" documents that airflow-apiserver crashes with a
+      # PermissionError reading this bind-mounted file when its host-side
+      # permissions don't allow the container's airflow user (uid 50000) to
+      # read/write it -- a genuinely fresh `echo >` on a CI runner creates it
+      # at the default 644, which uid 50000 cannot open. Confirmed live: PR #1's
+      # first oracle-e2e run failed with `airflow-apiserver-1 exited (1)` on
+      # this exact file before this chmod was added.
       - name: Recreate first-clone-only local files
         run: |
           cp .env.example .env
           mkdir -p docker/airflow
           echo '{"admin": "admin"}' > docker/airflow/simple_auth_manager_passwords.json.generated
+          chmod 666 docker/airflow/simple_auth_manager_passwords.json.generated
 
       # Assumption A1 (06-RESEARCH.md): ubuntu-latest ships Docker Engine +
       # the docker compose v2 CLI plugin pre-installed. This is a cheap,
@@ -67,6 +77,15 @@ jobs:
       # pressure has not actually been observed yet.
       - name: Bring up the full stack
         run: docker compose up -d --wait
+
+      # `docker compose up --wait` prints no container output on failure --
+      # a service that exits or fails its healthcheck gives no diagnostic
+      # signal beyond "exited (N)"/"unhealthy" in the step above. Dump every
+      # service's logs so a future failure is debuggable from the Actions UI
+      # alone, without needing local reproduction.
+      - name: Dump container logs on stack failure
+        if: failure()
+        run: docker compose logs
 
       - uses: astral-sh/setup-uv@v10.0.1
       - run: uv sync --locked

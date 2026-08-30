@@ -43,9 +43,14 @@ jobs:
           cp .env.example .env
           mkdir -p docker/airflow
           echo '{"admin": "admin"}' > docker/airflow/simple_auth_manager_passwords.json.generated
+          chmod 666 docker/airflow/simple_auth_manager_passwords.json.generated
 
       - name: Bring up the full stack
         run: docker compose up -d --wait
+
+      - name: Dump container logs on stack failure
+        if: failure()
+        run: docker compose logs
 
       - uses: astral-sh/setup-uv@v10.0.1
       - run: uv sync --locked
