@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import csv
 import gzip
+import hashlib
 import random
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -68,6 +69,28 @@ def format_decimal(rng: random.Random, precision: int, scale: int) -> str:
     return f"{value:.{scale}f}"
 
 
+def seed_component(seed: int, length: int = 8) -> str:
+    """Deterministic hex fragment derived from `seed` -- the shared prefix
+    baked into every structured ID this run produces (D-06/D-07)."""
+    return hashlib.sha256(str(seed).encode("utf-8")).hexdigest()[:length]
+
+
+def structured_id(prefix: str, seed: int, sequence: int, width: int = 6) -> str:
+    """A deterministic, seed-derived structured ID:
+    `{prefix}-{seed_component(seed)}-{sequence:0{width}d}` (D-06/D-08) --
+    never a random Faker word, never approximate formatting (mirrors
+    `format_decimal()`'s exact-`Decimal` discipline)."""
+    return f"{prefix}-{seed_component(seed)}-{sequence:0{width}d}"
+
+
+def zipf_weighted_sample(rng: random.Random, pool: list[str], k: int) -> list[str]:
+    """Sample `k` values from `pool`, with replacement, weighted so earlier
+    entries in `pool` are proportionally more likely to be drawn (weight ∝
+    1/rank) -- D-02's with-replacement sampling, D-03's Zipf-like skew."""
+    weights = [1.0 / (rank + 1) for rank in range(len(pool))]
+    return rng.choices(pool, weights=weights, k=k)
+
+
 def _fake_string_value(fake: Faker, column: ColumnSpec) -> str:
     name = column.name.lower()
     if name == "name":
@@ -109,8 +132,21 @@ def _valid_value(fake: Faker, rng: random.Random, column: ColumnSpec) -> str:
     raise ValueError(msg)
 
 
-def _generate_valid_row(fake: Faker, rng: random.Random, columns: list[ColumnSpec]) -> list[str]:
-    return [_valid_value(fake, rng, column) for column in columns]
+def _generate_valid_row(
+    fake: Faker,
+    rng: random.Random,
+    columns: list[ColumnSpec],
+    overrides: dict[str, str] | None = None,
+) -> list[str]:
+    """`overrides` (D-01/D-06/D-08's correlated/structured IDs) wins over
+    `_valid_value()` for a matched column name -- assigned BEFORE any
+    invalid-category corruption (`_generate_invalid_row`) runs on top."""
+    return [
+        overrides[column.name]
+        if overrides is not None and column.name in overrides
+        else _valid_value(fake, rng, column)
+        for column in columns
+    ]
 
 
 def _generate_invalid_row(
@@ -118,8 +154,9 @@ def _generate_invalid_row(
     rng: random.Random,
     columns: list[ColumnSpec],
     category: str,
+    overrides: dict[str, str] | None = None,
 ) -> list[str]:
-    row = _generate_valid_row(fake, rng, columns)
+    row = _generate_valid_row(fake, rng, columns, overrides)
     if category == "wrong_type":
         numeric_indices = [i for i, column in enumerate(columns) if column.type in _NUMERIC_TYPES]
         row[rng.choice(numeric_indices)] = "not-a-number"
@@ -151,7 +188,14 @@ class GeneratedCsv:
 
 
 def generate_rows(
-    config: DatasetConfig, rows: int, invalid_ratio: float, seed: int
+    config: DatasetConfig,
+    rows: int,
+    invalid_ratio: float,
+    seed: int,
+    *,
+    rng: random.Random | None = None,
+    fake: Faker | None = None,
+    customer_id_pool: list[str] | None = None,
 ) -> GeneratedCsv:
     """Generate `rows` deterministic rows for `config`, `invalid_ratio` of them
     invalid across D-15's applicable categories.
@@ -159,13 +203,45 @@ def generate_rows(
     Faker.seed(seed) drives realistic-looking string values; a *separate*
     random.Random(seed) drives which rows are invalid, which category each
     invalid row uses, and every numeric/date value range.
+
+    `rng`/`fake` are optional, keyword-only overrides (PD-1) -- when omitted
+    (every pre-existing caller), constructed internally exactly as before.
+    `generate_correlated_datasets()` passes the SAME live `rng`/`fake` pair
+    into both its customers and orders calls, giving literal object-identity
+    RNG continuation across that boundary (D-05).
+
+    `customer_id_pool` (PD-2) only affects a config that declares a
+    `customer_id` column: `None` (the default -- used for `customers_config`,
+    which owns customer identity) assigns sequential structured IDs; a
+    non-empty list (used only for `orders_config` by
+    `generate_correlated_datasets()`) assigns Zipf-weighted, with-replacement
+    pool samples instead (D-01-D-03).
     """
-    fake = Faker()
-    Faker.seed(seed)
-    rng = random.Random(seed)
+    if fake is None:
+        fake = Faker()
+        Faker.seed(seed)
+    if rng is None:
+        rng = random.Random(seed)
 
     categories = applicable_categories(config)
     header = [column.name for column in config.columns]
+    column_names = [column.name for column in config.columns]
+
+    id_overrides: dict[str, list[str]] = {}
+    if "customer_id" in column_names:
+        if customer_id_pool is not None:
+            if not customer_id_pool:
+                msg = "cannot generate rows: customer_id_pool is empty (D-04)"
+                raise ValueError(msg)
+            id_overrides["customer_id"] = zipf_weighted_sample(rng, customer_id_pool, rows)
+        else:
+            id_overrides["customer_id"] = [
+                structured_id("CUST", seed, i + 1, width=6) for i in range(rows)
+            ]
+    if "order_id" in column_names:
+        # D-08: order_id is always structured, never pool-sampled -- it is
+        # never a foreign reference.
+        id_overrides["order_id"] = [structured_id("ORD", seed, i + 1, width=6) for i in range(rows)]
 
     num_invalid = min(round(rows * invalid_ratio), rows)
     invalid_indices = set(rng.sample(range(rows), num_invalid)) if rows > 0 else set()
@@ -173,12 +249,13 @@ def generate_rows(
     out_rows: list[list[str]] = []
     row_categories: list[str | None] = []
     for i in range(rows):
+        overrides = {name: values[i] for name, values in id_overrides.items()} or None
         if i in invalid_indices:
             category = rng.choice(categories)
-            out_rows.append(_generate_invalid_row(fake, rng, config.columns, category))
+            out_rows.append(_generate_invalid_row(fake, rng, config.columns, category, overrides))
             row_categories.append(category)
         else:
-            out_rows.append(_generate_valid_row(fake, rng, config.columns))
+            out_rows.append(_generate_valid_row(fake, rng, config.columns, overrides))
             row_categories.append(None)
 
     return GeneratedCsv(header=header, rows=out_rows, categories=row_categories)
@@ -201,6 +278,74 @@ def write_csv(generated: GeneratedCsv, config: DatasetConfig, path: Path) -> Non
         if config.csv.header:
             writer.writerow(generated.header)
         writer.writerows(generated.rows)
+
+
+@dataclass(frozen=True)
+class CorrelatedDatasets:
+    """The paired result of `generate_correlated_datasets()` -- `orders`'
+    `customer_id` values are a real, Zipf-weighted, with-replacement sample
+    from `customers`' own valid-row pool, never independently random
+    (D-01-D-05)."""
+
+    customers: GeneratedCsv
+    orders: GeneratedCsv
+
+
+def generate_correlated_datasets(
+    customers_config: DatasetConfig,
+    orders_config: DatasetConfig,
+    *,
+    customers_rows: int,
+    orders_rows: int,
+    invalid_ratio: float,
+    seed: int,
+) -> CorrelatedDatasets:
+    """Generate a customers/orders pair where `orders.customer_id` is drawn
+    from the pool of `customer_id` values that will land in
+    `customers_valid` -- the core fix this phase exists for (D-01-D-08).
+
+    Constructs ONE `fake`/`rng` pair and passes the SAME live objects into
+    both the customers and orders `generate_rows()` calls (PD-1's literal
+    object-identity RNG continuation, satisfying D-05's "same seeded
+    `random.Random(seed)` instance" by its most literal reading).
+
+    Raises `ValueError` if generating `customers_config` at
+    `customers_rows`/`invalid_ratio` would leave zero valid customer rows
+    (D-04) -- checked here, before ever calling `generate_rows()` for
+    orders, rather than relying solely on `generate_rows()`'s own
+    defense-in-depth empty-pool check.
+    """
+    fake = Faker()
+    Faker.seed(seed)
+    rng = random.Random(seed)
+
+    customers_generated = generate_rows(
+        customers_config, customers_rows, invalid_ratio, seed, rng=rng, fake=fake
+    )
+
+    customer_id_index = customers_generated.header.index("customer_id")
+    valid_customer_pool = [
+        row[customer_id_index]
+        for row, category in zip(
+            customers_generated.rows, customers_generated.categories, strict=True
+        )
+        if category is None
+    ]
+    if not valid_customer_pool:
+        msg = "cannot generate correlated orders: valid-customer pool is empty"
+        raise ValueError(msg)
+
+    orders_generated = generate_rows(
+        orders_config,
+        orders_rows,
+        invalid_ratio,
+        seed,
+        rng=rng,
+        fake=fake,
+        customer_id_pool=valid_customer_pool,
+    )
+
+    return CorrelatedDatasets(customers=customers_generated, orders=orders_generated)
 
 
 def _ratio_type(value: str) -> float:
