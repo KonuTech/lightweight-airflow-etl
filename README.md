@@ -6,18 +6,18 @@ Live evidence of a working HTTP-trigger -> Airflow DAG -> Oracle ETL pipeline
 (TEST-03/DOC-01), regenerated automatically after every merge to `master`
 (D-11/D-12) by `scripts/regenerate_readme_summary.py` via
 `.github/workflows/readme-summary.yml`, using the default `GITHUB_TOKEN`
-(never a PAT -- D-13). Last regenerated: `2026-08-30T12:20:51.444131+00:00`.
+(never a PAT -- D-13). Last regenerated: `2026-08-30T12:47:00.779632+00:00`.
 
 ### Latest ingestion per dataset
 
 | Dataset | File Name | Total Rows | Valid Rows | Invalid Rows | Status | Processed At (UTC) |
 |---|---|---|---|---|---|---|
-| customers | customers_20260830.csv | 15 | 12 | 3 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T12:20:38.115134 |
-| orders | orders_20260830.csv | 250 | 200 | 50 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T12:20:48.152190 |
+| customers | customers_20260830.csv | 15 | 12 | 3 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T12:46:44.631599 |
+| orders | orders_20260830.csv | 250 | 200 | 50 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T12:46:57.384213 |
 
 ### Deferred-wake proof
 
-`wait_for_file` reported Airflow task state `deferred` for the `customers` dataset (`dag_run_id=manual__2026-08-30T12:20:32.724426+00:00`) at `2026-08-30T12:20:36.823913+00:00` -- confirmed BEFORE the fixture file existed on disk, proving the non-blocking file-wait genuinely deferred rather than short-circuited against an already-present file.
+`wait_for_file` reported Airflow task state `deferred` for the `customers` dataset (`dag_run_id=manual__2026-08-30T12:46:31.449367+00:00`) at `2026-08-30T12:46:40.439258+00:00` -- confirmed BEFORE the fixture file existed on disk, proving the non-blocking file-wait genuinely deferred rather than short-circuited against an already-present file.
 
 ### Customers x Orders business report (top 10)
 
@@ -28,16 +28,16 @@ for the full, un-truncated report and `make verify-evidence` to reproduce it.
 
 | Region | Order Month | Order Count | Total Amount | Avg Amount |
 |---|---|---|---|---|
-| Anguilla | 2026-01 | 5 | 31751.85 | 6350.37 |
-| Anguilla | 2026-02 | 5 | 22289.48 | 4457.9 |
-| Bolivia | 2026-01 | 3 | 17344.42 | 5781.47 |
-| Bolivia | 2026-02 | 4 | 21984.41 | 5496.1 |
-| Bulgaria | 2026-01 | 15 | 101694.13 | 6779.61 |
-| Bulgaria | 2026-02 | 18 | 110674.46 | 6148.58 |
-| Ghana | 2026-01 | 29 | 159272.19 | 5492.14 |
-| Ghana | 2026-02 | 24 | 94547.71 | 3939.49 |
-| Holy See (Vatican City State) | 2026-01 | 11 | 61729.09 | 5611.74 |
-| Holy See (Vatican City State) | 2026-02 | 9 | 32245.2 | 3582.8 |
+| American Samoa | 2026-01 | 5 | 29629.36 | 5925.87 |
+| American Samoa | 2026-02 | 3 | 9619.36 | 3206.45 |
+| Andorra | 2026-01 | 43 | 198930.21 | 4626.28 |
+| Andorra | 2026-02 | 27 | 164830.23 | 6104.82 |
+| Andorra | 2026-03 | 3 | 16663 | 5554.33 |
+| Angola | 2026-01 | 1 | 474.26 | 474.26 |
+| Angola | 2026-02 | 2 | 10650.45 | 5325.23 |
+| Denmark | 2026-01 | 4 | 15991.22 | 3997.81 |
+| Denmark | 2026-02 | 4 | 26281.67 | 6570.42 |
+| Iceland | 2026-01 | 2 | 2212.46 | 1106.23 |
 
 <!-- EXEC-SUMMARY:END -->
 
