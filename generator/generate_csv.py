@@ -360,7 +360,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Generate a deterministic business-row CSV fixture for one dataset (GEN-01)."
     )
-    parser.add_argument("--dataset", required=True, help="Dataset name, e.g. 'customers'.")
+    parser.add_argument(
+        "--dataset",
+        required=False,
+        default=None,
+        help="Dataset name, e.g. 'customers'. Required unless --correlated is set; "
+        "'orders' alone is rejected (D-22) -- use --correlated instead.",
+    )
+    parser.add_argument(
+        "--correlated",
+        action="store_true",
+        help="Generate both customers and orders together via the shared correlated "
+        "function (D-22) -- required for orders since it can no longer be generated "
+        "independently.",
+    )
     parser.add_argument("--rows", type=int, default=100, help="Number of data rows to generate.")
     parser.add_argument(
         "--invalid-ratio",
@@ -388,27 +401,98 @@ def output_path(dataset: str, *, today: date | None = None) -> Path:
     return _DATA_DIR / dataset / f"{dataset}_{day:%Y%m%d}.csv"
 
 
+def staging_path(dataset: str, filename: str) -> Path:
+    """`./data/<dataset>/.staging/<filename>` (D-24) -- a same-filesystem
+    staging location every production write path stages into before an
+    atomic `Path.rename()` moves the file into its actual watched
+    directory. Never written to directly by anything watching for CSVs."""
+    return _DATA_DIR / dataset / ".staging" / filename
+
+
+def write_staged(
+    generated: GeneratedCsv,
+    config: DatasetConfig,
+    dataset: str,
+    *,
+    today: date | None = None,
+    compress: bool = False,
+) -> Path:
+    """Write `generated` to a staging path, then atomically `Path.rename()`
+    it into its final watched-directory path (D-24) -- the one write path
+    every production caller (CLI, `regenerate_readme_summary.py`, the live
+    e2e test) shares, so a CSV is never visible in its watched directory
+    mid-write.
+
+    When `compress` is True, gzip the staged file (D-32) before the rename,
+    so the eventual rename target is the `.gz` path, mirroring the
+    gzip-then-remove-plain-file behavior this replaces.
+    """
+    final_path = output_path(dataset, today=today)
+    staging_target = staging_path(dataset, final_path.name)
+    staging_target.parent.mkdir(parents=True, exist_ok=True)
+    write_csv(generated, config, staging_target)
+
+    if compress:
+        gz_staging_target = staging_target.with_name(f"{staging_target.name}.gz")
+        with gzip.open(gz_staging_target, "wb") as gz_handle:
+            gz_handle.write(staging_target.read_bytes())
+        staging_target.unlink()
+        staging_target = gz_staging_target
+        final_path = final_path.with_name(f"{final_path.name}.gz")
+
+    final_path.parent.mkdir(parents=True, exist_ok=True)
+    staging_target.rename(final_path)
+    return final_path
+
+
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    if args.correlated:
+        customers_config = load_config(
+            _CONFIGS_DIR / "datasets" / "customers.json",
+            defaults_path=_CONFIGS_DIR / "defaults.json",
+        )
+        orders_config = load_config(
+            _CONFIGS_DIR / "datasets" / "orders.json",
+            defaults_path=_CONFIGS_DIR / "defaults.json",
+        )
+        correlated = generate_correlated_datasets(
+            customers_config,
+            orders_config,
+            customers_rows=args.rows,
+            orders_rows=args.rows,
+            invalid_ratio=args.invalid_ratio,
+            seed=args.seed,
+        )
+        customers_path = write_staged(
+            correlated.customers, customers_config, "customers", compress=args.compress
+        )
+        orders_path = write_staged(
+            correlated.orders, orders_config, "orders", compress=args.compress
+        )
+        print(
+            f"wrote {len(correlated.customers.rows)} customers rows to {customers_path}, "
+            f"{len(correlated.orders.rows)} orders rows to {orders_path}"
+        )
+        return 0
+
+    if args.dataset is None:
+        parser.error("--dataset is required unless --correlated is set")
+
+    if args.dataset == "orders":
+        parser.error(
+            "orders can only be generated via --correlated (D-22) -- "
+            "use --correlated instead of --dataset orders"
+        )
+
     config = load_config(
         _CONFIGS_DIR / "datasets" / f"{args.dataset}.json",
         defaults_path=_CONFIGS_DIR / "defaults.json",
     )
     generated = generate_rows(config, args.rows, args.invalid_ratio, args.seed)
-    path = output_path(args.dataset)
-    write_csv(generated, config, path)
-    if args.compress:
-        # D-32: gzip the just-written CSV, then remove the plain file --
-        # mirrors the `gzip` CLI tool's own in-place-replace behavior, and
-        # matches D-31's widened file_pattern ("customers_*.csv*") expecting
-        # exactly one file per drop, not both a plain and compressed variant
-        # sitting side by side.
-        gz_path = path.with_name(f"{path.name}.gz")
-        with gzip.open(gz_path, "wb") as gz_handle:
-            gz_handle.write(path.read_bytes())
-        path.unlink()
-        print(f"compressed to {gz_path}")
-        return 0
+    path = write_staged(generated, config, args.dataset, compress=args.compress)
     print(f"wrote {len(generated.rows)} rows to {path}")
     return 0
 

@@ -20,8 +20,8 @@ smoke-test:        ## Cold start: wipe all state, boot fresh, confirm the stack 
 	$(MAKE) up
 	$(MAKE) verify
 
-generate:          ## Generate deterministic business-row CSV fixtures for every dataset (D-16f)
-	uv run python generator/generate_csv.py --dataset customers && uv run python generator/generate_csv.py --dataset orders
+generate:          ## Generate correlated customers+orders CSV fixtures via one combined invocation (D-21/D-22)
+	uv run python generator/generate_csv.py --correlated
 
 fixtures:          ## Materialize the byte-level fixture corpus + (re)write its digest oracle (D-16f)
 	uv run python -m tools.corpus generate --manifest tests/fixtures/corpus.yaml --out tests/fixtures/csv --write-digests tests/fixtures/CORPUS.sha256
