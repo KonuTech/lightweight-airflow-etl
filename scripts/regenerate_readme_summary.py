@@ -53,6 +53,7 @@ from typing import Any
 import oracledb
 from csv_processor import load
 from csv_processor.config.loader import load_config
+from csv_processor.config.models import DatasetConfig
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _CONFIGS_DIR = _REPO_ROOT / "configs"
@@ -148,9 +149,14 @@ def _clear_stale_fixtures(dataset: str, file_pattern: str) -> None:
         stale.unlink()
 
 
-def _run_ingestion(dataset: str) -> dict[str, Any]:
+def _run_ingestion(dataset: str, generated: Any, config: DatasetConfig) -> dict[str, Any]:
     """Trigger, wait-for-deferred, drop a fresh fixture, then wait for
     completion -- Pitfall 4's exact ordering (poll-then-assert-then-act).
+
+    ``generated`` (a ``generate_csv.GeneratedCsv``) and ``config`` are
+    produced ONCE, up front in ``main()``, by the single shared
+    ``generate_csv.generate_correlated_datasets()`` call (D-21/D-23) --
+    this function never generates rows itself.
 
     Returns a dict with ``dag_run_id``, ``deferred_observed_at`` (UTC,
     captured immediately after the deferred state was confirmed), and
@@ -161,10 +167,6 @@ def _run_ingestion(dataset: str) -> dict[str, Any]:
     like success.
     """
     config_path = f"configs/datasets/{dataset}.json"
-    config = load_config(
-        _CONFIGS_DIR / "datasets" / f"{dataset}.json",
-        defaults_path=_CONFIGS_DIR / "defaults.json",
-    )
     _clear_stale_fixtures(dataset, config.file_pattern)
 
     try:
@@ -179,15 +181,11 @@ def _run_ingestion(dataset: str) -> dict[str, Any]:
         )
         deferred_observed_at = datetime.now(UTC)
 
-        # D-12: a run-unique seed/filename (timestamp component) so LOAD-04's
-        # checksum idempotency never silently returns a STALE prior result on
-        # a content-identical re-run -- that would defeat "live".
-        unique_suffix = time.time_ns()
-        generated = generate_csv.generate_rows(
-            config, rows=25, invalid_ratio=0.2, seed=unique_suffix % (2**31)
-        )
-        fixture_path = _DATA_DIR / dataset / f"{dataset}_{unique_suffix}.csv"
-        generate_csv.write_csv(generated, config, fixture_path)
+        # D-24: write the ALREADY-generated fixture via the one shared
+        # staging+atomic-rename helper -- never a direct write into the
+        # watched directory, and never a second independent generation call
+        # here (that would defeat D-23's "generation is coupled" guarantee).
+        generate_csv.write_staged(generated, config, dataset)
 
         result = dag_polling.wait_for_dag_run_result(
             dag_polling.AIRFLOW_BASE_URL, run_id, jwt_token
@@ -339,9 +337,40 @@ def splice_readme(readme_text: str, exec_summary_body: str) -> str:
 
 def main() -> int:
     try:
+        customers_config = load_config(
+            _CONFIGS_DIR / "datasets" / "customers.json",
+            defaults_path=_CONFIGS_DIR / "defaults.json",
+        )
+        orders_config = load_config(
+            _CONFIGS_DIR / "datasets" / "orders.json",
+            defaults_path=_CONFIGS_DIR / "defaults.json",
+        )
+
+        # D-12: a run-unique seed (timestamp component), computed ONCE and
+        # shared across both datasets so D-05's determinism/pool-sampling
+        # stays internally consistent -- never a per-dataset independent
+        # seed. LOAD-04's checksum idempotency never silently returns a
+        # STALE prior result on a content-identical re-run (that would
+        # defeat "live").
+        seed = time.time_ns() % (2**31)
+
+        # D-21/D-23: ONE call producing BOTH datasets' GeneratedCsv results
+        # -- generation is coupled, never a second independent
+        # implementation of the correlation logic.
+        correlated = generate_csv.generate_correlated_datasets(
+            customers_config,
+            orders_config,
+            customers_rows=25,
+            orders_rows=25,
+            invalid_ratio=0.2,
+            seed=seed,
+        )
+
         ingestion_results: dict[str, dict[str, Any]] = {}
         for dataset in _DATASETS:
-            ingestion_results[dataset] = _run_ingestion(dataset)
+            generated = correlated.customers if dataset == "customers" else correlated.orders
+            config = customers_config if dataset == "customers" else orders_config
+            ingestion_results[dataset] = _run_ingestion(dataset, generated, config)
 
         row_count_rows, business_report_rows = _fetch_evidence()
 
