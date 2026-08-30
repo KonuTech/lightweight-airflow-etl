@@ -1,23 +1,36 @@
 # D-11/D-12/D-13: regenerate README.md's live Executive Summary after every
-# merge to `master` -- re-runs a real ingestion, captures the deferred-wake
+# push to `master` -- re-runs a real ingestion, captures the deferred-wake
 # proof, queries Oracle for the customers-JOIN-orders business report
-# (scripts/regenerate_readme_summary.py), and commits the refreshed section
-# back using the default GITHUB_TOKEN.
+# (scripts/regenerate_readme_summary.py), and lands the refreshed section
+# back on `master` via a PR this same job opens, checks, and merges itself.
 #
 # Trust boundary (T-06-07/T-06-08/T-06-09, threat_model in 06-04-PLAN.md):
 # `push: branches: [master]` only -- runs after a PR's required checks already
 # passed and merged, never on untrusted fork PR code. `permissions:
-# contents: write` is scoped to ONLY this job (never workflow-level) -- the
-# narrowest write scope this phase introduces, kept separate from
-# ci.yml's `lint-type-unit`/`oracle-e2e` jobs (which run on untrusted forks
-# and have no `permissions:` block at all).
+# contents: write`/`pull-requests: write` are scoped to ONLY this job (never
+# workflow-level) -- kept separate from ci.yml's `lint-type-unit`/
+# `oracle-e2e` jobs (which run on untrusted forks and have no `permissions:`
+# block at all).
+#
+# Why a PR, not a direct push: `master`'s branch protection requires
+# `lint-type-unit`/`oracle-e2e` to pass on every ref update, including a
+# direct push -- but those checks only ever run via ci.yml's `pull_request`
+# trigger, so a bot pushing straight to `master` can never satisfy them
+# (confirmed live 2026-08-30: GH006 "Protected branch update failed ...
+# 2 of 2 required status checks are expected"). GitHub Actions app bypass
+# actors are org-only (also confirmed live) -- unavailable on this
+# personal-account repo. Opening a PR and merging it once checks genuinely
+# pass satisfies the gate for real, rather than working around it.
 #
 # Default GITHUB_TOKEN, never a PAT (Pitfall 2): a commit authored by the
 # default GITHUB_TOKEN structurally does not trigger further push-based
-# workflow runs, which prevents D-13's feared infinite loop by construction.
-# `[skip ci]` is kept in the commit message anyway as defense-in-depth
-# documentation of intent (D-13's literal ask), even though it costs nothing
-# extra given the token-type mitigation above.
+# workflow runs (nor `pull_request` runs on a PR it opens -- GitHub's own
+# anti-recursion rule), which prevents D-13's feared infinite loop by
+# construction. This is exactly why this job explicitly re-triggers ci.yml
+# below rather than relying on the PR's own `pull_request` event to fire --
+# required-status-check matching is by commit SHA + context name, not by
+# which trigger produced the run, so a `workflow_dispatch` run against the
+# PR's exact head commit satisfies branch protection genuinely.
 name: readme-summary
 
 on:
@@ -29,6 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -76,7 +90,43 @@ jobs:
         if: always()
         run: docker compose down -v
 
-      - uses: stefanzweifel/git-auto-commit-action@v7.2.0
+      # Fixed branch name (never per-run) so a still-open PR from a prior
+      # push is updated in place rather than piling up duplicate PRs; a
+      # merged/closed prior PR's branch is deleted (delete-branch: true) so
+      # this recreates it fresh.
+      - name: Open PR with regenerated README.md
+        id: cpr
+        uses: peter-evans/create-pull-request@v8.1.1
         with:
-          commit_message: "docs(readme): regenerate Executive Summary [skip ci]"
-          file_pattern: README.md
+          add-paths: README.md
+          branch: readme-summary/auto-update
+          delete-branch: true
+          commit-message: "docs(readme): regenerate Executive Summary"
+          title: "docs(readme): regenerate Executive Summary"
+          body: |
+            Automated regeneration of README.md's live Executive Summary (D-11/D-12/D-13),
+            opened by `.github/workflows/readme-summary.yml` after a real ingestion run and
+            Oracle query. `lint-type-unit`/`oracle-e2e` are triggered explicitly against this
+            PR's head commit (see workflow comments) and this PR merges itself automatically
+            once both pass -- no manual step, no PAT.
+
+      # A PR opened via the default GITHUB_TOKEN does not itself trigger
+      # ci.yml's `pull_request` run (GitHub's anti-recursion rule), so
+      # nothing would ever satisfy branch protection's required checks
+      # without this: dispatch ci.yml directly against the PR's branch.
+      - name: Trigger CI checks against the PR's head commit
+        if: steps.cpr.outputs.pull-request-operation == 'created' || steps.cpr.outputs.pull-request-operation == 'updated'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BRANCH: ${{ steps.cpr.outputs.pull-request-branch }}
+        run: gh workflow run ci.yml --ref "$PR_BRANCH"
+
+      # GitHub completes the merge itself once both dispatched checks
+      # report success against this exact head commit -- requires the
+      # repository's "Allow auto-merge" setting (enabled 2026-08-30).
+      - name: Enable auto-merge
+        if: steps.cpr.outputs.pull-request-operation == 'created' || steps.cpr.outputs.pull-request-operation == 'updated'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
+        run: gh pr merge "$PR_NUMBER" --auto --squash
