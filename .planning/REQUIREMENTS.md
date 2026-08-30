@@ -161,10 +161,10 @@ against the already-`Complete` DOC-01/TEST-03 from Phase 6.
       for the current wall-clock-date partition, then builds/logs the business report — running
       alongside, not replacing, `scripts/regenerate_readme_summary.py`
 
-- [ ] **BENCH-01**: `docs/benchmark.md`'s chunked/bulk-vs-naive speedup figure is re-measured
+- [x] **BENCH-01**: `docs/benchmark.md`'s chunked/bulk-vs-naive speedup figure is re-measured
       against the schema carrying the new trigger/constraint overhead
 
-- [ ] **DOC-02**: README's Executive Summary business-report table reflects genuine non-empty
+- [x] **DOC-02**: README's Executive Summary business-report table reflects genuine non-empty
       results after the correlation fix, and `docs/oracle.md`/`docs/csv-engine.md` are corrected if
       they describe `customer_id` generation in a way that no longer matches reality
 
@@ -263,8 +263,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TEST-06 | Phase 7 | Complete |
 | INFRA-04 | Phase 7 | Complete |
 | DAG-06 | Phase 7 | Complete |
-| BENCH-01 | Phase 7 | Planned |
-| DOC-02 | Phase 7 | Planned |
+| BENCH-01 | Phase 7 | Complete |
+| DOC-02 | Phase 7 | Complete |
 
 **Coverage:**
 

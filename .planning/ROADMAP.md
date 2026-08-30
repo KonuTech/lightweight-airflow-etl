@@ -266,7 +266,7 @@ loudly.
 **Requirements**: DATA-01, DATA-02, GEN-02, DB-01, DB-02, TEST-05, TEST-06, INFRA-04, DAG-06,
 BENCH-01, DOC-02 (new REQ IDs added to REQUIREMENTS.md during planning per D-30)
 **Depends on:** Phase 6
-**Plans:** 5/6 plans executed
+**Plans:** 6/6 plans executed
 
 Success Criteria (what must be TRUE):
 
@@ -315,7 +315,7 @@ race against either plan's own live-stack verification)*
 
 **Wave 5** *(blocked on 07-04 and 07-05 completion — this phase's own completion gate)*
 
-- [ ] 07-06-PLAN.md — Benchmark re-verification against the post-DDL schema, live README Executive
+- [x] 07-06-PLAN.md — Benchmark re-verification against the post-DDL schema, live README Executive
   Summary regeneration proof, docs correction, `make verify-phase7`
 
 ---
