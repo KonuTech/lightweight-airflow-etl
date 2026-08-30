@@ -109,6 +109,10 @@ jobs:
       - name: Run the e2e suite against the live stack
         run: uv run pytest tests/e2e/ -x
 
+      - name: Dump scheduler/dag-processor logs on e2e failure
+        if: failure()
+        run: docker compose logs airflow-scheduler airflow-dag-processor airflow-apiserver
+
       - name: Tear down
         if: always()
         run: docker compose down -v

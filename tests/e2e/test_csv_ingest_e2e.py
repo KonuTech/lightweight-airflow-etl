@@ -83,8 +83,19 @@ def test_wait_for_file_defers_before_file_exists_then_lands_in_oracle(
     # Step 2: poll until wait_for_file genuinely reaches "deferred" BEFORE
     # any fixture file is written -- Pitfall 4's exact ordering. Never write
     # the file before this call returns.
+    #
+    # timeout=180 (not the 60s default): on a genuinely cold docker-compose
+    # stack (CI, first boot), `docker compose up --wait`'s healthchecks only
+    # confirm the scheduler process is alive, not that it has completed its
+    # first DAG-parse-and-schedule cycle for this specific triggered run.
+    # Confirmed live: PR #1's oracle-e2e run timed out at the 60s default
+    # with last observed state 'None' (no task instance yet) on a fresh
+    # runner; the identical test passes in ~seconds against this project's
+    # own warm local dev stack, where the DAG is already parsed and cached.
+    # This does not weaken the assertion -- it must still reach exactly
+    # "deferred", just with headroom for cold-start scheduling latency.
     dag_polling.wait_for_task_state(
-        dag_polling.AIRFLOW_BASE_URL, run_id, "wait_for_file", jwt_token, "deferred"
+        dag_polling.AIRFLOW_BASE_URL, run_id, "wait_for_file", jwt_token, "deferred", timeout=180.0
     )
 
     # Step 3: only THEN write a freshly-generated ~20-row customers CSV
