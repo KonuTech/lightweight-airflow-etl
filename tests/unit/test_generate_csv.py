@@ -203,19 +203,21 @@ def test_generate_rows_is_deterministic_for_same_seed_orders(orders_config) -> N
 
 
 def test_cli_run_twice_produces_byte_identical_files_orders(tmp_path, monkeypatch) -> None:
+    """D-05: a --correlated run is byte-identical for both customers and
+    orders across two runs with the same seed (replaces the old
+    standalone-orders-only assertion, which --correlated now supersedes)."""
     monkeypatch.setattr(generate_csv, "_DATA_DIR", tmp_path / "run1")
-    generate_csv.main(
-        ["--dataset", "orders", "--rows", "50", "--invalid-ratio", "0.2", "--seed", "42"]
-    )
-    first_bytes = generate_csv.output_path("orders").read_bytes()
+    generate_csv.main(["--correlated", "--rows", "50", "--invalid-ratio", "0.2", "--seed", "42"])
+    first_customers_bytes = generate_csv.output_path("customers").read_bytes()
+    first_orders_bytes = generate_csv.output_path("orders").read_bytes()
 
     monkeypatch.setattr(generate_csv, "_DATA_DIR", tmp_path / "run2")
-    generate_csv.main(
-        ["--dataset", "orders", "--rows", "50", "--invalid-ratio", "0.2", "--seed", "42"]
-    )
-    second_bytes = generate_csv.output_path("orders").read_bytes()
+    generate_csv.main(["--correlated", "--rows", "50", "--invalid-ratio", "0.2", "--seed", "42"])
+    second_customers_bytes = generate_csv.output_path("customers").read_bytes()
+    second_orders_bytes = generate_csv.output_path("orders").read_bytes()
 
-    assert first_bytes == second_bytes
+    assert first_customers_bytes == second_customers_bytes
+    assert first_orders_bytes == second_orders_bytes
 
 
 def test_orders_csv_header_matches_column_names_in_declared_order(orders_config) -> None:
@@ -256,10 +258,13 @@ def test_orders_valid_amount_values_have_exactly_two_decimal_places(orders_confi
 
 
 def test_cli_end_to_end_writes_real_csv_file_orders(tmp_path, monkeypatch) -> None:
+    """D-22: orders is now reached via --correlated, not a standalone
+    --dataset orders call (which test_bare_dataset_orders_cli_is_rejected
+    below now proves is rejected)."""
     monkeypatch.setattr(generate_csv, "_DATA_DIR", tmp_path)
 
     exit_code = generate_csv.main(
-        ["--dataset", "orders", "--rows", "20", "--invalid-ratio", "0.25", "--seed", "7"]
+        ["--correlated", "--rows", "20", "--invalid-ratio", "0.25", "--seed", "7"]
     )
 
     assert exit_code == 0
@@ -271,6 +276,14 @@ def test_cli_end_to_end_writes_real_csv_file_orders(tmp_path, monkeypatch) -> No
         data_rows = list(reader)
     assert header == ["order_id", "customer_id", "order_date", "amount"]
     assert len(data_rows) == 20
+
+
+def test_bare_dataset_orders_cli_is_rejected() -> None:
+    """D-22's CLI-level enforcement: orders can no longer be generated
+    independently -- --dataset orders alone (no --correlated) must exit
+    non-zero via argparse's own SystemExit."""
+    with pytest.raises(SystemExit):
+        generate_csv.main(["--dataset", "orders"])
 
 
 # --- --compress flag (D-32, 03-04-PLAN.md Task 3) --------------------------
