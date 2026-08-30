@@ -166,6 +166,20 @@ and WSL2's bind-mount UID mapping doesn't line up.
 up` (or `docker compose up -d --wait`). This is safe for a throwaway local-dev credential file that
 is already gitignored and never leaves your machine.
 
+## Known First-Boot Gotcha: Permission Error Creating `data/<dataset>/`
+
+On a genuinely fresh checkout, `docker-compose.yml`'s `./data:/opt/airflow/data` bind mount does
+not exist on the host yet — Docker Engine auto-creates it as `root` the first time a container
+starts. Any host-side process that isn't root (your own shell, `make benchmark`, or the e2e/evidence
+test suites) then gets `PermissionError` trying to create a dataset subdirectory inside it
+(`data/customers`, `data/orders`) that doesn't exist yet — confirmed live on a CI runner in
+Phase 6's own PR (`PermissionError: [Errno 13] Permission denied: '.../data/customers'`).
+
+**Fix:** `mkdir -p data/customers data/orders` **before** the first `docker compose up`, so the
+directories already exist with your own user's ownership before Docker ever touches the mount.
+`.github/workflows/ci.yml` and `readme-summary.yml` do this automatically; a local fresh clone
+needs it done manually once.
+
 ## Verifying the Stack
 
 After `make up`, confirm everything is actually healthy rather than trusting `docker compose up`'s

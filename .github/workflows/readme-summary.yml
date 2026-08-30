@@ -45,6 +45,13 @@ jobs:
           echo '{"admin": "admin"}' > docker/airflow/simple_auth_manager_passwords.json.generated
           chmod 666 docker/airflow/simple_auth_manager_passwords.json.generated
 
+      # Same bind-mount-creates-as-root issue as ci.yml's oracle-e2e job:
+      # scripts/regenerate_readme_summary.py writes into data/customers and
+      # data/orders, which would otherwise get PermissionError on a fresh
+      # checkout. Pre-create with runner-user ownership.
+      - name: Pre-create data/ subdirectories with correct ownership
+        run: mkdir -p data/customers data/orders
+
       - name: Bring up the full stack
         run: docker compose up -d --wait
 

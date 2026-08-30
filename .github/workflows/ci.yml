@@ -52,6 +52,18 @@ jobs:
           echo '{"admin": "admin"}' > docker/airflow/simple_auth_manager_passwords.json.generated
           chmod 666 docker/airflow/simple_auth_manager_passwords.json.generated
 
+      # Same class of bug as the chmod above, on a different bind mount:
+      # docker-compose.yml mounts ./data:/opt/airflow/data. On a genuinely
+      # fresh checkout ./data does not exist yet, so Docker Engine creates it
+      # on the host as root when the first container starts -- the runner
+      # user (non-root) then gets PermissionError trying to mkdir data/customers
+      # inside it (tests/e2e/test_csv_ingest_e2e.py's fixture-clear step).
+      # Pre-creating it here, owned by the runner user, avoids that entirely.
+      # Confirmed live: PR #1's second oracle-e2e run failed with exactly this
+      # PermissionError before this mkdir was added.
+      - name: Pre-create data/ subdirectories with correct ownership
+        run: mkdir -p data/customers data/orders
+
       # Assumption A1 (06-RESEARCH.md): ubuntu-latest ships Docker Engine +
       # the docker compose v2 CLI plugin pre-installed. This is a cheap,
       # fail-fast, visible check for that assumption rather than letting a
