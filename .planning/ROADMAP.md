@@ -263,10 +263,10 @@ selected" every time it has ever been run in this project's history; this was pr
 Phase 6's VERIFICATION.md as an accepted, "gracefully handled" limitation, but a JOIN that can
 structurally never match isn't a working business report — it just fails silently instead of
 loudly.
-**Requirements**: (new — not in original REQUIREMENTS.md; scope this against existing DOC-01/TEST-03
-evidence requirements when planning, or add a new REQ if the project's process requires one)
+**Requirements**: DATA-01, DATA-02, GEN-02, DB-01, DB-02, TEST-05, TEST-06, INFRA-04, DAG-06,
+BENCH-01, DOC-02 (new REQ IDs added to REQUIREMENTS.md during planning per D-30)
 **Depends on:** Phase 6
-**Plans:** 0 plans
+**Plans:** 6 plans
 
 Success Criteria (what must be TRUE):
 
@@ -283,8 +283,36 @@ Success Criteria (what must be TRUE):
      `customer_id` generation in a way that no longer matches reality.
 
 Plans:
+**Wave 1**
 
-- [ ] TBD (run /gsd-plan-phase 7 to break down)
+- [ ] 07-01-PLAN.md — Tracer: correlated ID generation (Zipf-weighted pool sampling, structured
+  seed-derived IDs) wired end-to-end to a live customers⋈orders Oracle JOIN returning real rows,
+  plus unit coverage of the correlation properties
+
+**Wave 2** *(blocked on 07-01 completion)*
+
+- [ ] 07-02-PLAN.md — `--correlated` CLI mode + staging/atomic-rename write helper; `make generate`
+  becomes one combined invocation; CLI-level orders-standalone test remediation
+- [ ] 07-03-PLAN.md — New `report_ready` DAG: custom deferrable `OraclePartitionReadyTrigger`
+  (Oracle provider ships no sensor of its own), proven live to defer until both datasets have
+  ingested today's partition
+
+**Wave 3** *(gap-free DDL wave — blocked on 07-02 and 07-03 completion, to avoid a `make reset`
+race against either plan's own live-stack verification)*
+
+- [ ] 07-04-PLAN.md — PK/index/trigger DDL on `customers_valid`/`orders_valid` only (gated by a
+  `checkpoint:decision` — one-way, requires `make reset`), live-Oracle proof of enforcement
+
+**Wave 4** *(blocked on 07-02 and 07-04 completion)*
+
+- [ ] 07-05-PLAN.md — `scripts/regenerate_readme_summary.py` adopts the shared correlated
+  generator + staging/rename; live proof against the real Airflow stack with multi-day backdated
+  partitions
+
+**Wave 5** *(blocked on 07-04 and 07-05 completion — this phase's own completion gate)*
+
+- [ ] 07-06-PLAN.md — Benchmark re-verification against the post-DDL schema, live README Executive
+  Summary regeneration proof, docs correction, `make verify-phase7`
 
 ---
 *Roadmap created: 2026-08-28*

@@ -116,6 +116,58 @@ Requirements for initial release. Each maps to roadmap phases.
 - [x] **DOC-01**: README and `docs/` let a new developer go from `git clone` to a completed
       HTTP-triggered ingestion with no undocumented manual steps
 
+### Correlated Business Report (Phase 7)
+
+Added during Phase 7 planning per CONTEXT.md D-30 — the phase grew well beyond the original
+"fix a data bug" scope (ID correlation, PK/index/trigger DDL, staging/rename, a new report-sensing
+DAG, benchmark re-verification), so it is scoped against its own REQ IDs rather than force-fit
+against the already-`Complete` DOC-01/TEST-03 from Phase 6.
+
+- [ ] **DATA-01**: `orders.customer_id` is sampled with replacement, Zipf-weighted (weight ∝
+      1/rank), from the pool of `customer_id` values that will land in `customers_valid` for the
+      same generation run — never independently random — and the assignment is fully
+      deterministic/byte-identical given the same `--seed`; generating orders against an empty
+      valid-customer pool raises immediately rather than silently falling back to uncorrelated IDs
+
+- [ ] **DATA-02**: `customer_id`/`order_id` move from a random Faker word to a seed-derived
+      structured ID (`CUST-{seed_hash}-{sequence}` / `ORD-{seed_hash}-{sequence}`) so numbering
+      never collides across accumulating Oracle runs
+
+- [ ] **GEN-02**: Correlation logic (generate customers -> extract valid-ID pool -> Zipf-weighted
+      sample for orders) lives in exactly one shared function used by every call site
+      (`make generate`, `scripts/regenerate_readme_summary.py`, the live e2e test's fixture setup)
+      — `make generate` becomes a single combined invocation, not two independent per-dataset calls
+
+- [ ] **DB-01**: `customers_valid`/`orders_valid` (never the `_invalid` tables) gain a `PRIMARY KEY`
+      on their own id column plus a plain index on `customer_id` for the JOIN workload
+
+- [ ] **DB-02**: An `orders_valid` `BEFORE INSERT` trigger validates the inserted `customer_id`
+      exists in `customers_valid` as a DB-level safety net on top of the Python-side correlation —
+      a violation fails the whole insert batch, matching Oracle's default `executemany()` behavior
+
+- [ ] **TEST-05**: A fast unit test suite proves the correlation function's properties directly:
+      `orders.customer_id` is a subset of the valid-customer pool, the Zipf-weighting is observable,
+      and the same seed produces identical output across runs
+
+- [ ] **TEST-06**: A live end-to-end test (its own file, wired into the required, blocking
+      `oracle-e2e` CI check) ingests both datasets for real and asserts the customers-JOIN-orders
+      report returns at least one row, including rows backdated across multiple partition days
+
+- [ ] **INFRA-04**: A generated CSV is written to a staging path and atomically renamed into its
+      watched directory, proven against the real, live Airflow stack (never mocked)
+
+- [ ] **DAG-06**: A new Airflow DAG senses (via a custom Oracle-polling deferrable trigger, since
+      the Oracle provider ships no sensor) when both `customers_valid` and `orders_valid` have data
+      for the current wall-clock-date partition, then builds/logs the business report — running
+      alongside, not replacing, `scripts/regenerate_readme_summary.py`
+
+- [ ] **BENCH-01**: `docs/benchmark.md`'s chunked/bulk-vs-naive speedup figure is re-measured
+      against the schema carrying the new trigger/constraint overhead
+
+- [ ] **DOC-02**: README's Executive Summary business-report table reflects genuine non-empty
+      results after the correlation fix, and `docs/oracle.md`/`docs/csv-engine.md` are corrected if
+      they describe `customer_id` generation in a way that no longer matches reality
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
@@ -202,13 +254,26 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TEST-04 | Phase 6 | Complete |
 | CI-01 | Phase 6 | Complete |
 | DOC-01 | Phase 6 | Complete |
+| DATA-01 | Phase 7 | Planned |
+| DATA-02 | Phase 7 | Planned |
+| GEN-02 | Phase 7 | Planned |
+| DB-01 | Phase 7 | Planned |
+| DB-02 | Phase 7 | Planned |
+| TEST-05 | Phase 7 | Planned |
+| TEST-06 | Phase 7 | Planned |
+| INFRA-04 | Phase 7 | Planned |
+| DAG-06 | Phase 7 | Planned |
+| BENCH-01 | Phase 7 | Planned |
+| DOC-02 | Phase 7 | Planned |
 
 **Coverage:**
 
-- v1 requirements: 30 total
-- Mapped to phases: 30 (100%)
+- v1 requirements: 41 total
+- Mapped to phases: 41 (100%)
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-08-28*
-*Last updated: 2026-08-28 after roadmap adjustment (added INFRA-03 credentials requirement; 100% v1 requirement coverage across 6 phases)*
+*Last updated: 2026-08-30 after Phase 7 planning (added DATA-01/02, GEN-02, DB-01/02, TEST-05/06,
+INFRA-04, DAG-06, BENCH-01, DOC-02 per CONTEXT.md D-30; 100% v1 requirement coverage across 7
+phases)*
