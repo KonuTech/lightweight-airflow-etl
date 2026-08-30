@@ -3,21 +3,21 @@
 # Executive Summary
 
 Live evidence of a working HTTP-trigger -> Airflow DAG -> Oracle ETL pipeline
-(TEST-03/DOC-01), regenerated automatically after every merge to `main`
+(TEST-03/DOC-01), regenerated automatically after every merge to `master`
 (D-11/D-12) by `scripts/regenerate_readme_summary.py` via
 `.github/workflows/readme-summary.yml`, using the default `GITHUB_TOKEN`
-(never a PAT -- D-13). Last regenerated: `2026-08-30T11:58:32.467375+00:00`.
+(never a PAT -- D-13). Last regenerated: `2026-08-30T12:20:51.444131+00:00`.
 
 ### Latest ingestion per dataset
 
 | Dataset | File Name | Total Rows | Valid Rows | Invalid Rows | Status | Processed At (UTC) |
 |---|---|---|---|---|---|---|
-| customers | customers_20260830.csv | 25 | 20 | 5 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T11:58:19.109488 |
-| orders | orders_20260830.csv | 25 | 20 | 5 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T11:58:28.754807 |
+| customers | customers_20260830.csv | 15 | 12 | 3 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T12:20:38.115134 |
+| orders | orders_20260830.csv | 250 | 200 | 50 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T12:20:48.152190 |
 
 ### Deferred-wake proof
 
-`wait_for_file` reported Airflow task state `deferred` for the `customers` dataset (`dag_run_id=manual__2026-08-30T11:58:11.469420+00:00`) at `2026-08-30T11:58:15.534831+00:00` -- confirmed BEFORE the fixture file existed on disk, proving the non-blocking file-wait genuinely deferred rather than short-circuited against an already-present file.
+`wait_for_file` reported Airflow task state `deferred` for the `customers` dataset (`dag_run_id=manual__2026-08-30T12:20:32.724426+00:00`) at `2026-08-30T12:20:36.823913+00:00` -- confirmed BEFORE the fixture file existed on disk, proving the non-blocking file-wait genuinely deferred rather than short-circuited against an already-present file.
 
 ### Customers x Orders business report (top 10)
 
@@ -28,16 +28,16 @@ for the full, un-truncated report and `make verify-evidence` to reproduce it.
 
 | Region | Order Month | Order Count | Total Amount | Avg Amount |
 |---|---|---|---|---|
-| Andorra | 2002-10 | 1 | 8045836528.99 | 8045836528.99 |
-| Andorra | 2019-04 | 1 | 4411186453.86 | 4411186453.86 |
-| Austria | 2009-05 | 1 | 3226527319.56 | 3226527319.56 |
-| Bahamas | 2010-03 | 1 | 6631899609.86 | 6631899609.86 |
-| Bangladesh | 2010-03 | 1 | 1162434943.39 | 1162434943.39 |
-| Bangladesh | 2013-10 | 1 | 777453145.75 | 777453145.75 |
-| Barbados | 2016-12 | 1 | 2409084010.78 | 2409084010.78 |
-| Belgium | 2006-06 | 1 | 6659246441.83 | 6659246441.83 |
-| Belize | 2011-08 | 1 | 235070335.49 | 235070335.49 |
-| Belize | 2016-11 | 1 | 3450247788.65 | 3450247788.65 |
+| Anguilla | 2026-01 | 5 | 31751.85 | 6350.37 |
+| Anguilla | 2026-02 | 5 | 22289.48 | 4457.9 |
+| Bolivia | 2026-01 | 3 | 17344.42 | 5781.47 |
+| Bolivia | 2026-02 | 4 | 21984.41 | 5496.1 |
+| Bulgaria | 2026-01 | 15 | 101694.13 | 6779.61 |
+| Bulgaria | 2026-02 | 18 | 110674.46 | 6148.58 |
+| Ghana | 2026-01 | 29 | 159272.19 | 5492.14 |
+| Ghana | 2026-02 | 24 | 94547.71 | 3939.49 |
+| Holy See (Vatican City State) | 2026-01 | 11 | 61729.09 | 5611.74 |
+| Holy See (Vatican City State) | 2026-02 | 9 | 32245.2 | 3582.8 |
 
 <!-- EXEC-SUMMARY:END -->
 

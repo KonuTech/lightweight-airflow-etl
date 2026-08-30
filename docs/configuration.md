@@ -156,7 +156,7 @@ backfilled empty value exactly as it would any other blank value).
     { "name": "order_id", "type": "string", "nullable": false, "required": true },
     { "name": "customer_id", "type": "string", "nullable": false, "required": true },
     { "name": "order_date", "type": "date", "nullable": true, "required": true, "format": "%Y-%m-%d" },
-    { "name": "amount", "type": "decimal", "nullable": true, "required": true, "precision": 12, "scale": 2 }
+    { "name": "amount", "type": "decimal", "nullable": true, "required": true, "precision": 6, "scale": 2 }
   ],
   "oracle": { "valid_table": "orders_valid", "invalid_table": "orders_invalid" },
   "processing": { "chunk_size": 5000 }
@@ -164,8 +164,10 @@ backfilled empty value exactly as it would any other blank value).
 ```
 
 `amount` is `orders.json`'s only `decimal` column, showing the `precision`/`scale` pair in
-practice — `NUMBER(12,2)` on the Oracle side (`docker/oracle/init/03_orders.sql`), matching
-exactly.
+practice. `precision`/`scale` are generator-side metadata only — they bound the range
+`generator/generate_csv.py`'s `format_decimal()` draws from, never enforced by
+`csv_processor.validate`/`.normalize` at load time — so they need only fit within, not exactly
+match, the wider `NUMBER(12,2)` column on the Oracle side (`docker/oracle/init/03_orders.sql`).
 
 ## Adding a New Dataset
 

@@ -63,7 +63,7 @@ def test_load_config_returns_validated_orders_dataset() -> None:
 
     amount_column = next(column for column in config.columns if column.name == "amount")
     assert amount_column.type == "decimal"
-    assert amount_column.precision == 12
+    assert amount_column.precision == 6
     assert amount_column.scale == 2
 
 

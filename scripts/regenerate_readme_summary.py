@@ -298,7 +298,7 @@ def render_executive_summary(
     return f"""# Executive Summary
 
 Live evidence of a working HTTP-trigger -> Airflow DAG -> Oracle ETL pipeline
-(TEST-03/DOC-01), regenerated automatically after every merge to `main`
+(TEST-03/DOC-01), regenerated automatically after every merge to `master`
 (D-11/D-12) by `scripts/regenerate_readme_summary.py` via
 `.github/workflows/readme-summary.yml`, using the default `GITHUB_TOKEN`
 (never a PAT -- D-13). Last regenerated: `{regenerated_at}`.
@@ -357,11 +357,18 @@ def main() -> int:
         # D-21/D-23: ONE call producing BOTH datasets' GeneratedCsv results
         # -- generation is coupled, never a second independent
         # implementation of the correlation logic.
+        # orders_rows is deliberately much larger than customers_rows: with
+        # Zipf-weighted pool sampling (D-02/D-03) concentrating many orders
+        # onto the same small set of customers/countries, and order_date
+        # confined to a narrow window (generate_csv._ORDER_DATE_SPAN_DAYS),
+        # this produces multiple orders per (region, month) business-report
+        # bucket -- otherwise every bucket holds exactly one order and Avg
+        # Amount always equals Total Amount.
         correlated = generate_csv.generate_correlated_datasets(
             customers_config,
             orders_config,
-            customers_rows=25,
-            orders_rows=25,
+            customers_rows=15,
+            orders_rows=250,
             invalid_ratio=0.2,
             seed=seed,
         )

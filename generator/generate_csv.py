@@ -37,6 +37,12 @@ _DATA_DIR = _REPO_ROOT / "data"
 _NUMERIC_TYPES = ("integer", "decimal", "boolean")
 _DATE_TYPES = ("date", "timestamp")
 
+# Any column whose name contains "order" gets dates from this narrow, recent
+# window instead of the generic 25-year range -- see _valid_value()'s date
+# branch for why.
+_ORDER_DATE_BASE = date(2026, 1, 1)
+_ORDER_DATE_SPAN_DAYS = 60  # through ~2026-03-01: a handful of calendar months
+
 # D-15's four invalid-row categories, restricted per-dataset to what its
 # schema can actually produce (see applicable_categories()).
 _ALL_CATEGORIES = ("wrong_type", "invalid_date", "missing_required", "wrong_column_count")
@@ -118,8 +124,19 @@ def _valid_value(fake: Faker, rng: random.Random, column: ColumnSpec) -> str:
         if not column.format:  # pragma: no cover - guarded by config validation
             msg = f"column {column.name!r}: date type missing format"
             raise ValueError(msg)
-        base = date(2000, 1, 1)
-        value_date = base + timedelta(days=rng.randint(0, 365 * 25))
+        if "order" in column.name.lower():
+            # A narrow, recent window (not the wide birth_date-style range
+            # below) so that, at realistic row counts, multiple orders land
+            # in the same (region, month) business-report bucket -- a wide
+            # range spreads rows across too many buckets for any bucket to
+            # ever hold more than one order, making Avg Amount always equal
+            # Total Amount.
+            base = _ORDER_DATE_BASE
+            span_days = _ORDER_DATE_SPAN_DAYS
+        else:
+            base = date(2000, 1, 1)
+            span_days = 365 * 25
+        value_date = base + timedelta(days=rng.randint(0, span_days))
         return value_date.strftime(column.format)
     if column.type == "timestamp":
         if not column.format:  # pragma: no cover - guarded by config validation

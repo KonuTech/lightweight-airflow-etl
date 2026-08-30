@@ -26,7 +26,7 @@
       "type": "decimal",
       "nullable": true,
       "required": true,
-      "precision": 12,
+      "precision": 6,
       "scale": 2
     }
   ],

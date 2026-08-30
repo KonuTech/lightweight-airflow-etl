@@ -1,11 +1,11 @@
 # D-11/D-12/D-13: regenerate README.md's live Executive Summary after every
-# merge to `main` -- re-runs a real ingestion, captures the deferred-wake
+# merge to `master` -- re-runs a real ingestion, captures the deferred-wake
 # proof, queries Oracle for the customers-JOIN-orders business report
 # (scripts/regenerate_readme_summary.py), and commits the refreshed section
 # back using the default GITHUB_TOKEN.
 #
 # Trust boundary (T-06-07/T-06-08/T-06-09, threat_model in 06-04-PLAN.md):
-# `push: branches: [main]` only -- runs after a PR's required checks already
+# `push: branches: [master]` only -- runs after a PR's required checks already
 # passed and merged, never on untrusted fork PR code. `permissions:
 # contents: write` is scoped to ONLY this job (never workflow-level) -- the
 # narrowest write scope this phase introduces, kept separate from
@@ -22,7 +22,7 @@ name: readme-summary
 
 on:
   push:
-    branches: [main]
+    branches: [master]
 
 jobs:
   regenerate-executive-summary:
