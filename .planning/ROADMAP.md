@@ -266,18 +266,21 @@ loudly.
 **Requirements**: DATA-01, DATA-02, GEN-02, DB-01, DB-02, TEST-05, TEST-06, INFRA-04, DAG-06,
 BENCH-01, DOC-02 (new REQ IDs added to REQUIREMENTS.md during planning per D-30)
 **Depends on:** Phase 6
-**Plans:** 6 plans
+**Plans:** 1/6 plans executed
 
 Success Criteria (what must be TRUE):
 
   1. `orders.customer_id` values are drawn from an actual pool of `customers.customer_id` values
      generated for the same fixture run (not independently random) — e.g. generate `customers`
      first, feed its real IDs into the `orders` generator as a sampling pool.
+
   2. Running `scripts/verify_evidence.sql` (or `make verify-evidence`) against a freshly-ingested
      customers + orders pair returns **at least one real row** in the customers⋈orders report,
      with correct aggregate counts/metrics — verified live, not asserted from code reading alone.
+
   3. The change is covered by an automated regression test (unit or integration) that fails if the
      ID-correlation is ever silently broken again — never relies on manual re-verification alone.
+
   4. README's Executive Summary business-report table (D-11) reflects genuine non-empty results
      after this fix, and `docs/oracle.md`/`docs/csv-engine.md` are corrected if they describe
      `customer_id` generation in a way that no longer matches reality.
@@ -285,7 +288,7 @@ Success Criteria (what must be TRUE):
 Plans:
 **Wave 1**
 
-- [ ] 07-01-PLAN.md — Tracer: correlated ID generation (Zipf-weighted pool sampling, structured
+- [x] 07-01-PLAN.md — Tracer: correlated ID generation (Zipf-weighted pool sampling, structured
   seed-derived IDs) wired end-to-end to a live customers⋈orders Oracle JOIN returning real rows,
   plus unit coverage of the correlation properties
 
@@ -293,6 +296,7 @@ Plans:
 
 - [ ] 07-02-PLAN.md — `--correlated` CLI mode + staging/atomic-rename write helper; `make generate`
   becomes one combined invocation; CLI-level orders-standalone test remediation
+
 - [ ] 07-03-PLAN.md — New `report_ready` DAG: custom deferrable `OraclePartitionReadyTrigger`
   (Oracle provider ships no sensor of its own), proven live to defer until both datasets have
   ingested today's partition
