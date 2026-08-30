@@ -3,6 +3,10 @@ status: diagnosed
 trigger: "UAT G-01-1: `make smoke-test` (reset && up && verify) -- docker compose up -d --wait reports airflow-apiserver Healthy, but immediately-following verify_airflow_auth() POST to /auth/token gets ConnectionResetError: [Errno 104] Connection reset by peer with a raw uncaught traceback. Bare retry of `make verify` (no restart) passes cleanly. Also: WR-03's just-shipped URLError catch (01-REVIEW-FIX.md, commit d7d0882) did not prevent the raw traceback."
 created: 2026-08-28T17:00:00Z
 updated: 2026-08-28T17:04:00Z
+audit_acknowledged:
+  milestone: v1.0
+  at: 2026-08-30
+  status: diagnosed
 ---
 
 ## Current Focus
@@ -98,8 +102,10 @@ started: |
 ## Resolution
 
 root_cause:
+
   - "PART 1 (docker-compose false-Healthy): `airflow-apiserver` has no `healthcheck:` defined in docker-compose.yml (config category) -- confirmed via `docker inspect` (Config.Healthcheck: null). Because Docker Compose's `--wait` treats a service with no healthcheck as immediately 'Healthy' once the container process starts (not once the app inside is actually ready), `make up`/`make smoke-test` returns control ~12 seconds before uvicorn finishes its ASGI startup sequence (entrypoint DB-wait checks + Airflow bootstrap + Simple Auth Manager init + uvicorn bind/startup, empirically 12.66s in this session). Combined with this specific environment's Docker Desktop/WSL2 port-forwarding layer (environment category) already accepting TCP connections on the published host port before the in-container listener is ready, any client connecting during that ~12s gap gets its TCP handshake accepted and request sent, then the connection reset while reading the response -- producing ConnectionResetError rather than a plain connection-refused. Both conditions (no healthcheck AND this Docker networking behavior) are needed together to produce the exact symptom observed (Healthy-before-ready + reset-not-refused); on a bare native-Linux dockerd the missing-healthcheck race would likely still exist but might manifest as ConnectionRefusedError instead, which WR-03's URLError catch WOULD have caught."
   - "PART 2 (verify script doesn't catch it): `scripts/verify_environment.py::verify_airflow_auth()` catches `urllib.error.HTTPError` and `urllib.error.URLError` (code category, WR-03/commit d7d0882), but CPython's `urllib.request.AbstractHTTPHandler.do_open()` only wraps `OSError` into `URLError` around the connect+send phase (`h.request(...)`) -- confirmed by reading its source directly. The response-read phase (`h.getresponse()`) is outside that wrapping, covered only by a bare `except: raise` that re-raises unchanged. In this bug, the TCP connect+send succeeds (per Docker Desktop's port-forward behavior above), so the reset only surfaces later inside `h.getresponse()` as a raw, unwrapped `ConnectionResetError` (MRO: ConnectionResetError -> ConnectionError -> OSError -> Exception, no URLError anywhere in it). WR-03's fix was scoped to the wrong failure category for this specific race -- it addresses 'apiserver unreachable/refused' (which IS wrapped as URLError) but not 'apiserver reachable-but-reset-mid-response' (which structurally never is, in any Python version, given urllib's do_open() implementation)."
+
 fix: ""
 verification: ""
 files_changed: []

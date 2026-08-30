@@ -5,6 +5,10 @@ planted: 2026-08-30
 planted_during: Phase 07 (Correlated Customer-Order Business Report)
 trigger_when: a future phase needs data-processing logic that's awkward or slow to express in the Python csv_processor engine, or Oracle-side performance/complexity pressure makes PL/SQL clearly the better fit
 scope: unknown
+audit_acknowledged:
+  milestone: v1.0
+  at: 2026-08-30
+  status: dormant
 ---
 
 # SEED-001: Consider moving more data-processing logic from Python to Oracle PL/SQL
@@ -34,8 +38,10 @@ shipped design decision, treat as at least milestone-sized until scoped.
 
 - `.planning/PROJECT.md` — "What This Is" / Core Value (the "thin Python engine" design this would
   reverse) and Key Decisions table (two-tier reuse decision, validation-scope decision)
+
 - `.planning/phases/07-correlated-customer-order-business-report/07-CONTEXT.md` — Deferred Ideas
   (original discussion context)
+
 - `packages/csv-processor/src/csv_processor/` — the Python engine this idea would partially
   displace
 
