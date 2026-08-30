@@ -42,6 +42,18 @@ x-airflow-common: &airflow-common
     # that mints or verifies these tokens must share the identical jwt_secret.
     # Local-dev-only value (not sensitive -- this stack is 127.0.0.1-bound, INFRA-03 scope).
     AIRFLOW__API_AUTH__JWT_SECRET: "csv-ingest-local-dev-shared-jwt-secret-not-for-prod"
+    # Companion gap to the JWT_SECRET one above, same root cause shape, different config knob:
+    # Airflow 3.0+ moved secret_key from [webserver] to [api]. Each Airflow component that
+    # never had AIRFLOW__API__SECRET_KEY set mints its own random [api] secret_key on startup
+    # (airflow.api_fastapi.auth.tokens.get_signing_key("api", "secret_key", ...)) -- fine for a
+    # single-container install, but in this multi-container compose stack it means the
+    # log-viewer's internal API request is signed by one component's random key and verified by
+    # another's, always failing with Airflow's own "Please make sure that all your Airflow
+    # components ... have the same 'secret_key' configured in '[api]' section" error whenever a
+    # task's logs are opened in the UI. Every component that mints or verifies these tokens must
+    # share the identical secret_key. Local-dev-only value (not sensitive -- 127.0.0.1-bound,
+    # INFRA-03 scope), same treatment as AIRFLOW__API_AUTH__JWT_SECRET above.
+    AIRFLOW__API__SECRET_KEY: "csv-ingest-local-dev-shared-api-secret-key-not-for-prod"
     # D-11: Oracle Connection registered purely for UI visibility (`airflow connections
     # list`/`test`) -- csv_processor itself never touches this Connection object and stays
     # Airflow-agnostic (ENGINE-09); hostname is `oracle`, the compose service name (container-
@@ -89,6 +101,23 @@ x-airflow-common: &airflow-common
     # containers at all, so load_config_task could never read
     # /opt/airflow/configs/datasets/<dataset>.json without this.
     - ./configs:/opt/airflow/configs:ro
+    # Debug session airflow-ui-logs-not-visible's own newly-discovered gap (found via a real
+    # live UI log-fetch failure -- no prior phase ever recreated an Airflow container after a
+    # task had already run, so this was never exercised before): without a shared log volume,
+    # each of the 5 Airflow components writes task logs to its own LOCAL, ephemeral container
+    # filesystem, and Airflow's UI log view falls back to an HTTP fetch from
+    # TaskInstance.hostname:8793 (the container's own short container-ID, e.g. "2a059b001a3b")
+    # whenever the requesting component (apiserver) can't find the log file locally. That
+    # hostname stops resolving the moment the original container is recreated (image rebuild,
+    # `docker compose down`/`up`, `--force-recreate`, host reboot), permanently orphaning every
+    # log written before the recycle with a NameResolutionError -- observed live for a
+    # report_ready/build_report_task run that predated this very session's secret_key-fix
+    # container recreate. A named volume shared across all 5 services means every component
+    # reads/writes the SAME persistent /opt/airflow/logs, so apiserver almost always finds the
+    # log file locally (Airflow's FileTaskHandler checks local disk before falling back to the
+    # hostname:port HTTP fetch) and logs survive container recreates instead of being tied to a
+    # single container's lifetime.
+    - airflow-logs:/opt/airflow/logs
   depends_on:
     airflow-init:
       condition: service_completed_successfully
@@ -182,3 +211,6 @@ services:
 volumes:
   postgres-db-volume:
   oracle-data:
+  # Shared across all 5 Airflow services (see x-airflow-common.volumes comment) so task logs
+  # persist across container recreates instead of being tied to one container's lifetime.
+  airflow-logs:
