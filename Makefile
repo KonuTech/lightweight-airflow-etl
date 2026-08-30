@@ -1,4 +1,4 @@
-.PHONY: up down reset logs verify smoke-test generate fixtures fixtures-verify verify-phase2 verify-phase3 verify-phase4 verify-phase5 benchmark lint verify-evidence verify-phase6
+.PHONY: up down reset logs verify smoke-test generate fixtures fixtures-verify verify-phase2 verify-phase3 verify-phase4 verify-phase5 benchmark lint verify-evidence verify-phase6 verify-phase7
 
 up:               ## Start the full stack (Airflow + Oracle)
 	docker compose up -d --wait
@@ -87,5 +87,17 @@ verify-evidence:   ## Reproducible Oracle evidence capture: latest ingestion + c
 verify-phase6:     ## Phase 6's own combined local gate: unit + e2e suites, lint, and evidence verification (requires `make up` first)
 	uv run pytest tests/unit/ -x
 	uv run pytest tests/e2e/ -x
+	$(MAKE) lint
+	$(MAKE) verify-evidence
+
+# Phase 7's own combined local gate -- mirrors verify-phase6's exact shape (unit ->
+# e2e -> lint -> verify-evidence), requires `make up` first. Phase 7 adds one step
+# verify-phase6 didn't have: the integration suite, since
+# test_correlation_constraints.py (Plan 07-04's DDL/trigger coverage) lives under
+# tests/integration/, not tests/unit/ or tests/e2e/.
+verify-phase7:     ## Phase 7's own combined local gate: unit + e2e + integration suites, lint, and evidence verification (requires `make up` first)
+	uv run pytest tests/unit/ -x
+	uv run pytest tests/e2e/ -x
+	uv run pytest tests/integration/ -x
 	$(MAKE) lint
 	$(MAKE) verify-evidence

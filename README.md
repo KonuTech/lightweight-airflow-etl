@@ -6,18 +6,18 @@ Live evidence of a working HTTP-trigger -> Airflow DAG -> Oracle ETL pipeline
 (TEST-03/DOC-01), regenerated automatically after every merge to `main`
 (D-11/D-12) by `scripts/regenerate_readme_summary.py` via
 `.github/workflows/readme-summary.yml`, using the default `GITHUB_TOKEN`
-(never a PAT -- D-13). Last regenerated: `2026-08-29T23:01:16.635950+00:00`.
+(never a PAT -- D-13). Last regenerated: `2026-08-30T10:28:48.256271+00:00`.
 
 ### Latest ingestion per dataset
 
 | Dataset | File Name | Total Rows | Valid Rows | Invalid Rows | Status | Processed At (UTC) |
 |---|---|---|---|---|---|---|
-| customers | customers_1788044460631453295.csv | 25 | 20 | 5 | SUCCESS_WITH_INVALID_ROWS | 2026-08-29T23:01:02.972938 |
-| orders | orders_1788044470578841735.csv | 25 | 20 | 5 | SUCCESS_WITH_INVALID_ROWS | 2026-08-29T23:01:13.327505 |
+| customers | customers_20260830.csv | 25 | 20 | 5 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T10:28:27.123865 |
+| orders | orders_20260830.csv | 25 | 20 | 5 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T10:28:45.198041 |
 
 ### Deferred-wake proof
 
-`wait_for_file` reported Airflow task state `deferred` for the `customers` dataset (`dag_run_id=manual__2026-08-29T23:00:56.578632+00:00`) at `2026-08-29T23:01:00.631444+00:00` -- confirmed BEFORE the fixture file existed on disk, proving the non-blocking file-wait genuinely deferred rather than short-circuited against an already-present file.
+`wait_for_file` reported Airflow task state `deferred` for the `customers` dataset (`dag_run_id=manual__2026-08-30T10:28:19.365239+00:00`) at `2026-08-30T10:28:23.440397+00:00` -- confirmed BEFORE the fixture file existed on disk, proving the non-blocking file-wait genuinely deferred rather than short-circuited against an already-present file.
 
 ### Customers x Orders business report (top 10)
 
@@ -28,16 +28,16 @@ for the full, un-truncated report and `make verify-evidence` to reproduce it.
 
 | Region | Order Month | Order Count | Total Amount | Avg Amount |
 |---|---|---|---|---|
-| Afghanistan | 2000-12 | 2 | 7934157756.6 | 3967078878.3 |
-| Afghanistan | 2001-02 | 1 | 4272709782.63 | 4272709782.63 |
-| Afghanistan | 2001-06 | 1 | 8160460647.95 | 8160460647.95 |
-| Afghanistan | 2001-10 | 2 | 14176463922.86 | 7088231961.43 |
-| Afghanistan | 2002-01 | 2 | 4263714943.94 | 2131857471.97 |
-| Afghanistan | 2003-05 | 1 | 6976301727.6 | 6976301727.6 |
-| Afghanistan | 2005-04 | 1 | 4886050136.08 | 4886050136.08 |
-| Afghanistan | 2005-06 | 3 | 9506165486.04 | 3168721828.68 |
-| Afghanistan | 2005-10 | 1 | 593639016.35 | 593639016.35 |
-| Afghanistan | 2006-03 | 1 | 9893762532.9 | 9893762532.9 |
+| Cape Verde | 2015-03 | 1 | 3252355247.93 | 3252355247.93 |
+| Guatemala | 2003-05 | 1 | 3013063969.29 | 3013063969.29 |
+| Guatemala | 2017-05 | 1 | 7136687701.78 | 7136687701.78 |
+| Jamaica | 2009-05 | 1 | 1487308384.85 | 1487308384.85 |
+| Jamaica | 2015-10 | 1 | 8286806642.28 | 8286806642.28 |
+| Korea | 2023-02 | 1 | 6451041051.04 | 6451041051.04 |
+| Nicaragua | 2001-05 | 1 | 8131116006.11 | 8131116006.11 |
+| Nicaragua | 2001-09 | 1 | 7862013603.24 | 7862013603.24 |
+| Nicaragua | 2007-06 | 1 | 8616325641.04 | 8616325641.04 |
+| Nicaragua | 2010-05 | 1 | 5958008792.48 | 5958008792.48 |
 
 <!-- EXEC-SUMMARY:END -->
 
