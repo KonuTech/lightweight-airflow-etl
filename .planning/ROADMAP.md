@@ -26,7 +26,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 3: CSV Processing Engine** - Airflow-agnostic detect/parse/validate/normalize engine that splits valid (type-converted) rows from invalid (error-tagged) rows in bounded-memory chunks (completed 2026-08-29)
 - [x] **Phase 4: Oracle Bulk Load, Idempotency & Engine Entrypoint** - `executemany()` bulk loading into `_VALID`/`_INVALID` tables, checksum-based idempotency via an ingestion metadata table, and the `process()` entrypoint with full status semantics (completed 2026-08-29)
 - [x] **Phase 5: Airflow DAG Wiring & Deferrable File-Wait** - Thin, HTTP-triggerable TaskFlow DAG (`load_config` → `wait_for_file` → `process_csv` → `load_results` → `report_result`) with a non-blocking deferrable file-wait, identical for both datasets (completed 2026-08-29)
-- [ ] **Phase 6: End-to-End Verification, Benchmark, CI & Docs** - HTTP-to-Oracle end-to-end proof, a ~100K-row chunked-vs-row-by-row benchmark, minimal CI, and clone-to-ingest documentation
+- [x] **Phase 6: End-to-End Verification, Benchmark, CI & Docs** - HTTP-to-Oracle end-to-end proof, a ~100K-row chunked-vs-row-by-row benchmark, minimal CI, and clone-to-ingest documentation (completed 2026-08-30)
 
 ## Phase Details
 
@@ -247,7 +247,44 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. CSV Processing Engine | 10/10 | Complete    | 2026-08-29 |
 | 4. Oracle Bulk Load, Idempotency & Engine Entrypoint | 3/3 | Complete    | 2026-08-29 |
 | 5. Airflow DAG Wiring & Deferrable File-Wait | 2/2 | Complete    | 2026-08-29 |
-| 6. End-to-End Verification, Benchmark, CI & Docs | 5/5 | In Progress|  |
+| 6. End-to-End Verification, Benchmark, CI & Docs | 5/5 | Complete    | 2026-08-30 |
+
+### Phase 7: Correlated Customer-Order Business Report
+
+**Goal:** The customers⋈orders business report (D-10, `scripts/verify_evidence.sql`) actually
+returns real joined rows on generated fixture data, proving the pipeline delivers a working
+business report — not just two independently-loaded tables that happen to share a column name.
+**Root cause (found via live evidence-checking after Phase 6, not assumed):** both
+`configs/datasets/customers.json` and `orders.json` declare `customer_id` as a generic
+`"type": "string"`, and `generator/generate_csv.py` fills string fields independently per dataset
+via Faker word-generation — so `customers.customer_id` and `orders.customer_id` are two disjoint
+pools of random words with zero overlap. `scripts/verify_evidence.sql`'s JOIN has returned "no rows
+selected" every time it has ever been run in this project's history; this was previously logged in
+Phase 6's VERIFICATION.md as an accepted, "gracefully handled" limitation, but a JOIN that can
+structurally never match isn't a working business report — it just fails silently instead of
+loudly.
+**Requirements**: (new — not in original REQUIREMENTS.md; scope this against existing DOC-01/TEST-03
+evidence requirements when planning, or add a new REQ if the project's process requires one)
+**Depends on:** Phase 6
+**Plans:** 0 plans
+
+Success Criteria (what must be TRUE):
+
+  1. `orders.customer_id` values are drawn from an actual pool of `customers.customer_id` values
+     generated for the same fixture run (not independently random) — e.g. generate `customers`
+     first, feed its real IDs into the `orders` generator as a sampling pool.
+  2. Running `scripts/verify_evidence.sql` (or `make verify-evidence`) against a freshly-ingested
+     customers + orders pair returns **at least one real row** in the customers⋈orders report,
+     with correct aggregate counts/metrics — verified live, not asserted from code reading alone.
+  3. The change is covered by an automated regression test (unit or integration) that fails if the
+     ID-correlation is ever silently broken again — never relies on manual re-verification alone.
+  4. README's Executive Summary business-report table (D-11) reflects genuine non-empty results
+     after this fix, and `docs/oracle.md`/`docs/csv-engine.md` are corrected if they describe
+     `customer_id` generation in a way that no longer matches reality.
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 7 to break down)
 
 ---
 *Roadmap created: 2026-08-28*

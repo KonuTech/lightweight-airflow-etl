@@ -180,6 +180,14 @@ Recent decisions affecting current work:
 - [Phase 06]: [Phase 06]: 06-05: verify-phase6 Makefile target composed as unit suite -> e2e suite -> make lint -> make verify-evidence, mirroring verify-phase4/verify-phase5's established shape
 - [Phase 06]: UAT (post-execution): PR #1 (ci-verification-sync -> master, merged) was this project's first-ever push to GitHub, and its real oracle-e2e run surfaced 4 bugs invisible to every prior local-only/warm-stack verification -- most significantly AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION defaulting to true, which silently blocked ALL task scheduling for a freshly-parsed DAG's runs (even manually/API-triggered ones) on a genuinely fresh metadata DB. Fixed at the source in docker-compose.yml. Also fixed: chmod 666 on the CI-created auth-manager passwords file, pre-created data/customers+data/orders before docker compose (root-owned bind-mount-on-first-use), and bumped wait_for_task_state's cold-start timeout 60s->180s. Branch Protection configured on master (lint-type-unit + oracle-e2e required) via gh api, with user's explicit approval for both the merge and the protection change.
 
+### Roadmap Evolution
+
+- Phase 7 added: Correlated Customer-Order Business Report — user-discovered gap after Phase 6
+  "complete": `scripts/verify_evidence.sql`'s customers⋈orders JOIN has never returned rows in
+  this project's history because `customer_id` is generated independently per dataset (disjoint
+  Faker word pools). Not a Phase 6 regression — a pre-existing generator gap only surfaced once
+  D-10's business-report requirement actually needed the join to work.
+
 ### Pending Todos
 
 None yet.
