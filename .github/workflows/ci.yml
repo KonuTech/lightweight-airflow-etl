@@ -11,22 +11,10 @@
 # write access or secrets under `pull_request`'s default semantics. No
 # `permissions:` block anywhere in this file (workflow-level or job-level) --
 # the default is read-only, and neither job below needs anything more.
-#
-# `workflow_dispatch` is additive, not a trust-boundary change: it still
-# requires repo write access to invoke and runs under the same
-# no-`permissions:`-block default as every other trigger here. It exists so
-# `readme-summary.yml`'s auto-opened PR (master's branch protection requires
-# these two checks, but a PR opened via the default GITHUB_TOKEN does not
-# itself trigger `pull_request` runs -- GitHub's own anti-recursion rule) can
-# force a real run of these same checks against that PR's exact head commit
-# -- required-status-check matching is by commit SHA + context name, not by
-# which trigger produced the run, so this satisfies the gate genuinely
-# rather than bypassing it.
 name: ci
 
 on:
   pull_request:
-  workflow_dispatch:
 
 jobs:
   lint-type-unit:
