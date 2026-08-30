@@ -55,8 +55,8 @@ sequences live in `docs/*.md`, never duplicated here.
 
 ## Platform / Environment Architecture
 
-<details>
-<summary><strong>Click to expand</strong></summary>
+<details open>
+<summary><strong>Click to collapse</strong></summary>
 
 ```mermaid
 flowchart TD
@@ -130,8 +130,8 @@ flowchart TD
 
 ## Data Pipeline / Data Layers Architecture
 
-<details>
-<summary><strong>Click to expand</strong></summary>
+<details open>
+<summary><strong>Click to collapse</strong></summary>
 
 ```mermaid
 flowchart TD
