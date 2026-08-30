@@ -156,7 +156,7 @@ against the already-`Complete` DOC-01/TEST-03 from Phase 6.
 - [x] **INFRA-04**: A generated CSV is written to a staging path and atomically renamed into its
       watched directory, proven against the real, live Airflow stack (never mocked)
 
-- [ ] **DAG-06**: A new Airflow DAG senses (via a custom Oracle-polling deferrable trigger, since
+- [x] **DAG-06**: A new Airflow DAG senses (via a custom Oracle-polling deferrable trigger, since
       the Oracle provider ships no sensor) when both `customers_valid` and `orders_valid` have data
       for the current wall-clock-date partition, then builds/logs the business report — running
       alongside, not replacing, `scripts/regenerate_readme_summary.py`
@@ -262,7 +262,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TEST-05 | Phase 7 | Complete |
 | TEST-06 | Phase 7 | Planned |
 | INFRA-04 | Phase 7 | Complete |
-| DAG-06 | Phase 7 | Planned |
+| DAG-06 | Phase 7 | Complete |
 | BENCH-01 | Phase 7 | Planned |
 | DOC-02 | Phase 7 | Planned |
 

@@ -266,7 +266,7 @@ loudly.
 **Requirements**: DATA-01, DATA-02, GEN-02, DB-01, DB-02, TEST-05, TEST-06, INFRA-04, DAG-06,
 BENCH-01, DOC-02 (new REQ IDs added to REQUIREMENTS.md during planning per D-30)
 **Depends on:** Phase 6
-**Plans:** 2/6 plans executed
+**Plans:** 3/6 plans executed
 
 Success Criteria (what must be TRUE):
 
@@ -297,7 +297,7 @@ Plans:
 - [x] 07-02-PLAN.md — `--correlated` CLI mode + staging/atomic-rename write helper; `make generate`
   becomes one combined invocation; CLI-level orders-standalone test remediation
 
-- [ ] 07-03-PLAN.md — New `report_ready` DAG: custom deferrable `OraclePartitionReadyTrigger`
+- [x] 07-03-PLAN.md — New `report_ready` DAG: custom deferrable `OraclePartitionReadyTrigger`
   (Oracle provider ships no sensor of its own), proven live to defer until both datasets have
   ingested today's partition
 
