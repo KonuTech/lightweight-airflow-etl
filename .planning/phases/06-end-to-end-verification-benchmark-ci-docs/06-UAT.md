@@ -1,20 +1,14 @@
 ---
-status: partial
+status: complete
 phase: 06-end-to-end-verification-benchmark-ci-docs
 source: [06-VERIFICATION.md]
 started: 2026-08-30T01:35:00Z
-updated: 2026-08-30T07:15:00Z
+updated: 2026-08-30T07:20:00Z
 ---
 
 ## Current Test
 
-number: 2
-name: GitHub Branch Protection configuration
-expected: |
-  In repo Settings → Branches, a protection rule for `main`/`master` requires `lint-type-unit`
-  and `oracle-e2e` as passing status checks before merge. A PR cannot merge while either check
-  is red or still running.
-awaiting: user response
+[testing complete]
 
 ## Tests
 
@@ -39,14 +33,18 @@ note: |
 
 ### 2. GitHub Branch Protection configuration
 expected: In repo Settings → Branches, a protection rule for `main`/`master` requires `lint-type-unit` and `oracle-e2e` as passing status checks before merge. A PR cannot merge while either check is red or still running.
-result: [pending]
+result: pass
+note: |
+  Configured via `gh api repos/KonuTech/lightweight-airflow-etl/branches/master/protection` (PUT),
+  with user's explicit go-ahead. Verified via GET: required_status_checks.strict=true,
+  contexts=["lint-type-unit","oracle-e2e"].
 
 ## Summary
 
 total: 2
-passed: 1
+passed: 2
 issues: 0
-pending: 1
+pending: 0
 skipped: 0
 blocked: 0
 
