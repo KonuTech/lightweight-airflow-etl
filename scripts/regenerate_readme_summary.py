@@ -298,10 +298,11 @@ def render_executive_summary(
     return f"""# Executive Summary
 
 Live evidence of a working HTTP-trigger -> Airflow DAG -> Oracle ETL pipeline
-(TEST-03/DOC-01), regenerated automatically after every merge to `master`
-(D-11/D-12) by `scripts/regenerate_readme_summary.py` via
-`.github/workflows/readme-summary.yml`, using the default `GITHUB_TOKEN`
-(never a PAT -- D-13). Last regenerated: `{regenerated_at}`.
+(TEST-03/DOC-01), regenerated automatically after every push to `master`
+(D-11/D-12) by `scripts/regenerate_readme_summary.py`, landed via a PR
+`.github/workflows/readme-summary.yml` opens and auto-merges once
+`lint-type-unit`/`oracle-e2e` genuinely pass against it (D-13). Last
+regenerated: `{regenerated_at}`.
 
 ### Latest ingestion per dataset
 
