@@ -53,6 +53,184 @@ is the deliberately-small sibling of an existing production-shaped Airflow platf
 This README is a short summary with links into the topic docs below — the actual command
 sequences live in `docs/*.md`, never duplicated here.
 
+## Platform / Environment Architecture
+
+<details>
+<summary><strong>Click to expand</strong></summary>
+
+```mermaid
+flowchart TD
+    GH["GitHub"] --> GHA["GitHub Actions
+    ci.yml: lint-type-unit, oracle-e2e"]
+    GHA --> IMG["docker/airflow/Dockerfile
+    csv-processor installed in-image"]
+    IMG --> COMPOSE["docker-compose.yml
+    x-airflow-common env block"]
+
+    COMPOSE --> INIT["airflow-init
+    db migrate, runs once"]
+    COMPOSE --> API["airflow-apiserver
+    REST API + UI, :8080"]
+    COMPOSE --> SCHED["airflow-scheduler
+    LocalExecutor"]
+    COMPOSE --> DAGP["airflow-dag-processor"]
+    COMPOSE --> TRIG["airflow-triggerer"]
+    COMPOSE --> PG[("postgres
+    Airflow metadata only")]
+    COMPOSE --> ORA[("oracle
+    Database Free, :1521")]
+    COMPOSE --> LOGS[("airflow-logs volume
+    shared across all 5 components")]
+
+    SCHED -->|"in-process subprocess, no DockerOperator/KubernetesPodOperator"| TASK["process_csv_task
+    plain @task under LocalExecutor"]
+    TASK -->|"reads /opt/airflow/data/&lt;dataset&gt;/"| ORA
+
+    API -.->|"log-fetch reads"| LOGS
+    SCHED -.-> LOGS
+    DAGP -.-> LOGS
+    TRIG -.-> LOGS
+
+    CRED["admin/admin
+    one dev credential pair, no Vault"] -.->|"env vars, x-airflow-common"| API
+    CRED -.-> ORA
+
+    classDef ci fill:#e1f5fe,stroke:#0288d1
+    classDef compose fill:#ede7f6,stroke:#5e35b1
+    classDef airflow fill:#e8f5e9,stroke:#43a047
+    classDef compute fill:#fff3e0,stroke:#fb8c00
+    classDef storage fill:#fce4ec,stroke:#d81b60
+    classDef creds fill:#fffde7,stroke:#f9a825
+
+    class GH,GHA,IMG ci
+    class COMPOSE compose
+    class INIT,API,SCHED,DAGP,TRIG airflow
+    class TASK compute
+    class PG,ORA,LOGS storage
+    class CRED creds
+```
+
+### Data Flow Legend
+- **(blue) CI/CD**: GitHub, GitHub Actions, and the Airflow image it builds
+- **(purple) docker-compose**: the single `x-airflow-common` environment block every Airflow service shares (credentials, secret keys, the shared logs volume)
+- **(green) Airflow**: the 5 required components (init, apiserver, scheduler, dag-processor, triggerer) — `LocalExecutor` only, no Celery/Kubernetes
+- **(orange) Compute**: `process_csv_task`, a plain `@task` OS subprocess — never a separate container
+- **(pink) Storage**: Postgres (Airflow metadata only), Oracle (all business data), and the shared `airflow-logs` volume
+- **(yellow) Credentials**: one `admin`/`admin` pair via env vars — no secrets manager
+- **Solid Lines**: CI build flow, compose fan-out, and the task's Oracle write path
+- **Dotted Lines**: shared-volume log access and credential distribution
+
+### Key Relationships
+- `LocalExecutor` runs each task as an OS subprocess forked from the scheduler — `csv-processor` is installed directly into the shared Airflow image (`Dockerfile`), so `process_csv_task` pays only import + function-call cost, never a per-task container
+- Airflow's metadata (Postgres) and business data (Oracle) are two separate, physically distinct database engines — never mixed
+- All 5 Airflow components mount the *same* `airflow-logs` volume, so a task's logs stay fetchable regardless of which container originally produced them — a container recreate no longer orphans historical logs
+- One `admin`/`admin` credential pair, sourced from env vars in `x-airflow-common`, authenticates both Oracle and Airflow's own REST API/UI
+
+</details>
+
+## Data Pipeline / Data Layers Architecture
+
+<details>
+<summary><strong>Click to expand</strong></summary>
+
+```mermaid
+flowchart TD
+    GEN["generator/generate_csv.py
+    generate_correlated_datasets()"] --> STAGED[".staging/ then atomic rename
+    write_staged()"]
+    STAGED --> WATCH["data/customers/ , data/orders/
+    watched directories"]
+
+    WATCH --> SENSE["wait_for_file
+    deferrable FileSensor"]
+    SENSE --> PROC["process_csv_task"]
+    PROC --> ENGINE["csv_processor.engine.process()
+    detect -> parse -> validate -> normalize -> chunk"]
+
+    ENGINE -->|"valid rows, executemany()"| CVALID["customers_valid"]
+    ENGINE -->|"valid rows, executemany()"| OVALID["orders_valid"]
+    ENGINE -->|"invalid rows"| CINVALID["customers_invalid"]
+    ENGINE -->|"invalid rows"| OINVALID["orders_invalid"]
+    ENGINE --> META["ingestion_metadata"]
+
+    OVALID -.->|"BEFORE INSERT trigger: FK-existence check, whole batch fails"| CVALID
+
+    PROC --> RESULTS["load_results_task"]
+    RESULTS --> REPORTRES["report_result_task
+    per-ingestion log line"]
+
+    META --> SENSOR2["OraclePartitionReadyTrigger
+    polls until both datasets present today"]
+    SENSOR2 --> BUILDRPT["build_report_task
+    report_ready DAG"]
+    CVALID --> BUSREPORT["customers JOIN orders
+    business report"]
+    OVALID --> BUSREPORT
+    BUILDRPT --> BUSREPORT
+    BUSREPORT --> README["README.md Executive Summary
+    regenerate_readme_summary.py"]
+
+    CVALID -.-> CVALIDDETAIL["customers_valid
+    ---
+    customer_id PK, structured CUST-...
+    name, country, birth_date
+    event_ts, signup_country"]
+
+    OVALID -.-> OVALIDDETAIL["orders_valid
+    ---
+    order_id PK, structured ORD-...
+    customer_id (FK, trigger-checked)
+    + index ix_orders_valid_customer_id
+    order_date, amount NUMBER(12,2)"]
+
+    CINVALID -.-> INVALIDDETAIL["customers_invalid / orders_invalid
+    ---
+    same columns, widened to nullable VARCHAR2
+    + raw_line, error_code, error_message
+    source_file, row_number
+    UNCONSTRAINED -- no PK/index/trigger"]
+
+    META -.-> METADETAIL["ingestion_metadata
+    ---
+    file_name, checksum
+    UNIQUE(dataset, checksum)
+    total/valid/invalid rows, status"]
+
+    classDef gen fill:#cfd8dc,stroke:#455a64
+    classDef task fill:#bbdefb,stroke:#1565c0
+    classDef valid fill:#c8e6c9,stroke:#2e7d32
+    classDef invalid fill:#ffcdd2,stroke:#b71c1c
+    classDef meta fill:#c5cae9,stroke:#283593
+    classDef report fill:#fff59d,stroke:#f57f17
+    classDef details fill:#f5f5f5,stroke:#999,stroke-dasharray: 5 5
+
+    class GEN,STAGED,WATCH gen
+    class SENSE,PROC,ENGINE,RESULTS,REPORTRES,SENSOR2,BUILDRPT task
+    class CVALID,OVALID valid
+    class CINVALID,OINVALID invalid
+    class META meta
+    class BUSREPORT,README report
+    class CVALIDDETAIL,OVALIDDETAIL,INVALIDDETAIL,METADETAIL details
+```
+
+### Data Flow Legend
+- **(blue-grey) Generation**: `generator/generate_csv.py` produces Zipf-correlated `customers`/`orders` CSVs, staged then atomically renamed into the watched directory
+- **(blue) Airflow Tasks**: the `csv_ingest` DAG's chain (`wait_for_file` → `process_csv_task` → `load_results_task` → `report_result_task`) plus the `report_ready` DAG's sensor/report task
+- **(green) Valid**: `customers_valid`/`orders_valid` — PK + index + FK-existence trigger enforced
+- **(red) Invalid**: `customers_invalid`/`orders_invalid` — fully unconstrained, widened nullable columns
+- **(indigo) Metadata**: `ingestion_metadata`, the checksum-keyed idempotency record every ingestion writes
+- **(yellow) Reporting**: the customers ⋈ orders business report, live-regenerated into README.md's Executive Summary
+- **Solid Lines**: file/row movement through the pipeline
+- **Dotted Lines**: the FK-existence trigger check, and table-schema/constraint detail annotations
+
+### Key Relationships
+- `orders_valid.customer_id` is drawn from the *same* pool of `customer_id` values that land in `customers_valid` (Zipf-weighted, with replacement) — never independently random — which is what makes the customers ⋈ orders JOIN return real rows
+- The `BEFORE INSERT` trigger on `orders_valid` is a DB-level safety net on top of the Python-side correlation, not a replacement for it — it rejects the *whole batch* if a `customer_id` doesn't already exist in `customers_valid`
+- `customers_invalid`/`orders_invalid` are reachable only via the same `engine.process()` call, never a separate write path — and carry zero constraints, by design
+- The business report is materialized three independent ways from the identical, never-re-authored SQL: an ad hoc `make verify-evidence` run, the CI-triggered README regeneration, and the live `report_ready` DAG
+
+</details>
+
 ## Getting Started
 
 Prerequisites: Docker Desktop (with WSL2 integration enabled), GNU Make.
