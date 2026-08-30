@@ -65,6 +65,19 @@ x-airflow-common: &airflow-common
     # enabled here for local-dev verification of D-11/oracle_default via
     # `airflow connections test`. Acceptable in this project's explicit local-dev-only scope.
     AIRFLOW__CORE__TEST_CONNECTION: "Enabled"
+    # 07-03-PLAN.md Task 2's own newly-discovered gap (found via a real live
+    # deferral of the new report_ready DAG's custom trigger -- no prior phase
+    # ever exercised a DAG-folder-relative import from the triggerer process,
+    # only from DAG-parsing, which Airflow's own DagFileProcessor already puts
+    # on sys.path for free). The triggerer reconstructs a deferred trigger via
+    # `importlib.import_module()` on its stored classpath string
+    # ("_common.oracle_partition_trigger.OraclePartitionReadyTrigger") -- a
+    # plain top-level-package import, unlike DAG parsing, which never adds
+    # /opt/airflow/dags to sys.path on its own. Without this, every deferred
+    # OraclePartitionReadyTrigger fails immediately with
+    # `ModuleNotFoundError: No module named '_common'`, observed live in
+    # airflow-triggerer's own logs.
+    PYTHONPATH: "/opt/airflow/dags"
   user: "${AIRFLOW_UID:-50000}:0"
   volumes:
     - ./docker/airflow/simple_auth_manager_passwords.json.generated:/opt/airflow/simple_auth_manager_passwords.json.generated

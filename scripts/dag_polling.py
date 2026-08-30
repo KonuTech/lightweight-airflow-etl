@@ -67,12 +67,53 @@ def trigger_dag(dataset: str, config_path: str) -> str:
     return result.stdout.strip()
 
 
-def poll_task_instance_state(base_url: str, run_id: str, task_id: str, jwt_token: str) -> str:
+def trigger_dag_generic(
+    dag_id: str, conf: dict[str, object] | None = None, base_url: str = AIRFLOW_BASE_URL
+) -> str:
+    """Trigger any DAG (not just ``csv_ingest``) via a plain ``urllib`` POST.
+
+    Generalizes ``trigger_dag()``'s auth-then-POST flow to an arbitrary
+    ``dag_id``/``conf`` payload -- ``trigger_dag()``/``scripts/trigger_dag.sh``
+    are hard-coded to ``csv_ingest``'s URL and ``{dataset, config_path}`` conf
+    shape, so they cannot trigger a dataset-agnostic DAG like ``report_ready``,
+    which takes no runtime conf at all. Mirrors ``scripts/trigger_dag.sh``'s
+    exact ``{"conf": ..., "logical_date": null}`` payload shape (Airflow
+    3.3.1's ``TriggerDAGRunPostBody`` marks ``logical_date`` as required-but-
+    nullable, per ``docs/airflow-dag.md``'s own API note), generalized to any
+    ``dag_id``.
+
+    Returns the triggered ``dag_run_id``.
+    """
+    jwt_token = get_jwt_token(base_url)
+    payload = json.dumps({"conf": conf or {}, "logical_date": None}).encode("utf-8")
+    request = urllib.request.Request(
+        f"{base_url}/api/v2/dags/{dag_id}/dagRuns",
+        data=payload,
+        headers={"Authorization": f"Bearer {jwt_token}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        body = json.loads(response.read().decode("utf-8"))
+    dag_run_id = body.get("dag_run_id")
+    if not dag_run_id:
+        msg = f"Airflow trigger response missing dag_run_id: {body}"
+        raise RuntimeError(msg)
+    return str(dag_run_id)
+
+
+def poll_task_instance_state(
+    base_url: str, run_id: str, task_id: str, jwt_token: str, *, dag_id: str = "csv_ingest"
+) -> str:
     """GET ``.../dagRuns/{run_id}/taskInstances/{task_id}``, return its
     ``state`` field as a string (``"None"`` when the field is JSON ``null``,
-    e.g. before the task has been scheduled at all)."""
+    e.g. before the task has been scheduled at all).
+
+    ``dag_id`` defaults to ``csv_ingest`` (every pre-existing caller's own
+    implicit assumption) but is overridable for any other DAG, e.g.
+    ``report_ready``.
+    """
     request = urllib.request.Request(
-        f"{base_url}/api/v2/dags/csv_ingest/dagRuns/{run_id}/taskInstances/{task_id}",
+        f"{base_url}/api/v2/dags/{dag_id}/dagRuns/{run_id}/taskInstances/{task_id}",
         headers={"Authorization": f"Bearer {jwt_token}"},
         method="GET",
     )
@@ -90,6 +131,7 @@ def wait_for_task_state(
     *,
     timeout: float = 60.0,
     interval: float = 2.0,
+    dag_id: str = "csv_ingest",
 ) -> None:
     """Bounded poll loop: return once ``task_id`` (within ``run_id``) reports
     ``target_state``.
@@ -101,7 +143,7 @@ def wait_for_task_state(
     deadline = time.monotonic() + timeout
     last_state: str | None = None
     while True:
-        last_state = poll_task_instance_state(base_url, run_id, task_id, jwt_token)
+        last_state = poll_task_instance_state(base_url, run_id, task_id, jwt_token, dag_id=dag_id)
         if last_state == target_state:
             return
         if time.monotonic() >= deadline:
@@ -122,6 +164,7 @@ def wait_for_dag_run_result(
     result_task_id: str = "load_results_task",
     timeout: float = 120.0,
     interval: float = 1.0,
+    dag_id: str = "csv_ingest",
 ) -> dict[str, object]:
     """GET ``.../dagRuns/{run_id}/wait?result={result_task_id}&interval={interval}``,
     blocking server-side (Airflow's own ``wait`` endpoint) until the DAG run
@@ -133,10 +176,13 @@ def wait_for_dag_run_result(
     with intermediate heartbeat lines (e.g. ``{"state": "running"}``) followed
     by a final line carrying ``results``; only the final line is parsed.
 
+    ``dag_id`` defaults to ``csv_ingest`` (every pre-existing caller's own
+    implicit assumption) but is overridable for any other DAG.
+
     Returns the parsed ``results[result_task_id]`` dict.
     """
     url = (
-        f"{base_url}/api/v2/dags/csv_ingest/dagRuns/{run_id}/wait"
+        f"{base_url}/api/v2/dags/{dag_id}/dagRuns/{run_id}/wait"
         f"?result={result_task_id}&interval={interval}"
     )
     request = urllib.request.Request(
