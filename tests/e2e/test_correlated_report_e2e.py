@@ -119,9 +119,7 @@ def test_correlated_customers_orders_join_returns_at_least_one_row(
     )
 
     orders_result = process(orders_path, orders_config)
-    assert orders_result.status in {Status.SUCCESS, Status.SUCCESS_WITH_INVALID_ROWS}, (
-        orders_result
-    )
+    assert orders_result.status in {Status.SUCCESS, Status.SUCCESS_WITH_INVALID_ROWS}, orders_result
 
     oracle_cursor.execute(_BUSINESS_REPORT_SQL)
     rows = oracle_cursor.fetchall()

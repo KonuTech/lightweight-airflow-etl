@@ -12,7 +12,9 @@ import csv
 import gzip
 import importlib.util
 import random
+import re
 import sys
+from collections import Counter
 from decimal import Decimal
 from pathlib import Path
 
@@ -333,3 +335,141 @@ def test_compress_flag_defaults_to_false() -> None:
     args = parser.parse_args(["--dataset", "customers"])
 
     assert args.compress is False
+
+
+# --- generate_correlated_datasets() (07-01-PLAN.md Task 2): correlation
+# properties covering D-01/D-03/D-04/D-05/D-06/D-08 ---------------------
+
+
+def test_correlated_orders_customer_id_is_subset_of_valid_customer_pool(
+    customers_config, orders_config
+) -> None:
+    """D-01: orders.customer_id values are drawn from the pool of customer_id
+    values that will land in customers_valid. invalid_ratio=0.0 avoids the
+    documented (PD-2) missing_required corruption case, which can validly
+    blank a pooled/structured ID on an INVALID row -- unrelated to this
+    pool-sourcing property."""
+    correlated = generate_csv.generate_correlated_datasets(
+        customers_config,
+        orders_config,
+        customers_rows=20,
+        orders_rows=50,
+        invalid_ratio=0.0,
+        seed=42,
+    )
+
+    customer_id_index = correlated.customers.header.index("customer_id")
+    valid_customer_pool = {
+        row[customer_id_index]
+        for row, category in zip(
+            correlated.customers.rows, correlated.customers.categories, strict=True
+        )
+        if category is None
+    }
+
+    order_customer_id_index = correlated.orders.header.index("customer_id")
+    order_customer_ids = {row[order_customer_id_index] for row in correlated.orders.rows}
+
+    assert order_customer_ids
+    assert order_customer_ids <= valid_customer_pool
+
+
+def test_correlated_orders_customer_id_sampling_is_zipf_weighted(
+    customers_config, orders_config
+) -> None:
+    """D-03: weight ∝ 1/rank means the most-sampled customer_id should appear
+    strictly more often than the median count across all sampled
+    customer_ids -- a small pool (20 customers) and a large sample
+    (500 orders) makes the skew unambiguous."""
+    correlated = generate_csv.generate_correlated_datasets(
+        customers_config,
+        orders_config,
+        customers_rows=20,
+        orders_rows=500,
+        invalid_ratio=0.0,
+        seed=42,
+    )
+
+    order_customer_id_index = correlated.orders.header.index("customer_id")
+    order_customer_ids = [row[order_customer_id_index] for row in correlated.orders.rows]
+
+    counts = sorted(Counter(order_customer_ids).values())
+    median_count = counts[len(counts) // 2]
+    max_count = counts[-1]
+
+    assert max_count > median_count
+
+
+def test_generate_correlated_datasets_is_deterministic_for_same_seed(
+    customers_config, orders_config
+) -> None:
+    """D-05: same seed produces byte-identical CorrelatedDatasets (header/
+    rows/categories for BOTH customers and orders) across two separate
+    calls."""
+    first = generate_csv.generate_correlated_datasets(
+        customers_config,
+        orders_config,
+        customers_rows=20,
+        orders_rows=50,
+        invalid_ratio=0.2,
+        seed=42,
+    )
+    second = generate_csv.generate_correlated_datasets(
+        customers_config,
+        orders_config,
+        customers_rows=20,
+        orders_rows=50,
+        invalid_ratio=0.2,
+        seed=42,
+    )
+
+    assert first.customers.header == second.customers.header
+    assert first.customers.rows == second.customers.rows
+    assert first.customers.categories == second.customers.categories
+    assert first.orders.header == second.orders.header
+    assert first.orders.rows == second.orders.rows
+    assert first.orders.categories == second.orders.categories
+
+
+def test_generate_correlated_datasets_raises_on_empty_valid_customer_pool(
+    customers_config, orders_config
+) -> None:
+    """D-04: every customer row invalid (invalid_ratio=1.0) leaves the
+    valid-customer pool empty -- must raise immediately rather than silently
+    falling back to independent random IDs."""
+    with pytest.raises(ValueError, match="valid-customer pool is empty"):
+        generate_csv.generate_correlated_datasets(
+            customers_config,
+            orders_config,
+            customers_rows=5,
+            orders_rows=1,
+            invalid_ratio=1.0,
+            seed=1,
+        )
+
+
+def test_correlated_ids_match_structured_id_format(customers_config, orders_config) -> None:
+    """D-06/D-08: customer_id/order_id are seed-derived structured IDs, never
+    a random Faker word. invalid_ratio=0.0 so every row's ID is genuinely
+    assigned (not blanked by missing_required corruption), making the
+    "every row" claim unambiguous."""
+    correlated = generate_csv.generate_correlated_datasets(
+        customers_config,
+        orders_config,
+        customers_rows=20,
+        orders_rows=50,
+        invalid_ratio=0.0,
+        seed=42,
+    )
+
+    customer_id_index = correlated.customers.header.index("customer_id")
+    for row in correlated.customers.rows:
+        assert re.fullmatch(r"CUST-[0-9a-f]{8}-\d{6}", row[customer_id_index])
+
+    order_customer_id_index = correlated.orders.header.index("customer_id")
+    for row in correlated.orders.rows:
+        assert re.fullmatch(r"CUST-[0-9a-f]{8}-\d{6}", row[order_customer_id_index])
+
+    order_id_index = correlated.orders.header.index("order_id")
+    for row in correlated.orders.rows:
+        assert re.fullmatch(r"ORD-[0-9a-f]{8}-\d{6}", row[order_id_index])
