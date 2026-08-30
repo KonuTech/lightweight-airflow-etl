@@ -266,7 +266,7 @@ loudly.
 **Requirements**: DATA-01, DATA-02, GEN-02, DB-01, DB-02, TEST-05, TEST-06, INFRA-04, DAG-06,
 BENCH-01, DOC-02 (new REQ IDs added to REQUIREMENTS.md during planning per D-30)
 **Depends on:** Phase 6
-**Plans:** 4/6 plans executed
+**Plans:** 5/6 plans executed
 
 Success Criteria (what must be TRUE):
 
@@ -309,7 +309,7 @@ race against either plan's own live-stack verification)*
 
 **Wave 4** *(blocked on 07-02 and 07-04 completion)*
 
-- [ ] 07-05-PLAN.md — `scripts/regenerate_readme_summary.py` adopts the shared correlated
+- [x] 07-05-PLAN.md — `scripts/regenerate_readme_summary.py` adopts the shared correlated
   generator + staging/rename; live proof against the real Airflow stack with multi-day backdated
   partitions
 

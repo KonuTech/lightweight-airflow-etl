@@ -149,7 +149,7 @@ against the already-`Complete` DOC-01/TEST-03 from Phase 6.
       `orders.customer_id` is a subset of the valid-customer pool, the Zipf-weighting is observable,
       and the same seed produces identical output across runs
 
-- [ ] **TEST-06**: A live end-to-end test (its own file, wired into the required, blocking
+- [x] **TEST-06**: A live end-to-end test (its own file, wired into the required, blocking
       `oracle-e2e` CI check) ingests both datasets for real and asserts the customers-JOIN-orders
       report returns at least one row, including rows backdated across multiple partition days
 
@@ -260,7 +260,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DB-01 | Phase 7 | Complete |
 | DB-02 | Phase 7 | Complete |
 | TEST-05 | Phase 7 | Complete |
-| TEST-06 | Phase 7 | Planned |
+| TEST-06 | Phase 7 | Complete |
 | INFRA-04 | Phase 7 | Complete |
 | DAG-06 | Phase 7 | Complete |
 | BENCH-01 | Phase 7 | Planned |
