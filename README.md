@@ -7,18 +7,18 @@ Live evidence of a working HTTP-trigger -> Airflow DAG -> Oracle ETL pipeline
 (D-11/D-12) by `scripts/regenerate_readme_summary.py`, landed via a PR
 `.github/workflows/readme-summary.yml` opens and auto-merges once
 `lint-type-unit`/`oracle-e2e` genuinely pass against it (D-13). Last
-regenerated: `2026-08-30T14:15:50.386457+00:00`.
+regenerated: `2026-08-30T14:23:59.914003+00:00`.
 
 ### Latest ingestion per dataset
 
 | Dataset | File Name | Total Rows | Valid Rows | Invalid Rows | Status | Processed At (UTC) |
 |---|---|---|---|---|---|---|
-| customers | customers_20260830.csv | 15 | 12 | 3 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T14:15:34.401085 |
-| orders | orders_20260830.csv | 250 | 200 | 50 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T14:15:46.914523 |
+| customers | customers_20260830.csv | 15 | 12 | 3 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T14:23:46.140707 |
+| orders | orders_20260830.csv | 250 | 200 | 50 | SUCCESS_WITH_INVALID_ROWS | 2026-08-30T14:23:56.899384 |
 
 ### Deferred-wake proof
 
-`wait_for_file` reported Airflow task state `deferred` for the `customers` dataset (`dag_run_id=manual__2026-08-30T14:15:13.836118+00:00`) at `2026-08-30T14:15:22.086113+00:00` -- confirmed BEFORE the fixture file existed on disk, proving the non-blocking file-wait genuinely deferred rather than short-circuited against an already-present file.
+`wait_for_file` reported Airflow task state `deferred` for the `customers` dataset (`dag_run_id=manual__2026-08-30T14:23:35.146223+00:00`) at `2026-08-30T14:23:41.650289+00:00` -- confirmed BEFORE the fixture file existed on disk, proving the non-blocking file-wait genuinely deferred rather than short-circuited against an already-present file.
 
 ### Customers x Orders business report (top 10)
 
@@ -29,16 +29,16 @@ for the full, un-truncated report and `make verify-evidence` to reproduce it.
 
 | Region | Order Month | Order Count | Total Amount | Avg Amount |
 |---|---|---|---|---|
-| Austria | 2026-01 | 6 | 25379.14 | 4229.86 |
-| Austria | 2026-02 | 11 | 51812.67 | 4710.24 |
-| Bolivia | 2026-01 | 6 | 30133.27 | 5022.21 |
-| Bolivia | 2026-02 | 3 | 18367.15 | 6122.38 |
-| Bolivia | 2026-03 | 1 | 9832.36 | 9832.36 |
-| Gambia | 2026-01 | 2 | 11478.23 | 5739.12 |
-| Gambia | 2026-02 | 5 | 29677.28 | 5935.46 |
-| Gambia | 2026-03 | 1 | 6373.35 | 6373.35 |
-| Iceland | 2026-01 | 2 | 4916.1 | 2458.05 |
-| Iceland | 2026-02 | 3 | 10927.48 | 3642.49 |
+| Burundi | 2026-01 | 5 | 28813.11 | 5762.62 |
+| Burundi | 2026-02 | 2 | 11333.28 | 5666.64 |
+| Comoros | 2026-01 | 1 | 8728.25 | 8728.25 |
+| Comoros | 2026-02 | 4 | 22611.15 | 5652.79 |
+| Jersey | 2026-01 | 6 | 25162.35 | 4193.73 |
+| Jersey | 2026-02 | 4 | 17849 | 4462.25 |
+| Jersey | 2026-03 | 1 | 9425.03 | 9425.03 |
+| Korea | 2026-01 | 7 | 22604.71 | 3229.24 |
+| Korea | 2026-02 | 5 | 18711.77 | 3742.35 |
+| Malaysia | 2026-01 | 8 | 42371.94 | 5296.49 |
 
 <!-- EXEC-SUMMARY:END -->
 
