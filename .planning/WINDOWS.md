@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 1
+open_count: 2
 waived_count: 0
 fixed_count: 1
-total_count: 2
-last_updated: 2026-08-29T22:55:31.119Z
+total_count: 3
+last_updated: 2026-08-30T09:58:18.781Z
 ---
 
 # Broken Windows Ledger
@@ -17,6 +17,7 @@ last_updated: 2026-08-29T22:55:31.119Z
 |----|-------|------|------|------|-------------|--------|--------|-------------|-------------|
 | 1 | 03 | deviation | packages/csv-processor/src/csv_processor/detect/encoding.py |  | prepare_source()'s unconditional codecs.lookup(enc_detection.encoding) raises LookupError when detect_encoding() legitimately returns source='undetermined' (its own documented never-raises contract) -- a content-dependent charset_normalizer/chardet corroboration edge case, out of scope for 03-08's CR-04 coverage-gate fix | fixed |  | 2026-08-29T15:00:05.065Z | 2026-08-29T20:12:32.240Z |
 | 2 | 06 | unrun-verify | .github/workflows/ci.yml |  | Branch Protection must separately name lint-type-unit/oracle-e2e as required status checks (Pitfall 6) -- a manual, repo-admin-only GitHub setting, not verifiable from any workflow YAML or automated command | open |  | 2026-08-29T22:55:31.119Z |  |
+| 3 | 07 | deviation | airflow/dags/_common/oracle_partition_trigger.py |  | Task 1 committed as a single feat commit (test+implementation together) rather than separate TDD RED/GREEN commits | open |  | 2026-08-30T09:58:18.781Z |  |
 
 ````json
 [
@@ -42,6 +43,18 @@ last_updated: 2026-08-29T22:55:31.119Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-29T22:55:31.119Z",
+    "resolved_at": null
+  },
+  {
+    "id": 3,
+    "kind": "deviation",
+    "phase": "07",
+    "file": "airflow/dags/_common/oracle_partition_trigger.py",
+    "line": null,
+    "description": "Task 1 committed as a single feat commit (test+implementation together) rather than separate TDD RED/GREEN commits",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-30T09:58:18.781Z",
     "resolved_at": null
   }
 ]
