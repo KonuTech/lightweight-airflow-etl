@@ -20,8 +20,6 @@ frozen-instance enforcement, and the credential-field-name mechanical scan
 from __future__ import annotations
 
 import pytest
-from pydantic import ValidationError
-
 from csv_processor.config import (
     ColumnSpec,
     CsvDialectConfig,
@@ -29,6 +27,7 @@ from csv_processor.config import (
     OracleTargetSpec,
     ProcessingConfig,
 )
+from pydantic import ValidationError
 
 # A fully-specified valid dataset dict matching customers.json's shape.
 _VALID_DATASET: dict = {
@@ -69,14 +68,14 @@ _VALID_DATASET: dict = {
 }
 
 
-def _minimal_column(**overrides: object) -> dict:
-    base = {"name": "col", "type": "string", "nullable": False, "required": True}
+def _minimal_column(**overrides: object) -> dict[str, object]:
+    base: dict[str, object] = {"name": "col", "type": "string", "nullable": False, "required": True}
     base.update(overrides)
     return base
 
 
-def _minimal_dataset(**overrides: object) -> dict:
-    base = {
+def _minimal_dataset(**overrides: object) -> dict[str, object]:
+    base: dict[str, object] = {
         "dataset": "x",
         "file_pattern": "x_*.csv",
         "columns": [_minimal_column()],
@@ -165,9 +164,7 @@ class TestDateTimestampFormatRequirement:
     @pytest.mark.parametrize("column_type", ["date", "timestamp"])
     def test_date_or_timestamp_without_format_rejected(self, column_type: str) -> None:
         with pytest.raises(ValidationError):
-            ColumnSpec.model_validate(
-                _minimal_column(type=column_type, nullable=True, format=None)
-            )
+            ColumnSpec.model_validate(_minimal_column(type=column_type, nullable=True, format=None))
 
     @pytest.mark.parametrize("column_type", ["date", "timestamp"])
     def test_date_or_timestamp_with_format_validates(self, column_type: str) -> None:
@@ -189,9 +186,7 @@ class TestNullableRequiredCombinations:
     def test_all_four_boolean_combinations_accepted_independently(
         self, nullable: bool, required: bool
     ) -> None:
-        column = ColumnSpec.model_validate(
-            _minimal_column(nullable=nullable, required=required)
-        )
+        column = ColumnSpec.model_validate(_minimal_column(nullable=nullable, required=required))
 
         assert column.nullable is nullable
         assert column.required is required
@@ -217,6 +212,19 @@ class TestCsvDialectExtraFields:
 
         assert dialect.decimal_separator == ","
 
+    def test_has_footer_defaults_to_false(self) -> None:
+        """FTR-01: absent from every dataset config shipped today (customers.json/
+        orders.json both omit the `csv` block entirely) -- must default to False so
+        footer-shape exclusion is never applied unless a dataset explicitly opts in."""
+        dialect = CsvDialectConfig.model_validate({})
+
+        assert dialect.has_footer is False
+
+    def test_has_footer_round_trips_with_explicit_true(self) -> None:
+        dialect = CsvDialectConfig.model_validate({"has_footer": True})
+
+        assert dialect.has_footer is True
+
 
 # --- delimiter/decimal_separator collision -------------------------------------
 
@@ -224,9 +232,7 @@ class TestCsvDialectExtraFields:
 class TestDelimiterDecimalSeparatorCollision:
     @pytest.mark.parametrize("shared_char", [",", ";"])
     def test_delimiter_equal_to_decimal_separator_rejected(self, shared_char: str) -> None:
-        dataset = _minimal_dataset(
-            csv={"delimiter": shared_char, "decimal_separator": shared_char}
-        )
+        dataset = _minimal_dataset(csv={"delimiter": shared_char, "decimal_separator": shared_char})
 
         with pytest.raises(ValidationError):
             DatasetConfig.model_validate(dataset)
@@ -275,9 +281,7 @@ class TestExtraForbidEnforcement:
             DatasetConfig.model_validate(dataset)
 
     def test_unrecognized_key_nested_in_column_rejected(self) -> None:
-        dataset = _minimal_dataset(
-            columns=[_minimal_column(not_a_real_field="should-never-exist")]
-        )
+        dataset = _minimal_dataset(columns=[_minimal_column(not_a_real_field="should-never-exist")])
 
         with pytest.raises(ValidationError):
             DatasetConfig.model_validate(dataset)
@@ -329,6 +333,19 @@ class TestFrozenInstanceEnforcement:
 
         with pytest.raises(ValidationError):
             processing.chunk_size = 2  # type: ignore[misc]
+
+
+# --- SQL identifier allowlist (T-04-01) -----------------------------------------
+
+
+class TestSqlIdentifierAllowlist:
+    def test_column_name_rejects_unsafe_identifier(self) -> None:
+        with pytest.raises(ValidationError):
+            ColumnSpec.model_validate(_minimal_column(name="1bad; DROP TABLE"))
+
+    def test_oracle_target_spec_rejects_unsafe_table_name(self) -> None:
+        with pytest.raises(ValidationError):
+            OracleTargetSpec.model_validate({"valid_table": "ok_valid", "invalid_table": "bad; --"})
 
 
 # --- credential-field-name mechanical scan (T-02-02, privacy prohibition) -------

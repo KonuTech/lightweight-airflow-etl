@@ -22,7 +22,6 @@ import pytest
 
 from tools.corpus import digests, generators, manifest
 
-
 # --- stream_for() — R1 per-fixture RNG derivation ---------------------------
 
 

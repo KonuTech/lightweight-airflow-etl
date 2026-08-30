@@ -1,0 +1,118 @@
+# CI-01 (widened by 06-CONTEXT.md D-06/D-07): two required checks on every PR.
+#
+# `lint-type-unit` is CI-01's literal "lint, type check, unit tests" scope.
+# `oracle-e2e` is the user-approved scope expansion (D-06) -- it stands up
+# this project's own real, unmodified `docker-compose.yml` stack (Oracle +
+# full Airflow topology) and runs the automated end-to-end suite (TEST-03)
+# against it, as a second required check.
+#
+# Trust boundary (T-06-03, threat_model in 06-03-PLAN.md): `on: pull_request`
+# ONLY, never `pull_request_target` -- a forked-repo PR never gains base-repo
+# write access or secrets under `pull_request`'s default semantics. No
+# `permissions:` block anywhere in this file (workflow-level or job-level) --
+# the default is read-only, and neither job below needs anything more.
+name: ci
+
+on:
+  pull_request:
+
+jobs:
+  lint-type-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.0.1
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy .
+      - run: uv run pytest tests/unit/ -x
+
+  oracle-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      # docs/environment.md "First-Clone Setup Gaps" -- the exact two-file
+      # bootstrap every fresh clone needs before `docker compose up` (copied
+      # verbatim, not paraphrased, per 06-RESEARCH.md Pattern 3/Pitfall 7).
+      #
+      # chmod 666 is required, not cosmetic: docs/environment.md's "Known
+      # First-Boot Gotcha" documents that airflow-apiserver crashes with a
+      # PermissionError reading this bind-mounted file when its host-side
+      # permissions don't allow the container's airflow user (uid 50000) to
+      # read/write it -- a genuinely fresh `echo >` on a CI runner creates it
+      # at the default 644, which uid 50000 cannot open. Confirmed live: PR #1's
+      # first oracle-e2e run failed with `airflow-apiserver-1 exited (1)` on
+      # this exact file before this chmod was added.
+      - name: Recreate first-clone-only local files
+        run: |
+          cp .env.example .env
+          mkdir -p docker/airflow
+          echo '{"admin": "admin"}' > docker/airflow/simple_auth_manager_passwords.json.generated
+          chmod 666 docker/airflow/simple_auth_manager_passwords.json.generated
+
+      # Same class of bug as the chmod above, on a different bind mount:
+      # docker-compose.yml mounts ./data:/opt/airflow/data. On a genuinely
+      # fresh checkout ./data does not exist yet, so Docker Engine creates it
+      # on the host as root when the first container starts -- the runner
+      # user (non-root) then gets PermissionError trying to mkdir data/customers
+      # inside it (tests/e2e/test_csv_ingest_e2e.py's fixture-clear step).
+      # Pre-creating it here, owned by the runner user, avoids that entirely.
+      # Confirmed live: PR #1's second oracle-e2e run failed with exactly this
+      # PermissionError before this mkdir was added.
+      - name: Pre-create data/ subdirectories with correct ownership
+        run: mkdir -p data/customers data/orders
+
+      # Assumption A1 (06-RESEARCH.md): ubuntu-latest ships Docker Engine +
+      # the docker compose v2 CLI plugin pre-installed. This is a cheap,
+      # fail-fast, visible check for that assumption rather than letting a
+      # missing/mismatched plugin surface as a confusing failure mid-job.
+      - name: Sanity-check docker compose is available
+        run: docker compose version
+
+      # Reuses this project's own unmodified docker-compose.yml (Pattern 3,
+      # Pitfall 1) -- never hand-translated into GitHub Actions' native
+      # `services:` key, which has no `depends_on` ordering between
+      # containers and starts every service before this checkout step even
+      # runs, so it cannot express this project's dependency chain or
+      # bind-mount docker/oracle/init/*.sql / airflow/dags/ at container
+      # start.
+      #
+      # Pitfall 5 (06-RESEARCH.md, "watch for it, don't pre-solve it"): this
+      # project's own measured ~14.8GB image+volume footprint could exceed a
+      # GH-hosted runner's free disk headroom. If `docker compose up`/`pull`
+      # ever fails here with "no space left on device", the documented
+      # fallback is switching the Oracle image tag in docker-compose.yml to
+      # `gvenzl/oracle-free:23.26.2-slim-faststart` (1.24GB vs. the current
+      # 1.55GB `23.26.2-faststart`) -- not pre-emptively applied, since disk
+      # pressure has not actually been observed yet.
+      - name: Bring up the full stack
+        run: docker compose up -d --wait
+
+      # `docker compose up --wait` prints no container output on failure --
+      # a service that exits or fails its healthcheck gives no diagnostic
+      # signal beyond "exited (N)"/"unhealthy" in the step above. Dump every
+      # service's logs so a future failure is debuggable from the Actions UI
+      # alone, without needing local reproduction.
+      - name: Dump container logs on stack failure
+        if: failure()
+        run: docker compose logs
+
+      - uses: astral-sh/setup-uv@v10.0.1
+      - run: uv sync --locked
+
+      # D-08: the e2e suite itself asserts real Oracle VALID/INVALID row
+      # counts (not just DagRun.state == "success") and a genuine
+      # `wait_for_file` "deferred" observation before the fixture file is
+      # dropped (Pitfall 4) -- see tests/e2e/test_csv_ingest_e2e.py.
+      - name: Run the e2e suite against the live stack
+        run: uv run pytest tests/e2e/ -x
+
+      - name: Dump scheduler/dag-processor logs on e2e failure
+        if: failure()
+        run: docker compose logs airflow-scheduler airflow-dag-processor airflow-apiserver
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

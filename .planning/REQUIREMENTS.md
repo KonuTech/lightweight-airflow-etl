@@ -27,62 +27,62 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### CSV Processing Engine
 
-- [ ] **ENGINE-01**: `csv_processor.process(file_path, config)` validates CSV structure (column
+- [x] **ENGINE-01**: `csv_processor.process(file_path, config)` validates CSV structure (column
       count / missing / unexpected columns) before validating anything else
 
-- [ ] **ENGINE-02**: Engine validates each column's type (integer/decimal/date) per the config
+- [x] **ENGINE-02**: Engine validates each column's type (integer/decimal/date) per the config
       schema
 
-- [ ] **ENGINE-03**: Engine validates required (non-nullable) fields are non-empty
-- [ ] **ENGINE-04**: Engine explicitly converts each valid CSV string field to its configured
+- [x] **ENGINE-03**: Engine validates required (non-nullable) fields are non-empty
+- [x] **ENGINE-04**: Engine explicitly converts each valid CSV string field to its configured
       Python/Oracle type (no implicit Oracle casting)
 
-- [ ] **ENGINE-05**: An invalid row does not stop processing of the rest of the file; valid and
+- [x] **ENGINE-05**: An invalid row does not stop processing of the rest of the file; valid and
       invalid rows are split and both counted
 
-- [ ] **ENGINE-06**: Each invalid row records `error_code`, `error_message`, `source_file`, and
+- [x] **ENGINE-06**: Each invalid row records `error_code`, `error_message`, `source_file`, and
       `row_number` alongside its original field values
 
-- [ ] **ENGINE-07**: CSV reading and validation processes rows in configurable chunks (not one row
+- [x] **ENGINE-07**: CSV reading and validation processes rows in configurable chunks (not one row
       at a time, not the whole file loaded into memory)
 
-- [ ] **ENGINE-08**: `process()` returns a structured `ProcessingResult` (total/valid/invalid rows,
+- [x] **ENGINE-08**: `process()` returns a structured `ProcessingResult` (total/valid/invalid rows,
       duration, status) with distinct status codes (SUCCESS / SUCCESS_WITH_INVALID_ROWS /
       FILE_NOT_FOUND / INVALID_FILE / CONFIGURATION_ERROR / DATABASE_ERROR / PROCESSING_ERROR)
 
-- [ ] **ENGINE-09**: `csv_processor` has no Airflow import/dependency and can be unit-tested
+- [x] **ENGINE-09**: `csv_processor` has no Airflow import/dependency and can be unit-tested
       standalone
 
 ### Oracle Loading
 
-- [ ] **LOAD-01**: Valid rows are bulk-inserted into the dataset's `<DATASET>_VALID` Oracle table
+- [x] **LOAD-01**: Valid rows are bulk-inserted into the dataset's `<DATASET>_VALID` Oracle table
       using `executemany()` array binding (no per-row INSERT)
 
-- [ ] **LOAD-02**: Invalid rows are bulk-inserted into the dataset's `<DATASET>_INVALID` Oracle
+- [x] **LOAD-02**: Invalid rows are bulk-inserted into the dataset's `<DATASET>_INVALID` Oracle
       table with their error metadata, using the same bulk mechanism
 
-- [ ] **LOAD-03**: Each processed file is recorded in a minimal ingestion metadata table
+- [x] **LOAD-03**: Each processed file is recorded in a minimal ingestion metadata table
       (file_name, checksum, dataset, timestamp, total/valid/invalid counts, status)
 
-- [ ] **LOAD-04**: Re-processing a file already recorded (same filename + checksum + dataset) does
+- [x] **LOAD-04**: Re-processing a file already recorded (same filename + checksum + dataset) does
       not duplicate data — retrying an Airflow task is safe
 
 ### Airflow DAG
 
-- [ ] **DAG-01**: An Airflow TaskFlow DAG (`load_config` → `wait_for_file` → `process_csv` →
+- [x] **DAG-01**: An Airflow TaskFlow DAG (`load_config` → `wait_for_file` → `process_csv` →
       `load_results` → `report_result`) orchestrates ingestion for a dataset, calling
       `csv_processor` rather than implementing CSV logic itself
 
-- [ ] **DAG-02**: The DAG can be triggered via a single HTTP request (Airflow's own REST API)
+- [x] **DAG-02**: The DAG can be triggered via a single HTTP request (Airflow's own REST API)
       passing dataset name and config path as runtime conf
 
-- [ ] **DAG-03**: The DAG waits for the expected CSV file using a deferrable operator/trigger
+- [x] **DAG-03**: The DAG waits for the expected CSV file using a deferrable operator/trigger
       (non-blocking, releases the Airflow worker slot while waiting)
 
-- [ ] **DAG-04**: After processing, the DAG reports a concise human-readable summary (dataset,
+- [x] **DAG-04**: After processing, the DAG reports a concise human-readable summary (dataset,
       file, row counts, duration, status)
 
-- [ ] **DAG-05**: The same DAG definition works for both the `customers` and `orders` datasets
+- [x] **DAG-05**: The same DAG definition works for both the `customers` and `orders` datasets
       purely by config, with no dataset-specific code branches
 
 ### Infrastructure
@@ -98,22 +98,22 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Testing
 
-- [ ] **TEST-01**: Unit tests cover config parsing, CSV parsing, type conversion, date validation,
+- [x] **TEST-01**: Unit tests cover config parsing, CSV parsing, type conversion, date validation,
       valid/invalid row handling, and chunked processing
 
-- [ ] **TEST-02**: Integration tests exercise a real Oracle Database Free container (not mocked)
+- [x] **TEST-02**: Integration tests exercise a real Oracle Database Free container (not mocked)
       and verify actual resulting rows
 
-- [ ] **TEST-03**: An end-to-end test exercises the full path: HTTP request → DAG run → config →
+- [x] **TEST-03**: An end-to-end test exercises the full path: HTTP request → DAG run → config →
       file detection → `csv_processor` → Oracle VALID/INVALID tables
 
-- [ ] **TEST-04**: A performance benchmark at ~100K rows compares row-by-row vs. chunked/bulk
+- [x] **TEST-04**: A performance benchmark at ~100K rows compares row-by-row vs. chunked/bulk
       processing and records rows/sec, peak memory, and Oracle load time
 
 ### CI & Docs
 
-- [ ] **CI-01**: A minimal GitHub Actions pipeline runs lint, type check, and unit tests on every PR
-- [ ] **DOC-01**: README and `docs/` let a new developer go from `git clone` to a completed
+- [x] **CI-01**: A minimal GitHub Actions pipeline runs lint, type check, and unit tests on every PR
+- [x] **DOC-01**: README and `docs/` let a new developer go from `git clone` to a completed
       HTTP-triggered ingestion with no undocumented manual steps
 
 ## v2 Requirements
@@ -175,33 +175,33 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CONFIG-01 | Phase 2 | Complete |
 | CONFIG-02 | Phase 2 | Complete |
 | GEN-01 | Phase 2 | Complete |
-| ENGINE-01 | Phase 3 | Pending |
-| ENGINE-02 | Phase 3 | Pending |
-| ENGINE-03 | Phase 3 | Pending |
-| ENGINE-04 | Phase 3 | Pending |
-| ENGINE-05 | Phase 3 | Pending |
-| ENGINE-06 | Phase 3 | Pending |
-| ENGINE-07 | Phase 3 | Pending |
-| ENGINE-08 | Phase 4 | Pending |
-| ENGINE-09 | Phase 3 | Pending |
-| LOAD-01 | Phase 4 | Pending |
-| LOAD-02 | Phase 4 | Pending |
-| LOAD-03 | Phase 4 | Pending |
-| LOAD-04 | Phase 4 | Pending |
-| DAG-01 | Phase 5 | Pending |
-| DAG-02 | Phase 5 | Pending |
-| DAG-03 | Phase 5 | Pending |
-| DAG-04 | Phase 5 | Pending |
-| DAG-05 | Phase 5 | Pending |
+| ENGINE-01 | Phase 3 | Complete |
+| ENGINE-02 | Phase 3 | Complete |
+| ENGINE-03 | Phase 3 | Complete |
+| ENGINE-04 | Phase 3 | Complete |
+| ENGINE-05 | Phase 3 | Complete |
+| ENGINE-06 | Phase 3 | Complete |
+| ENGINE-07 | Phase 3 | Complete |
+| ENGINE-08 | Phase 4 | Complete |
+| ENGINE-09 | Phase 3 | Complete |
+| LOAD-01 | Phase 4 | Complete |
+| LOAD-02 | Phase 4 | Complete |
+| LOAD-03 | Phase 4 | Complete |
+| LOAD-04 | Phase 4 | Complete |
+| DAG-01 | Phase 5 | Complete |
+| DAG-02 | Phase 5 | Complete |
+| DAG-03 | Phase 5 | Complete |
+| DAG-04 | Phase 5 | Complete |
+| DAG-05 | Phase 5 | Complete |
 | INFRA-01 | Phase 1 | Complete |
 | INFRA-02 | Phase 1 | Complete |
 | INFRA-03 | Phase 1 | Complete |
-| TEST-01 | Phase 3 | Pending |
-| TEST-02 | Phase 4 | Pending |
-| TEST-03 | Phase 6 | Pending |
-| TEST-04 | Phase 6 | Pending |
-| CI-01 | Phase 6 | Pending |
-| DOC-01 | Phase 6 | Pending |
+| TEST-01 | Phase 3 | Complete |
+| TEST-02 | Phase 4 | Complete |
+| TEST-03 | Phase 6 | Complete |
+| TEST-04 | Phase 6 | Complete |
+| CI-01 | Phase 6 | Complete |
+| DOC-01 | Phase 6 | Complete |
 
 **Coverage:**
 

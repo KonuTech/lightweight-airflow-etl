@@ -1,6 +1,6 @@
 {
   "dataset": "customers",
-  "file_pattern": "customers_*.csv",
+  "file_pattern": "customers_*.csv*",
   "columns": [
     {
       "name": "customer_id",

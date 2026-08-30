@@ -19,15 +19,15 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
 import random
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-from faker import Faker
-
 from csv_processor.config import ColumnSpec, DatasetConfig, load_config
+from faker import Faker
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _CONFIGS_DIR = _REPO_ROOT / "configs"
@@ -83,7 +83,9 @@ def _valid_value(fake: Faker, rng: random.Random, column: ColumnSpec) -> str:
     if column.type == "integer":
         return str(rng.randint(0, 1_000_000))
     if column.type == "decimal":
-        if column.precision is None or column.scale is None:  # pragma: no cover - guarded by config validation
+        if (
+            column.precision is None or column.scale is None
+        ):  # pragma: no cover - guarded by config validation
             msg = f"column {column.name!r}: decimal type missing precision/scale"
             raise ValueError(msg)
         return format_decimal(rng, column.precision, column.scale)
@@ -100,7 +102,7 @@ def _valid_value(fake: Faker, rng: random.Random, column: ColumnSpec) -> str:
         if not column.format:  # pragma: no cover - guarded by config validation
             msg = f"column {column.name!r}: timestamp type missing format"
             raise ValueError(msg)
-        base = datetime(2020, 1, 1, tzinfo=timezone.utc)
+        base = datetime(2020, 1, 1, tzinfo=UTC)
         value_dt = base + timedelta(seconds=rng.randint(0, 365 * 5 * 86400))
         return value_dt.strftime(column.format)
     msg = f"column {column.name!r}: unsupported column type {column.type!r}"
@@ -148,7 +150,9 @@ class GeneratedCsv:
     categories: list[str | None]
 
 
-def generate_rows(config: DatasetConfig, rows: int, invalid_ratio: float, seed: int) -> GeneratedCsv:
+def generate_rows(
+    config: DatasetConfig, rows: int, invalid_ratio: float, seed: int
+) -> GeneratedCsv:
     """Generate `rows` deterministic rows for `config`, `invalid_ratio` of them
     invalid across D-15's applicable categories.
 
@@ -225,6 +229,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=20260101,
         help="Seed for both Faker and the generator's own random.Random instance.",
     )
+    parser.add_argument(
+        "--compress",
+        action="store_true",
+        help="Gzip the generated CSV after writing (D-32).",
+    )
     return parser
 
 
@@ -243,6 +252,18 @@ def main(argv: list[str] | None = None) -> int:
     generated = generate_rows(config, args.rows, args.invalid_ratio, args.seed)
     path = output_path(args.dataset)
     write_csv(generated, config, path)
+    if args.compress:
+        # D-32: gzip the just-written CSV, then remove the plain file --
+        # mirrors the `gzip` CLI tool's own in-place-replace behavior, and
+        # matches D-31's widened file_pattern ("customers_*.csv*") expecting
+        # exactly one file per drop, not both a plain and compressed variant
+        # sitting side by side.
+        gz_path = path.with_name(f"{path.name}.gz")
+        with gzip.open(gz_path, "wb") as gz_handle:
+            gz_handle.write(path.read_bytes())
+        path.unlink()
+        print(f"compressed to {gz_path}")
+        return 0
     print(f"wrote {len(generated.rows)} rows to {path}")
     return 0
 

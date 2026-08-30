@@ -23,9 +23,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Environment & Oracle Foundation** - docker-compose stands up Airflow (LocalExecutor) + Airflow metadata DB + a pinned Oracle Database Free, with target schema ready, resource footprint documented, and a single dev credential pair used consistently everywhere (completed 2026-08-28)
 - [x] **Phase 2: Config Contract & CSV Generator** - Pydantic v2 `config.json` contract per dataset, validated once per run, plus a deterministic CSV fixture generator covering valid and invalid rows (completed 2026-08-29)
-- [ ] **Phase 3: CSV Processing Engine** - Airflow-agnostic detect/parse/validate/normalize engine that splits valid (type-converted) rows from invalid (error-tagged) rows in bounded-memory chunks
-- [ ] **Phase 4: Oracle Bulk Load, Idempotency & Engine Entrypoint** - `executemany()` bulk loading into `_VALID`/`_INVALID` tables, checksum-based idempotency via an ingestion metadata table, and the `process()` entrypoint with full status semantics
-- [ ] **Phase 5: Airflow DAG Wiring & Deferrable File-Wait** - Thin, HTTP-triggerable TaskFlow DAG (`load_config` → `wait_for_file` → `process_csv` → `load_results` → `report_result`) with a non-blocking deferrable file-wait, identical for both datasets
+- [x] **Phase 3: CSV Processing Engine** - Airflow-agnostic detect/parse/validate/normalize engine that splits valid (type-converted) rows from invalid (error-tagged) rows in bounded-memory chunks (completed 2026-08-29)
+- [x] **Phase 4: Oracle Bulk Load, Idempotency & Engine Entrypoint** - `executemany()` bulk loading into `_VALID`/`_INVALID` tables, checksum-based idempotency via an ingestion metadata table, and the `process()` entrypoint with full status semantics (completed 2026-08-29)
+- [x] **Phase 5: Airflow DAG Wiring & Deferrable File-Wait** - Thin, HTTP-triggerable TaskFlow DAG (`load_config` → `wait_for_file` → `process_csv` → `load_results` → `report_result`) with a non-blocking deferrable file-wait, identical for both datasets (completed 2026-08-29)
 - [ ] **Phase 6: End-to-End Verification, Benchmark, CI & Docs** - HTTP-to-Oracle end-to-end proof, a ~100K-row chunked-vs-row-by-row benchmark, minimal CI, and clone-to-ingest documentation
 
 ## Phase Details
@@ -109,22 +109,50 @@ Plans:
   4. The `csv_processor` package can be imported and its full test suite run in an environment with no Airflow installed.
   5. The unit test suite covering config parsing, CSV parsing, type conversion, date validation, valid/invalid row handling, and chunked processing passes.
 
-**Plans**: 5 plans
+**Plans**: 10/10 plans executed (Plan 6 is a verification gap-closure plan for
+CR-01/CR-02; Plan 7 is a code-review gap-closure plan for the CR-02 fix's own sample-boundary
+data-loss regression; Plan 8 is a code-review gap-closure plan for a genuinely malformed row silently
+dropped at the same sample-tail boundary CR-03/Plan 7 fixed for well-formed rows; Plan 9 is a
+code-review gap-closure plan for Plan 8's own residual — a contiguous run of 2+ candidate rows at the
+sample boundary, plus a `sample_was_truncated` off-by-one on a file whose exact size equals the sample;
+Plan 10 is a verification gap-closure plan (FTR-01) for an unconditional, always-on footer-detection
+heuristic that silently dropped a genuinely malformed row at ANY file's true end, unrelated to sample
+truncation — closed via a new per-dataset `has_footer` opt-in, default off)
 
 Plans:
 **Wave 1**
 
-- [ ] 03-01-PLAN.md — Oracle `_INVALID` DDL migration (widen columns, add `raw_line`) + `file_pattern` widening for compressed variants
-- [ ] 03-02-PLAN.md — Dependencies (clevercsv/charset-normalizer/chardet) + local exception hierarchy + Tier-A detect module vendoring (dialect/encoding/header/filename/schema), proven against corpus fixtures 1-8
+- [x] 03-01-PLAN.md — Oracle `_INVALID` DDL migration (widen columns, add `raw_line`) + `file_pattern` widening for compressed variants
+- [x] 03-02-PLAN.md — Dependencies (clevercsv/charset-normalizer/chardet) + local exception hierarchy + Tier-A detect module vendoring (dialect/encoding/header/filename/schema), proven against corpus fixtures 1-8
 
 **Wave 2** *(blocked on 03-02 completion)*
 
-- [ ] 03-03-PLAN.md — Tracer: source.py/validate.py/normalize.py/engine.py wired end-to-end, full type/nullability coverage (fixtures 17-22) and full structural coverage (fixtures 9-16)
+- [x] 03-03-PLAN.md — Tracer: source.py/validate.py/normalize.py/engine.py wired end-to-end, full type/nullability coverage (fixtures 17-22) and full structural coverage (fixtures 9-16)
 
 **Wave 3** *(blocked on 03-03 completion)*
 
-- [ ] 03-04-PLAN.md — Compressed CSV input (magic-byte detection, streaming gzip/zip) wired into source.py + generate_csv.py --compress flag
-- [ ] 03-05-PLAN.md — Chunk-boundary/row_number/bounded-memory proof, byte_level_hard fixture coverage (23-27), ENGINE-09 no-Airflow-import enforcement, `make verify-phase3`
+- [x] 03-04-PLAN.md — Compressed CSV input (magic-byte detection, streaming gzip/zip) wired into source.py + generate_csv.py --compress flag
+- [x] 03-05-PLAN.md — Chunk-boundary/row_number/bounded-memory proof, byte_level_hard fixture coverage (23-27), ENGINE-09 no-Airflow-import enforcement, `make verify-phase3`
+
+**Wave 4** *(gap closure — verification CR-01/CR-02, blocked on Wave 3 completion)*
+
+- [x] 03-06-PLAN.md — Gap closure: `ColumnSpec.required` now filters `source.py`'s MISSING_REQUIRED_COLUMN check (CR-01), `detect_header()`'s preamble/footer/repeated-header row indices now consumed by PASS 2's real read (CR-02), plus a small `detect/filename.py` `dataplat`-import cleanup (WR-01)
+
+**Wave 5** *(gap closure — code review G-03-3, blocked on Wave 4 completion)*
+
+- [x] 03-07-PLAN.md — Gap closure: `source.py`'s `_filtered_rows()` re-validates every sample-derived footer/repeated-header candidate exclusion against the real full-file row content before excluding it, closing a silent data-loss regression 03-06's own CR-02 fix introduced on files larger than the 64 KiB detection sample
+
+**Wave 6** *(gap closure — code review CR-04, blocked on Wave 5 completion)*
+
+- [x] 03-08-PLAN.md — Gap closure: `_filtered_rows()`'s footer/repeated-header exclusion is now gated by a new `sample_covered_row_count` (provable sample-byte coverage), checked before 03-07's own content re-validation — closes a genuinely malformed row being silently dropped whenever it coincides with the sample's own arbitrary tail-scan position, without reopening G-03-2 or CR-03
+
+**Wave 7** *(gap closure — code review CR-01/WR-01, blocked on Wave 6 completion)*
+
+- [x] 03-09-PLAN.md — Gap closure: extracts `_uncoverable_tail_indices()` generalizing 03-08's single-index coverage gate to the full contiguous run of sample-derived candidate indices touching the sample boundary (CR-01), plus a `sample_was_truncated` fix reading one byte past `SAMPLE_BYTES` to correctly distinguish true EOF from truncation (WR-01)
+
+**Wave 8** *(gap closure — verification FTR-01, blocked on Wave 7 completion)*
+
+- [x] 03-10-PLAN.md — Gap closure: adds `CsvDialectConfig.has_footer` (default `False`) per-dataset opt-in; `prepare_source()` now forces `footer_row_indices` to empty for a non-opted-in dataset before building `excluded_indices`, so footer-shape exclusion never runs at all for a dataset that never declared one — closes an unconditional (not sample-truncation-related) silent-drop of a genuinely malformed last row, independently reproduced against this project's own generator/customers.json (seed=11: 49/50 rows accounted for pre-fix, 50/50 post-fix)
 
 ### Phase 4: Oracle Bulk Load, Idempotency & Engine Entrypoint
 
@@ -138,7 +166,22 @@ Plans:
   3. Re-processing the same file (same filename + checksum + dataset) a second time does not duplicate rows in either target table.
   4. Calling `csv_processor.process(file_path, config)` returns a `ProcessingResult` carrying the correct status (SUCCESS / SUCCESS_WITH_INVALID_ROWS / FILE_NOT_FOUND / INVALID_FILE / CONFIGURATION_ERROR / DATABASE_ERROR / PROCESSING_ERROR) for each corresponding scenario.
 
-**Plans**: TBD
+**Plans**: 3/3 plans executed (Plan 3 is a code-review gap-closure plan for CR-01/WR-01 —
+`process()` crashed with an unhandled `AttributeError` instead of returning `DATABASE_ERROR` when
+`load.get_connection()` itself failed)
+
+Plans:
+**Wave 1**
+
+- [x] 04-01-PLAN.md — Tracer: Oracle bulk-load primitives (`csv_processor.load`) + result models (`csv_processor.models`), proven end-to-end against real Oracle; closes the SQL-injection-via-identifier gap in Phase 2's config models (LOAD-01/02/03/04, TEST-02)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 04-02-PLAN.md — Tracer: `csv_processor.process()` entrypoint assembling Plan 04-01's loader with Phase 3's `process_chunks()`, proving all 7 `ProcessingResult` status codes (ENGINE-08, TEST-02)
+
+**Wave 3** *(gap closure — code review CR-01/WR-01, blocked on Wave 2 completion)*
+
+- [x] 04-03-PLAN.md — Gap closure: guards both unguarded `connection.rollback()` call sites (`except oracledb.Error:` and `except StructuralValidationError:`) on `connection is not None`, closing a real `AttributeError` crash when `load.get_connection()` itself fails — `process()` will correctly return `DATABASE_ERROR` instead of crashing (ENGINE-08)
 
 ### Phase 5: Airflow DAG Wiring & Deferrable File-Wait
 
@@ -152,7 +195,16 @@ Plans:
   3. A completed run's logs/report show a concise, human-readable summary — dataset, file, row counts, duration, status.
   4. The identical DAG definition runs successfully for both `customers` and `orders` purely by passing different config, with no dataset-specific code branches in the DAG.
 
-**Plans**: TBD
+**Plans**: 2/2 plans executed
+
+Plans:
+**Wave 1**
+
+- [x] 05-01-PLAN.md — Tracer: `csv_ingest` DAG wired end-to-end (`load_config_task` → `route_after_config` → `wait_for_file` → `process_csv_task` → `load_results_task` → `report_result_task`), `_common/paths.py`/`_common/reporting.py` helpers, `docker-compose.yml` infra fixes (`ORACLE_DSN`, `fs_default` connection, `configs/` mount), proven via one live triggered run for `customers`, plus unit tests for the pure-Python helpers
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 05-02-PLAN.md — `scripts/trigger_dag.sh` + `make verify-phase5`, live proof of DAG-03 (deferred file-wait state) and DAG-05 (identical DAG, `orders` dataset) against the running stack, `docs/airflow-dag.md`
 
 ### Phase 6: End-to-End Verification, Benchmark, CI & Docs
 
@@ -166,7 +218,22 @@ Plans:
   3. Opening a pull request automatically runs lint, type check, and unit tests via GitHub Actions, with pass/fail visible on the PR.
   4. Following only the README and `docs/`, a new developer can go from `git clone` to a completed HTTP-triggered ingestion with no undocumented manual steps.
 
-**Plans**: TBD
+**Plans**: 5/5 plans executed
+
+Plans:
+**Wave 1**
+
+- [x] 06-01-PLAN.md — Tracer: automated HTTP-trigger -> deferred-wake -> Oracle-rows e2e proof (TEST-03), reusable `scripts/dag_polling.py`
+- [x] 06-02-PLAN.md — Naive-vs-bulk Oracle write benchmark at ~100K rows (TEST-04), `docs/benchmark.md`
+- [x] 06-03-PLAN.md — GitHub Actions CI (`lint-type-unit` + `oracle-e2e`, both PR-required) + whole-repo ruff/mypy (CI-01)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 06-04-PLAN.md — Oracle evidence script + business report + live-regenerated README Executive Summary + CI auto-commit job (TEST-03/DOC-01)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 06-05-PLAN.md — Topic docs (architecture/configuration/csv-engine/oracle/development), README summary+links rewrite, final Makefile targets (DOC-01)
 
 ## Progress
 
@@ -177,10 +244,10 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|-----------------|--------|-----------|
 | 1. Environment & Oracle Foundation | 5/5 | Complete    | 2026-08-28 |
 | 2. Config Contract & CSV Generator | 5/5 | Complete    | 2026-08-29 |
-| 3. CSV Processing Engine | 0/5 | Not started | - |
-| 4. Oracle Bulk Load, Idempotency & Engine Entrypoint | 0/TBD | Not started | - |
-| 5. Airflow DAG Wiring & Deferrable File-Wait | 0/TBD | Not started | - |
-| 6. End-to-End Verification, Benchmark, CI & Docs | 0/TBD | Not started | - |
+| 3. CSV Processing Engine | 10/10 | Complete    | 2026-08-29 |
+| 4. Oracle Bulk Load, Idempotency & Engine Entrypoint | 3/3 | Complete    | 2026-08-29 |
+| 5. Airflow DAG Wiring & Deferrable File-Wait | 2/2 | Complete    | 2026-08-29 |
+| 6. End-to-End Verification, Benchmark, CI & Docs | 5/5 | In Progress|  |
 
 ---
 *Roadmap created: 2026-08-28*

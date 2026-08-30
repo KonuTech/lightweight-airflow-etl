@@ -27,43 +27,60 @@ table, and reports back a clear processing summary — end to end, reproducibly,
 - ✓ Essential secrets maintenance: one documented `admin`/`admin` dev credential pair, sourced
       from `.env`/docker-compose environment variables, used consistently everywhere a credential
       is needed (Oracle, Airflow webserver) — Phase 1
+- ✓ Reusable `csv_processor` Python package: read → parse → validate structure → validate types →
+      normalize → split valid/invalid, exposed as `engine.process_chunks(file_path, config)` (the
+      top-level `process()` wrapper returning a structured `ProcessingResult` is separate, still
+      Active — see ENGINE-08 below) — Phase 3
+- ✓ Structural/type/nullability validation only (no referential/uniqueness/volume-anomaly/
+      completeness/circuit-breaker validation — explicitly out of scope) — Phase 3
+- ✓ Config-driven CSV processing: `config.json` per dataset defines file pattern, CSV dialect,
+      schema (types/nullability/date-format), and Oracle target/invalid tables — Phase 2
+- ✓ Deterministic CSV generator producing both valid and invalid rows per dataset schema
+      (strings, integers, decimals, dates/timestamps, nullable fields) — Phase 2
+- ✓ `config.json` itself validated (Pydantic v2, once per run) before CSV processing begins —
+      Phase 2
+- ✓ Oracle bulk loading via `python-oracledb` `executemany()` with array binding — Phase 4
+- ✓ Chunked/bulk processing throughout (no per-row DB round-trips); configurable chunk size —
+      Phase 3 (CSV-side, `engine.process_chunks()`) + Phase 4 (Oracle-side, `executemany()`)
+- ✓ Two Oracle target tables per dataset: `<DATASET>_VALID` and `<DATASET>_INVALID` (invalid
+      rows carry original data + error_code/error_message/source_file/row_number) — Phase 1 (DDL)
+      + Phase 3 (widened `_INVALID` columns)
+- ✓ Idempotency: filename + file checksum + dataset identifies a processed file; retrying an
+      Airflow task or re-encountering the same file does not duplicate data — Phase 4
+- ✓ Minimal ingestion metadata table in Oracle (file_name, checksum, dataset, timestamp,
+      total/valid/invalid row counts, status) — Phase 1 (DDL) + Phase 4 (usage)
+- ✓ Structured `ProcessingResult` (total/valid/invalid rows, duration) returned to Airflow, with
+      distinct status semantics (SUCCESS / SUCCESS_WITH_INVALID_ROWS / FILE_NOT_FOUND /
+      INVALID_FILE / CONFIGURATION_ERROR / DATABASE_ERROR / PROCESSING_ERROR) — Phase 4
+- ✓ Airflow TaskFlow DAG (config → file-wait → process → load-results → report) triggerable via
+      Airflow's own REST API, passing dataset + config path as runtime conf — Phase 5. Built as a
+      **single** config-driven `csv_ingest` DAG (not one DAG per dataset — see PROJECT.md's
+      recorded technical-approach note below), live-verified via real HTTP-triggered runs, not
+      just structurally.
+- ✓ File-availability wait implemented as a Deferrable Operator/Trigger (async, non-blocking) —
+      Phase 5. Stock `FileSensor(deferrable=True)` proved sufficient; no custom `BaseTrigger`
+      needed. Live-observed `deferred` Airflow task state before the target file existed.
+- ✓ Two datasets end-to-end: `customers` and `orders` — Phase 5. Proved via the identical,
+      unmodified `csv_ingest` DAG completing successfully for both datasets against the real
+      running stack (orders' `customer_id` FK to customers is NOT enforced here — see Out of
+      Scope).
 
 ### Active
 
-- [ ] Airflow TaskFlow DAG (config → file-wait → process → load-results → report) triggerable via
-      Airflow's own REST API, passing dataset + config path as runtime conf
-- [ ] File-availability wait implemented as a Deferrable Operator/Trigger (async, non-blocking)
-- [ ] Config-driven CSV processing: `config.json` per dataset defines file pattern, CSV dialect,
-      schema (types/nullability/date-format), and Oracle target/invalid tables
-- [ ] Reusable `csv_processor` Python package: read → parse → validate structure → validate types
-      → normalize → split valid/invalid, exposed as `processor.process(file_path, config)`
-- [ ] Chunked/bulk processing throughout (no per-row DB round-trips); configurable chunk size
-- [ ] Oracle bulk loading via `python-oracledb` `executemany()` with array binding
-- [ ] Two Oracle target tables per dataset: `<DATASET>_VALID` and `<DATASET>_INVALID` (invalid
-      rows carry original data + error_code/error_message/source_file/row_number)
-- [ ] Structural/type/nullability validation only (no referential/uniqueness/volume-anomaly/
-      completeness/circuit-breaker validation — explicitly out of scope)
-- [ ] Two datasets end-to-end: `customers` and `orders`, mirroring the reference repo's real
-      `csv_ingest_customers.py` / `csv_ingest_orders.py` DAGs and `configs/datasets/*.yaml` shapes
-      (orders' `customer_id` FK to customers is NOT enforced here — see Out of Scope)
-- [ ] Deterministic CSV generator producing both valid and invalid rows per dataset schema
-      (strings, integers, decimals, dates/timestamps, nullable fields)
-- [ ] Idempotency: filename + file checksum + dataset identifies a processed file; retrying an
-      Airflow task or re-encountering the same file does not duplicate data
-- [ ] Minimal ingestion metadata table in Oracle (file_name, checksum, dataset, timestamp,
-      total/valid/invalid row counts, status)
-- [ ] Structured `ProcessingResult` (total/valid/invalid rows, duration) returned to Airflow, with
-      distinct status semantics (SUCCESS / SUCCESS_WITH_INVALID_ROWS / FILE_NOT_FOUND /
-      INVALID_FILE / CONFIGURATION_ERROR / DATABASE_ERROR / PROCESSING_ERROR)
-- [ ] `config.json` itself validated (Pydantic v2, once per run) before CSV processing begins
-- [ ] Everything run from WSL (Linux filesystem, not `/mnt/c/...`); Docker Desktop as the host
-- [ ] Tests: unit (config/parsing/type-conversion/validation), Oracle integration (real container,
-      not mocked), one end-to-end test (HTTP → DAG → CSV → Oracle → VALID/INVALID tables)
+- [ ] Tests: unit (config/parsing/type-conversion/validation) and Oracle integration (real
+      container, not mocked) are done (Phases 1-5); the one **automated** end-to-end test
+      (HTTP → DAG → CSV → Oracle → VALID/INVALID tables) is still Phase 6's job (TEST-03) — Phase
+      5 proved the same path via manual/live verification, not an automated regression test
 - [ ] Performance/benchmark test at ~100K rows comparing row-by-row vs chunked/bulk approach,
       recording rows/sec, peak memory, Oracle load time
 - [ ] Minimal GitHub Actions CI: lint, type check, unit tests, build/check
 - [ ] Minimal docs: README (clone-to-first-ingest walkthrough) + architecture/configuration/
-      csv-engine/oracle/development notes
+      csv-engine/oracle/development notes (`docs/airflow-dag.md` already exists from Phase 5,
+      documenting the DAG itself and its live-verification evidence — the remaining docs are
+      README + the other topic notes)
+- [ ] Everything run from WSL (Linux filesystem, not `/mnt/c/...`); Docker Desktop as the host —
+      ongoing environmental requirement, continuously true through Phase 5, not a one-time
+      deliverable to check off
 
 ### Out of Scope
 
@@ -163,15 +180,21 @@ setup and any later schema change.
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| HTTP trigger via Airflow's own REST API, not a custom FastAPI wrapper | No extra service to build/maintain; Airflow's stable REST API already supports POST /dags/{dag_id}/dagRuns with a conf payload | — Pending |
+| HTTP trigger via Airflow's own REST API, not a custom FastAPI wrapper | No extra service to build/maintain; Airflow's stable REST API already supports POST /dags/{dag_id}/dagRuns with a conf payload | ✓ Applied — Phase 5 |
 | Benchmark target ~100K rows | Matches spec's own §32 example; big enough to show bulk-loading wins, small enough to run fast on Oracle Free locally | — Pending |
-| Two datasets: customers + orders | Mirrors reference repo's real `csv_ingest_customers.py`/`csv_ingest_orders.py` and `configs/datasets/*.yaml` — proves config-drivenness generalizes without inventing a new domain | — Pending |
+| Two datasets: customers + orders | Mirrors reference repo's real `csv_ingest_customers.py`/`csv_ingest_orders.py` and `configs/datasets/*.yaml` — proves config-drivenness generalizes without inventing a new domain | ✓ Applied — Phase 5 |
 | docker-compose is a project deliverable, not pre-provisioned | Spec §22-23, 47-50 and DoD §59.1-4 expect the environment to be stood up from this repo | — Pending |
 | Two-tier reuse of reference repo's csv-processor/dataplat (vendor pure detection files; reimplement pipeline-coupled normalize/validate logic) | Verified by reading actual imports — csv-processor's detect/* and compression.py have near-zero dataplat coupling (1-2 lines); dataplat's normalize/validate are fully wired into a custom streaming pipeline that has no place here | — Pending |
 | orders.customer_id → customers.customer_id FK not enforced | Referential integrity validation is explicitly out of scope per spec §28, even though the reference repo enforces it | — Pending |
 | Single `admin`/`admin` dev credential everywhere, via env vars | Lightweight local project, Vault is explicitly out of scope; a single consistent credential keeps setup simple without scattering ad hoc secrets across configs | — Pending |
 | Every docker-compose service must declare an explicit `healthcheck:` if anything depends on its readiness | UAT (Phase 1) found `docker compose up --wait` reports a service Healthy the instant its process starts when no `healthcheck:` exists — not when it's actually ready. Airflow's `apiserver` had none; caused a real, reproducible cold-start race (~12s false-positive window) against `/auth/token`. Fixed via gap-closure Plan 01-05. | ✓ Applied — Phase 1 |
 | `apache-airflow-providers-oracle` added mid-Phase-1 (not in the original plan) | Discovered that `airflow connections test` needs a registered Hook class for `conn_type=oracle`, which only ships in this provider package — the raw `oracledb` driver alone isn't enough for Airflow's own connection-testing UI/CLI | ✓ Applied — Phase 1 |
+| Footer-row detection requires an explicit per-dataset opt-in (`CsvDialectConfig.has_footer: bool = False`); never runs by heuristic alone | A 5-round gap-closure chain in Phase 3 (plans 03-06 through 03-10) found that heuristic footer/preamble detection running unconditionally on every dataset silently drops a genuinely malformed last row of ANY file — reproduced concretely via this project's own generator (`customers.json`, seed=11: 50 rows generated, only 49 accounted for). Root-caused to the heuristic having no way to distinguish "genuine footer" from "corrupted last row" without a config signal. | ✓ Applied — Phase 3 |
+| One DAG (`csv_ingest`), not one DAG file per dataset | Corrects `research/ARCHITECTURE.md`'s original two-DAG-file sketch — ROADMAP.md's own success criteria are explicit: "the **identical DAG definition** runs successfully for both datasets **purely by passing different config**, with **no dataset-specific code branches**"; the reference repo's per-dataset DAG files were read only for the thin-DAG *pattern*, per PROJECT.md's own Tier-B guidance, not copied structurally | ✓ Applied — Phase 5 |
+| `process()`'s domain-failure statuses (`INVALID_FILE`, `CONFIGURATION_ERROR`, etc.) never fail the Airflow task | `process_csv` never raises for any of the 7 closed `Status` values (verified in `engine.py`'s own docstring); every run — success or failure — must reach `report_result` so its "concise summary" success criterion holds even for a bad file/config. Only a genuinely unexpected exception fails the task. | ✓ Applied — Phase 5 |
+| Stock `FileSensor(deferrable=True)`, no custom `BaseTrigger` | Confirmed sufficient: supports Jinja-templated `filepath` (verified against the pinned `apache-airflow-providers-standard==1.17.0` source) and this project's glob-style `file_pattern` values; resolves the research question flagged in STATE.md's Blockers | ✓ Applied — Phase 5 |
+| `docker-compose.yml` needed 5 real fixes to actually run a DAG (not just structurally define one) | Discovered only by triggering a live DAG run for the first time in this project's history: missing `ORACLE_DSN`/credentials, missing `configs/` mount, unregistered `fs_default` connection, `AIRFLOW__CORE__EXECUTION_API_SERVER_URL` defaulting to unreachable `localhost`, and each container minting its own random `AIRFLOW__API_AUTH__JWT_SECRET` (breaking scheduler↔apiserver task-token verification) | ✓ Applied — Phase 5 |
+| `resolve_safe_config_path()` guards the HTTP-triggered `config_path` against path traversal / absolute-path escape | `dataset`/`config_path` arrive as untrusted runtime `conf`; a naive `Path.__truediv__`/`os.path.join` join silently discards the base directory when the joined operand is absolute, which would let an absolute `config_path` bypass the `configs/datasets/` allowlist entirely | ✓ Applied — Phase 5 |
 
 ## Evolution
 
@@ -191,4 +214,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-28 after Phase 1 (Environment & Oracle Foundation)*
+*Last updated: 2026-08-29 after Phase 5 (Airflow DAG Wiring & Deferrable File-Wait)*
