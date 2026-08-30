@@ -95,12 +95,12 @@ flowchart TD
     one dev credential pair, no Vault"] -.->|"env vars, x-airflow-common"| API
     CRED -.-> ORA
 
-    classDef ci fill:#e1f5fe,stroke:#0288d1
-    classDef compose fill:#ede7f6,stroke:#5e35b1
-    classDef airflow fill:#e8f5e9,stroke:#43a047
-    classDef compute fill:#fff3e0,stroke:#fb8c00
-    classDef storage fill:#fce4ec,stroke:#d81b60
-    classDef creds fill:#fffde7,stroke:#f9a825
+    classDef ci fill:#e1f5fe,stroke:#0288d1,color:#000000
+    classDef compose fill:#ede7f6,stroke:#5e35b1,color:#000000
+    classDef airflow fill:#e8f5e9,stroke:#43a047,color:#000000
+    classDef compute fill:#fff3e0,stroke:#fb8c00,color:#000000
+    classDef storage fill:#fce4ec,stroke:#d81b60,color:#000000
+    classDef creds fill:#fffde7,stroke:#f9a825,color:#000000
 
     class GH,GHA,IMG ci
     class COMPOSE compose
@@ -196,13 +196,13 @@ flowchart TD
     UNIQUE(dataset, checksum)
     total/valid/invalid rows, status"]
 
-    classDef gen fill:#cfd8dc,stroke:#455a64
-    classDef task fill:#bbdefb,stroke:#1565c0
-    classDef valid fill:#c8e6c9,stroke:#2e7d32
-    classDef invalid fill:#ffcdd2,stroke:#b71c1c
-    classDef meta fill:#c5cae9,stroke:#283593
-    classDef report fill:#fff59d,stroke:#f57f17
-    classDef details fill:#f5f5f5,stroke:#999,stroke-dasharray: 5 5
+    classDef gen fill:#cfd8dc,stroke:#455a64,color:#000000
+    classDef task fill:#bbdefb,stroke:#1565c0,color:#000000
+    classDef valid fill:#c8e6c9,stroke:#2e7d32,color:#000000
+    classDef invalid fill:#ffcdd2,stroke:#b71c1c,color:#000000
+    classDef meta fill:#c5cae9,stroke:#283593,color:#000000
+    classDef report fill:#fff59d,stroke:#f57f17,color:#000000
+    classDef details fill:#f5f5f5,stroke:#999,stroke-dasharray: 5 5,color:#000000
 
     class GEN,STAGED,WATCH gen
     class SENSE,PROC,ENGINE,RESULTS,REPORTRES,SENSOR2,BUILDRPT task
