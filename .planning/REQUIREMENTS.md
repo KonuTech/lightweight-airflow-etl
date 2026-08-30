@@ -133,7 +133,7 @@ against the already-`Complete` DOC-01/TEST-03 from Phase 6.
       structured ID (`CUST-{seed_hash}-{sequence}` / `ORD-{seed_hash}-{sequence}`) so numbering
       never collides across accumulating Oracle runs
 
-- [ ] **GEN-02**: Correlation logic (generate customers -> extract valid-ID pool -> Zipf-weighted
+- [x] **GEN-02**: Correlation logic (generate customers -> extract valid-ID pool -> Zipf-weighted
       sample for orders) lives in exactly one shared function used by every call site
       (`make generate`, `scripts/regenerate_readme_summary.py`, the live e2e test's fixture setup)
       — `make generate` becomes a single combined invocation, not two independent per-dataset calls
@@ -153,7 +153,7 @@ against the already-`Complete` DOC-01/TEST-03 from Phase 6.
       `oracle-e2e` CI check) ingests both datasets for real and asserts the customers-JOIN-orders
       report returns at least one row, including rows backdated across multiple partition days
 
-- [ ] **INFRA-04**: A generated CSV is written to a staging path and atomically renamed into its
+- [x] **INFRA-04**: A generated CSV is written to a staging path and atomically renamed into its
       watched directory, proven against the real, live Airflow stack (never mocked)
 
 - [ ] **DAG-06**: A new Airflow DAG senses (via a custom Oracle-polling deferrable trigger, since
@@ -256,12 +256,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DOC-01 | Phase 6 | Complete |
 | DATA-01 | Phase 7 | Complete |
 | DATA-02 | Phase 7 | Complete |
-| GEN-02 | Phase 7 | Planned |
+| GEN-02 | Phase 7 | Complete |
 | DB-01 | Phase 7 | Planned |
 | DB-02 | Phase 7 | Planned |
 | TEST-05 | Phase 7 | Complete |
 | TEST-06 | Phase 7 | Planned |
-| INFRA-04 | Phase 7 | Planned |
+| INFRA-04 | Phase 7 | Complete |
 | DAG-06 | Phase 7 | Planned |
 | BENCH-01 | Phase 7 | Planned |
 | DOC-02 | Phase 7 | Planned |
