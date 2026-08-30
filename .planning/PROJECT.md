@@ -79,21 +79,51 @@ table, and reports back a clear processing summary — end to end, reproducibly,
 - ✓ Docs: README (Executive Summary + clone-to-first-ingest walkthrough) + `docs/architecture.md`,
       `configuration.md`, `csv-engine.md`, `oracle.md`, `development.md` — Phase 6, alongside
       Phase 5's `docs/airflow-dag.md`/`docs/environment.md`.
+- ✓ `orders.customer_id` correlated to a real, Zipf-weighted, with-replacement sample of the
+      `customers_valid` pool generated in the same run (never independently random); both IDs move
+      to seed-derived structured IDs (`CUST-<hash>-NNNNNN`/`ORD-<hash>-NNNNNN`) — Phase 7.
+- ✓ DB-level safety net on top of the Python-side correlation: `PRIMARY KEY` on
+      `customers_valid.customer_id`/`orders_valid.order_id`, a supporting index on
+      `orders_valid.customer_id`, and a `BEFORE INSERT` trigger rejecting any `orders_valid` row
+      whose `customer_id` doesn't exist in `customers_valid` (whole batch fails) — Phase 7. This
+      reverses "FK not enforced" from Phase 3 for this one relationship — see Out of Scope and Key
+      Decisions below.
+- ✓ New `report_ready` Airflow DAG: a custom, deferrable `OraclePartitionReadyTrigger` (the Oracle
+      provider ships no sensor of its own) polls `ingestion_metadata` for both datasets' current-day
+      partition and fires a thin report-logging task once both are present — Phase 7. Runs alongside
+      `scripts/regenerate_readme_summary.py`, not replacing it.
+- ✓ The `customers⋈orders` business report (D-10, `scripts/verify_evidence.sql`) genuinely returns
+      non-empty joined rows on generated fixture data, including rows spanning multiple backdated
+      daily partitions — Phase 7. This was this project's literal, previously-unmet ROADMAP goal;
+      README's Executive Summary now reflects real, non-empty evidence, live-regenerated.
+- ✓ Naive-vs-bulk benchmark re-measured against the schema carrying the new PK/index/trigger
+      overhead: **67.41×** speedup (down from Phase 6's pre-DDL 182.85×, consistent with the new
+      `customers_valid` PK/implicit-index cost) — Phase 7, `docs/benchmark.md`.
 
 ### Active
 
 - [ ] Everything run from WSL (Linux filesystem, not `/mnt/c/...`); Docker Desktop as the host —
-      ongoing environmental requirement, continuously true through Phase 6, not a one-time
+      ongoing environmental requirement, continuously true through Phase 7, not a one-time
       deliverable to check off
+- [ ] `OraclePartitionReadyTrigger.run()` (Phase 7, `airflow/dags/_common/oracle_partition_trigger.py`)
+      has no exception handling around its Oracle polling calls — a transient DB error currently
+      crashes the deferred sensor permanently, with no retry/backoff. Flagged as a code-review
+      Critical finding (07-REVIEW.md CR-01); did not block Phase 7 completion since the sensor's
+      happy-path defer/poll/fire behavior is live-proven, but is a real production-shaped
+      robustness gap worth a follow-up fix.
 
 ### Out of Scope
 
 - Kubernetes, kind, MinIO, Vault, CDC, SCD, complex data-lake/lineage architecture, distributed
   processing, complex schema registry, multi-database warehouse architecture — this project is
   deliberately smaller than the reference platform; see spec §3
-- Referential integrity, uniqueness, volume-anomaly, completeness, and circuit-breaker validators
-  — explicitly excluded per spec §28, even though `orders.customer_id → customers.customer_id` is
-  a real relationship in the reference repo's config. Not enforced here.
+- Referential/uniqueness/volume-anomaly/completeness/circuit-breaker validators inside the Python
+  `csv_processor` validation engine — still explicitly excluded per spec §28; the engine itself
+  performs structural/type/nullability checks only, unchanged since Phase 3. **Narrowed by Phase
+  7:** the `orders.customer_id → customers.customer_id` relationship specifically is no longer
+  fully unenforced — Phase 7 added a DB-level `BEFORE INSERT` trigger on `orders_valid` (a
+  different layer, not a `csv_processor` validator) as a safety net catching any future generator
+  regression as a load failure. `customers_invalid`/`orders_invalid` remain fully unconstrained.
 - CDC/SCD-style historization — both datasets load as plain valid/invalid snapshots, no history
 - Production-grade observability stack — logging only, no metrics/tracing platform
 - Custom FastAPI wrapper around Airflow's trigger API — deferred; Airflow's own REST API is
@@ -204,6 +234,12 @@ setup and any later schema change.
 | Stock `FileSensor(deferrable=True)`, no custom `BaseTrigger` | Confirmed sufficient: supports Jinja-templated `filepath` (verified against the pinned `apache-airflow-providers-standard==1.17.0` source) and this project's glob-style `file_pattern` values; resolves the research question flagged in STATE.md's Blockers | ✓ Applied — Phase 5 |
 | `docker-compose.yml` needed 5 real fixes to actually run a DAG (not just structurally define one) | Discovered only by triggering a live DAG run for the first time in this project's history: missing `ORACLE_DSN`/credentials, missing `configs/` mount, unregistered `fs_default` connection, `AIRFLOW__CORE__EXECUTION_API_SERVER_URL` defaulting to unreachable `localhost`, and each container minting its own random `AIRFLOW__API_AUTH__JWT_SECRET` (breaking scheduler↔apiserver task-token verification) | ✓ Applied — Phase 5 |
 | `resolve_safe_config_path()` guards the HTTP-triggered `config_path` against path traversal / absolute-path escape | `dataset`/`config_path` arrive as untrusted runtime `conf`; a naive `Path.__truediv__`/`os.path.join` join silently discards the base directory when the joined operand is absolute, which would let an absolute `config_path` bypass the `configs/datasets/` allowlist entirely | ✓ Applied — Phase 5 |
+| RNG-continuation: one `random.Random(seed)`/`Faker` pair constructed once and passed by object identity into both the `customers` and `orders` generation calls | `generate_rows()` gained optional keyword-only `rng`/`fake`/`customer_id_pool` params so every pre-existing 4-positional-arg caller stays byte-identical; the correlated path shares live RNG state across the customers→orders boundary so Zipf-sampling/determinism (D-05) holds by the most literal reading | ✓ Applied — Phase 7 |
+| Zipf weight ∝ 1/rank, with-replacement pool sampling for `orders.customer_id` | Matches real-world order-frequency skew (a few customers order disproportionately often) while guaranteeing every sampled ID is a real `customers_valid` row | ✓ Applied — Phase 7 |
+| Staging-path + atomic same-filesystem rename (`write_staged()`) adopted as the one write path for every production CSV writer (CLI, `regenerate_readme_summary.py`) | A file must never be visible to the watched-directory `FileSensor` mid-write; every prior direct `write_csv()` call site was migrated to this helper rather than adding a second, parallel write discipline | ✓ Applied — Phase 7 |
+| Custom `OraclePartitionReadyTrigger(BaseTrigger)` polling `ingestion_metadata` via `oracledb.connect_async()`, rather than any stock sensor | `apache-airflow-providers-oracle==4.6.2` ships no sensor and no deferrable operator at all (confirmed against its own docs) — this is the only path to a deferrable "both datasets ready" check; `connect_async()` (never blocking `connect()`) avoids stalling the triggerer's shared event loop for every other deferred task project-wide | ✓ Applied — Phase 7 |
+| DB-level `PRIMARY KEY`s + one supporting index (`orders_valid.customer_id`) + `BEFORE INSERT` FK-existence trigger on `orders_valid`, applied only after an explicit human-confirmed `checkpoint:decision` | One-way change requiring a full `make reset` (Oracle volume wipe) to apply or undo — gated behind a `blocking-human` checkpoint, never auto-approved even in unattended/auto-advance mode, since it destroys all current dev data | ✓ Applied — Phase 7 |
+| `orders.customer_id → customers.customer_id` FK now enforced at the DB level (supersedes the Phase 3 "FK not enforced" decision above for this one relationship) | Catches any future generator regression as a hard load failure instead of silent bad data; the Python-side `csv_processor` validation engine itself still excludes referential validators per spec §28 — this is a separate DDL safety net, not a new validator stage | ✓ Applied — Phase 7 |
 
 ## Evolution
 
@@ -223,4 +259,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-30 after Phase 6 (End-to-End Verification, Benchmark, CI & Docs) — milestone complete, all 6 phases finished*
+*Last updated: 2026-08-30 after Phase 7 (Correlated Customer-Order Business Report) — roadmap complete, all 7 phases finished*
