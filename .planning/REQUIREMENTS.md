@@ -30,7 +30,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 - [ ] **SCHED-01**: A new `csv_generate_schedule` DAG runs automatically every hour
       (`schedule="@hourly"`, `catchup=False`), with no manual `make generate` step required
-- [ ] **SCHED-02**: Each hourly run generates a fresh, non-duplicate customers+orders CSV pair —
+- [x] **SCHED-02**: Each hourly run generates a fresh, non-duplicate customers+orders CSV pair —
       the generation seed varies per run so checksums differ hour to hour, avoiding a silent
       idempotency no-op at the Oracle ingestion layer
 - [ ] **SCHED-03**: Each hourly run sequentially triggers `csv_ingest` for customers, then orders,
@@ -44,12 +44,12 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [ ] **SCHED-06**: `csv_ingest.py` and `report_ready.py` remain completely unmodified and
       independently triggerable (e.g. still directly usable from the Airflow UI or REST API, as
       before)
-- [ ] **SCHED-07**: Each hourly cycle logs a one-line cascade summary (dataset row counts,
+- [x] **SCHED-07**: Each hourly cycle logs a one-line cascade summary (dataset row counts,
       report-ready status) at the parent DAG level — log-only, matching the existing
       `report_result_task`/`build_report_task` convention
 - [ ] **SCHED-08**: An operator can configure customers/orders row counts and invalid-ratio for a
       scheduled cycle via DAG `Param`s instead of editing code
-- [ ] **SCHED-10** (added during Phase 9 discuss-phase, D-15 bundled scope addition): A retention
+- [x] **SCHED-10** (added during Phase 9 discuss-phase, D-15 bundled scope addition): A retention
       task inside `csv_generate_schedule` deletes generated CSVs (`.csv`/`.csv.gz`) older than 30
       days from `data/customers/`/`data/orders/`, running at the end of each hourly cascade,
       best-effort (a cleanup failure never fails the overall DagRun)
@@ -93,14 +93,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENV-02 | Phase 8 | Complete |
 | ENV-03 | Phase 8 | Complete |
 | SCHED-01 | Phase 9 | Pending |
-| SCHED-02 | Phase 9 | Pending |
+| SCHED-02 | Phase 9 | Complete |
 | SCHED-03 | Phase 9 | Pending |
 | SCHED-04 | Phase 9 | Pending |
 | SCHED-05 | Phase 9 | Pending |
 | SCHED-06 | Phase 9 | Pending |
-| SCHED-07 | Phase 9 | Pending |
+| SCHED-07 | Phase 9 | Complete |
 | SCHED-08 | Phase 9 | Pending |
-| SCHED-10 | Phase 9 | Pending |
+| SCHED-10 | Phase 9 | Complete |
 | ROBUST-01 | Phase 10 | Pending |
 
 **Coverage:**

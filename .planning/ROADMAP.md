@@ -111,7 +111,7 @@ step, no changes to `csv_ingest.py`/`report_ready.py`.
 Plans:
 **Wave 1**
 
-- [ ] 09-01-PLAN.md — Pure helper functions (derive_seed, format_cascade_summary, retention_sweep) + full unit coverage
+- [x] 09-01-PLAN.md — Pure helper functions (derive_seed, format_cascade_summary, retention_sweep) + full unit coverage
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -177,6 +177,6 @@ Phases execute in numeric order: 8 → 9 → 10
 | 6. End-to-End Verification, Benchmark, CI & Docs | v1.0 | 5/5 | Complete | 2026-08-30 |
 | 7. Correlated Customer-Order Business Report | v1.0 | 6/6 | Complete | 2026-08-30 |
 | 8. Environment & Docker Fixes for Container-Side Generation | v1.1 | 2/2 | Complete    | 2026-09-01 |
-| 9. Hourly Orchestrator DAG (`csv_generate_schedule`) | v1.1 | 0/4 | Not started | - |
+| 9. Hourly Orchestrator DAG (`csv_generate_schedule`) | v1.1 | 1/4 | In Progress|  |
 | 10. `OraclePartitionReadyTrigger` Robustness Fix | v1.1 | 0/TBD | Not started | - |
 </content>
