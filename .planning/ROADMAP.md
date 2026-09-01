@@ -119,7 +119,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 09-03-PLAN.md — verify-phase9 Makefile target + docs/airflow-dag.md new section
+- [x] 09-03-PLAN.md — verify-phase9 Makefile target + docs/airflow-dag.md new section
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -177,6 +177,6 @@ Phases execute in numeric order: 8 → 9 → 10
 | 6. End-to-End Verification, Benchmark, CI & Docs | v1.0 | 5/5 | Complete | 2026-08-30 |
 | 7. Correlated Customer-Order Business Report | v1.0 | 6/6 | Complete | 2026-08-30 |
 | 8. Environment & Docker Fixes for Container-Side Generation | v1.1 | 2/2 | Complete    | 2026-09-01 |
-| 9. Hourly Orchestrator DAG (`csv_generate_schedule`) | v1.1 | 2/4 | In Progress|  |
+| 9. Hourly Orchestrator DAG (`csv_generate_schedule`) | v1.1 | 3/4 | In Progress|  |
 | 10. `OraclePartitionReadyTrigger` Robustness Fix | v1.1 | 0/TBD | Not started | - |
 </content>

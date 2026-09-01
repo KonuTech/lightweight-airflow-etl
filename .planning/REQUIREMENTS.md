@@ -28,7 +28,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Scheduling / Orchestrator DAG (SCHED)
 
-- [ ] **SCHED-01**: A new `csv_generate_schedule` DAG runs automatically every hour
+- [x] **SCHED-01**: A new `csv_generate_schedule` DAG runs automatically every hour
       (`schedule="@hourly"`, `catchup=False`), with no manual `make generate` step required
 - [x] **SCHED-02**: Each hourly run generates a fresh, non-duplicate customers+orders CSV pair —
       the generation seed varies per run so checksums differ hour to hour, avoiding a silent
@@ -36,10 +36,10 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [ ] **SCHED-03**: Each hourly run sequentially triggers `csv_ingest` for customers, then orders,
       then `report_ready`, waiting for each to actually finish before the next step starts
       (customers must fully commit before orders, per the Phase 7 FK-existence DB trigger)
-- [ ] **SCHED-04**: Only one hourly cycle runs at a time (`max_active_runs=1` on the new DAG),
+- [x] **SCHED-04**: Only one hourly cycle runs at a time (`max_active_runs=1` on the new DAG),
       preventing an overrunning cycle from racing the next scheduled cycle over the same day's CSV
       filename
-- [ ] **SCHED-05**: If `csv_ingest` or `report_ready` is ever manually paused, the hourly cycle
+- [x] **SCHED-05**: If `csv_ingest` or `report_ready` is ever manually paused, the hourly cycle
       fails loudly and immediately instead of hanging (`fail_when_dag_is_paused=True`)
 - [ ] **SCHED-06**: `csv_ingest.py` and `report_ready.py` remain completely unmodified and
       independently triggerable (e.g. still directly usable from the Airflow UI or REST API, as
@@ -47,7 +47,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [x] **SCHED-07**: Each hourly cycle logs a one-line cascade summary (dataset row counts,
       report-ready status) at the parent DAG level — log-only, matching the existing
       `report_result_task`/`build_report_task` convention
-- [ ] **SCHED-08**: An operator can configure customers/orders row counts and invalid-ratio for a
+- [x] **SCHED-08**: An operator can configure customers/orders row counts and invalid-ratio for a
       scheduled cycle via DAG `Param`s instead of editing code
 - [x] **SCHED-10** (added during Phase 9 discuss-phase, D-15 bundled scope addition): A retention
       task inside `csv_generate_schedule` deletes generated CSVs (`.csv`/`.csv.gz`) older than 30
@@ -92,14 +92,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENV-01 | Phase 8 | Complete |
 | ENV-02 | Phase 8 | Complete |
 | ENV-03 | Phase 8 | Complete |
-| SCHED-01 | Phase 9 | Pending |
+| SCHED-01 | Phase 9 | Complete |
 | SCHED-02 | Phase 9 | Complete |
 | SCHED-03 | Phase 9 | Pending |
-| SCHED-04 | Phase 9 | Pending |
-| SCHED-05 | Phase 9 | Pending |
+| SCHED-04 | Phase 9 | Complete |
+| SCHED-05 | Phase 9 | Complete |
 | SCHED-06 | Phase 9 | Pending |
 | SCHED-07 | Phase 9 | Complete |
-| SCHED-08 | Phase 9 | Pending |
+| SCHED-08 | Phase 9 | Complete |
 | SCHED-10 | Phase 9 | Complete |
 | ROBUST-01 | Phase 10 | Pending |
 
