@@ -92,6 +92,30 @@ def test_retention_skips_files_within_window(tmp_path: Path) -> None:
     assert recent_file.exists()
 
 
+def test_retention_does_not_delete_non_canonical_backup_files(tmp_path: Path) -> None:
+    """WR-03: a ``.bak``/``.orig``-suffixed file must never be deleted, even
+    when it is old enough to otherwise qualify and its embedded date parses
+    cleanly -- the glob must match only the exact
+    ``<dataset>_<YYYYMMDD>.csv``/``.csv.gz`` shapes, not any filename that
+    merely starts with that prefix.
+    """
+    cutoff = datetime(2026, 9, 1, tzinfo=UTC)
+    old_date = (cutoff - timedelta(days=40)).strftime("%Y%m%d")
+    backup_file = tmp_path / f"customers_{old_date}.csv.bak"
+    orig_file = tmp_path / f"customers_{old_date}.csv.orig"
+    backup_file.write_text("backup", encoding="utf-8")
+    orig_file.write_text("orig", encoding="utf-8")
+
+    deleted, skipped = retention_sweep(tmp_path, "customers", cutoff)
+
+    assert deleted == []
+    skipped_paths = [path for path, _reason in skipped]
+    assert backup_file in skipped_paths
+    assert orig_file in skipped_paths
+    assert backup_file.exists()
+    assert orig_file.exists()
+
+
 def test_retention_never_raises(tmp_path: Path) -> None:
     cutoff = datetime(2026, 9, 1, tzinfo=UTC)
     old_date = (cutoff - timedelta(days=40)).strftime("%Y%m%d")

@@ -11,8 +11,18 @@ backs the never-raising retention pass (SCHED-10, D-16/D-18).
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from pathlib import Path
+
+# Matches exactly the two filename shapes generate_csv.py's output_path()
+# produces after the "<dataset>_" prefix is stripped: <YYYYMMDD>.csv or
+# <YYYYMMDD>.csv.gz. Anchored on both ends so a file such as
+# "customers_20260101.csv.bak" (e.g. a manual operator backup) does NOT
+# match, even though it starts with a valid <dataset>_<YYYYMMDD>.csv
+# prefix -- WR-03: the previous glob-only match was broader than this
+# function's own documented contract and risked deleting such files.
+_FILENAME_RE = re.compile(r"^(\d{8})\.csv(\.gz)?$")
 
 
 def derive_seed(logical_date: datetime) -> int:
@@ -90,8 +100,12 @@ def retention_sweep(
     deleted: list[Path] = []
     skipped: list[tuple[Path, str]] = []
 
-    for path in base_dir.glob(f"{dataset}_*.csv*"):
-        date_token = path.name.removeprefix(f"{dataset}_").split(".", 1)[0]
+    for path in base_dir.glob(f"{dataset}_*"):
+        match = _FILENAME_RE.match(path.name.removeprefix(f"{dataset}_"))
+        if match is None:
+            skipped.append((path, "does not match <dataset>_<YYYYMMDD>.csv[.gz]"))
+            continue
+        date_token = match.group(1)
         try:
             file_date = datetime.strptime(date_token, "%Y%m%d").replace(tzinfo=UTC)
         except ValueError as exc:
