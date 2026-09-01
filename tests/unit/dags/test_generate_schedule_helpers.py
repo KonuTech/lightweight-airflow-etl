@@ -64,7 +64,7 @@ def test_summary_format_handles_missing_dataset() -> None:
 def test_retention_deletes_old_files(tmp_path: Path) -> None:
     cutoff = datetime(2026, 9, 1, tzinfo=UTC)
     old_date = (cutoff - timedelta(days=40)).strftime("%Y%m%d")
-    recent_date = (cutoff - timedelta(days=5)).strftime("%Y%m%d")
+    recent_date = (cutoff + timedelta(days=5)).strftime("%Y%m%d")
     old_file = tmp_path / f"customers_{old_date}.csv"
     recent_file = tmp_path / f"customers_{recent_date}.csv.gz"
     old_file.write_text("old", encoding="utf-8")
@@ -81,7 +81,7 @@ def test_retention_deletes_old_files(tmp_path: Path) -> None:
 
 def test_retention_skips_files_within_window(tmp_path: Path) -> None:
     cutoff = datetime(2026, 9, 1, tzinfo=UTC)
-    recent_date = (cutoff - timedelta(days=5)).strftime("%Y%m%d")
+    recent_date = (cutoff + timedelta(days=5)).strftime("%Y%m%d")
     recent_file = tmp_path / f"customers_{recent_date}.csv"
     recent_file.write_text("recent", encoding="utf-8")
 

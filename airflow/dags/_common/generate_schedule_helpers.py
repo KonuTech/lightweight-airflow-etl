@@ -11,7 +11,8 @@ backs the never-raising retention pass (SCHED-10, D-16/D-18).
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
+from pathlib import Path
 
 
 def derive_seed(logical_date: datetime) -> int:
@@ -60,3 +61,52 @@ def format_cascade_summary(dataset_results: dict[str, dict[str, int] | None]) ->
             )
     parts.append("report_ready=OK")
     return " ".join(parts)
+
+
+def retention_sweep(
+    base_dir: Path, dataset: str, cutoff: datetime
+) -> tuple[list[Path], list[tuple[Path, str]]]:
+    """Delete ``dataset``'s CSV/CSV.GZ files under ``base_dir`` older than
+    ``cutoff``, without ever raising (SCHED-10, D-16/D-18).
+
+    Matches the ``<dataset>_<YYYYMMDD>.csv``/``<dataset>_<YYYYMMDD>.csv.gz``
+    filename convention established by ``generator/generate_csv.py``'s
+    ``output_path()``/``write_staged()``.
+
+    Args:
+        base_dir: The dataset's data directory (e.g.
+            ``/opt/airflow/data/customers``).
+        dataset: The dataset name, used both for the glob pattern and to
+            strip the filename prefix when parsing the embedded date.
+        cutoff: Files whose embedded date is strictly older than this are
+            deleted; files on or after it are left untouched.
+
+    Returns:
+        A ``(deleted, skipped)`` tuple: ``deleted`` is the list of paths
+        successfully removed; ``skipped`` is a list of
+        ``(path, reason)`` pairs for entries whose date token couldn't be
+        parsed or whose deletion failed -- never raised, only recorded.
+    """
+    deleted: list[Path] = []
+    skipped: list[tuple[Path, str]] = []
+
+    for path in base_dir.glob(f"{dataset}_*.csv*"):
+        date_token = path.name.removeprefix(f"{dataset}_").split(".", 1)[0]
+        try:
+            file_date = datetime.strptime(date_token, "%Y%m%d").replace(tzinfo=UTC)
+        except ValueError as exc:
+            skipped.append((path, f"unparseable filename: {exc}"))
+            continue
+
+        if file_date >= cutoff:
+            continue
+
+        try:
+            path.unlink()
+        except OSError as exc:
+            skipped.append((path, f"delete failed: {exc}"))
+            continue
+
+        deleted.append(path)
+
+    return deleted, skipped
