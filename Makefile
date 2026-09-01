@@ -131,8 +131,9 @@ dag = b.dags['csv_generate_schedule']; \
 required = {'generate_task','trigger_customers','trigger_orders','trigger_report_ready','summary_task','retention_task'}; \
 assert required.issubset(set(dag.task_ids)), dag.task_ids; \
 assert dag.max_active_runs == 1, dag.max_active_runs; \
-assert dag.get_task('trigger_customers').deferrable is True; \
-assert dag.get_task('trigger_customers').fail_when_dag_is_paused is True; \
+trigger_task_ids = ('trigger_customers', 'trigger_orders', 'trigger_report_ready'); \
+assert all(dag.get_task(tid).deferrable is True for tid in trigger_task_ids), [tid for tid in trigger_task_ids if not dag.get_task(tid).deferrable]; \
+assert all(dag.get_task(tid).fail_when_dag_is_paused is True for tid in trigger_task_ids), [tid for tid in trigger_task_ids if not dag.get_task(tid).fail_when_dag_is_paused]; \
 assert dag.params['rows'] == 100, dag.params['rows']; \
 assert dag.params['invalid_ratio'] == 0.1, dag.params['invalid_ratio']; \
 print('DAGBAG_OK')"
