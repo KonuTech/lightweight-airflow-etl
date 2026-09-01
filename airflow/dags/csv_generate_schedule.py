@@ -52,7 +52,7 @@ _LATEST_INGESTION_SQL = """
 SELECT total_rows, valid_rows, invalid_rows
 FROM ingestion_metadata
 WHERE dataset = :dataset
-ORDER BY processed_at DESC
+ORDER BY processed_at DESC, id DESC
 FETCH FIRST 1 ROW ONLY
 """
 
