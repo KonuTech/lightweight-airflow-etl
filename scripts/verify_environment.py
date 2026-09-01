@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import subprocess
 import sys
 import time
 import urllib.error
@@ -47,6 +48,16 @@ AIRFLOW_PASSWORD = "admin"
 AUTH_RETRY_ATTEMPTS = 6
 AUTH_RETRY_BASE_DELAY_SECONDS = 1.0
 AUTH_RETRY_MAX_DELAY_SECONDS = 8.0
+
+# ENV-01/ENV-02 (D-06/D-07/D-08): container-exec-based checks that prove
+# generator.generate_csv importability and data/ write access *inside* a running
+# Airflow container, not merely reachable from the host over the network like the
+# Oracle/HTTP checks above. Retry budget is intentionally small and narrow -- these
+# checks only retry when the container itself looks not-yet-ready, never when the
+# exec'd Python code itself raises (that is a real bug, not a transient race).
+CONTAINER_EXEC_TIMEOUT_SECONDS = 30
+CONTAINER_EXEC_RETRY_ATTEMPTS = 3
+CONTAINER_EXEC_RETRY_BASE_DELAY_SECONDS = 1.0
 
 
 def verify_tables(cursor: oracledb.Cursor, expected: set[str]) -> None:
@@ -112,6 +123,96 @@ def verify_widened_invalid_columns(
 
     not_nullable = {name for name, (_data_type, nullable) in rows.items() if nullable != "Y"}
     assert not not_nullable, f"Table {table} columns not nullable: {not_nullable}"
+
+
+def _docker_compose_exec(service: str, python_code: str) -> str:
+    """Run `python_code` inside `service` via `docker compose exec -T ... python -c`,
+    returning captured stdout on success.
+
+    Raises AssertionError (matching this file's existing assert-based failure
+    convention) naming the service, exit code, and captured stderr on a non-zero exit
+    or a `subprocess.TimeoutExpired`. Retries up to CONTAINER_EXEC_RETRY_ATTEMPTS times,
+    with a CONTAINER_EXEC_RETRY_BASE_DELAY_SECONDS * attempt backoff, ONLY when the
+    failure looks like the container itself wasn't ready yet (evidence in stderr, e.g.
+    containing "is not running" or "Container") -- mirroring verify_airflow_auth's
+    narrow-retry-on-transient-conditions-only discipline. Any other non-zero exit
+    (a genuine AssertionError/ImportError from the exec'd code itself) raises
+    immediately, never retried.
+    """
+    last_error = ""
+    for attempt in range(1, CONTAINER_EXEC_RETRY_ATTEMPTS + 1):
+        try:
+            result = subprocess.run(
+                ["docker", "compose", "exec", "-T", service, "python", "-c", python_code],
+                capture_output=True,
+                text=True,
+                timeout=CONTAINER_EXEC_TIMEOUT_SECONDS,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            last_error = (
+                f"docker compose exec into {service!r} timed out after "
+                f"{CONTAINER_EXEC_TIMEOUT_SECONDS}s"
+            )
+            if attempt < CONTAINER_EXEC_RETRY_ATTEMPTS:
+                time.sleep(CONTAINER_EXEC_RETRY_BASE_DELAY_SECONDS * attempt)
+                continue
+            raise AssertionError(last_error) from exc
+
+        if result.returncode == 0:
+            return result.stdout
+
+        last_error = (
+            f"docker compose exec into {service!r} exited {result.returncode}: "
+            f"{result.stderr.strip()}"
+        )
+        container_not_ready = "is not running" in result.stderr or "Container" in result.stderr
+        if container_not_ready and attempt < CONTAINER_EXEC_RETRY_ATTEMPTS:
+            time.sleep(CONTAINER_EXEC_RETRY_BASE_DELAY_SECONDS * attempt)
+            continue
+        raise AssertionError(last_error)
+
+    raise AssertionError(last_error)
+
+
+def verify_generator_importable(service: str = "airflow-apiserver") -> None:
+    """Assert `from generator.generate_csv import main` succeeds inside `service`.
+
+    Raises AssertionError (via `_docker_compose_exec`) naming the service, exit code,
+    and captured stderr if the import fails -- e.g. a ModuleNotFoundError if the
+    `generator/` mount or PYTHONPATH extension regresses (ENV-01, D-06).
+    """
+    _docker_compose_exec(
+        service,
+        "from generator.generate_csv import main; print('IMPORT_OK')",
+    )
+
+
+def verify_data_write_access(service: str = "airflow-apiserver") -> None:
+    """Assert `service` can write, read back, and delete a real probe file under both
+    `/opt/airflow/data/customers/` and `/opt/airflow/data/orders/`.
+
+    Raises AssertionError (via `_docker_compose_exec`) naming the failing dataset/path
+    if the write, read-back, or delete fails (ENV-02, D-08) -- a real write-then-delete
+    proof, not a permission-bits-only check. The probe file uses a dotfile name
+    (`.verify_write_probe`) that never matches `customers_*.csv*`/`orders_*.csv*`, so
+    `csv_ingest`'s FileSensor glob can never pick it up; the delete runs in a
+    try/finally inside the exec'd code so the probe is always removed even if the
+    content assertion fails.
+    """
+    for dataset in ("customers", "orders"):
+        probe_path = f"/opt/airflow/data/{dataset}/.verify_write_probe"
+        python_code = (
+            "from pathlib import Path; "
+            f"p = Path({probe_path!r}); "
+            "p.write_text('probe')\n"
+            "try:\n"
+            "    assert p.read_text() == 'probe', 'probe content mismatch'\n"
+            "finally:\n"
+            "    p.unlink()\n"
+            "print('WRITE_OK')"
+        )
+        _docker_compose_exec(service, python_code)
 
 
 def verify_airflow_auth() -> None:
@@ -230,6 +331,14 @@ def main() -> int:
 
     verify_airflow_auth()
     print("OK: admin/admin authenticates against Airflow's /auth/token endpoint")
+
+    verify_generator_importable()
+    print("OK: generator.generate_csv importable inside airflow-apiserver")
+
+    verify_data_write_access()
+    print(
+        "OK: airflow-apiserver can write and delete real files in data/customers/ and data/orders/"
+    )
 
     return 0
 
