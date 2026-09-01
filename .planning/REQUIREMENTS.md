@@ -33,7 +33,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [x] **SCHED-02**: Each hourly run generates a fresh, non-duplicate customers+orders CSV pair —
       the generation seed varies per run so checksums differ hour to hour, avoiding a silent
       idempotency no-op at the Oracle ingestion layer
-- [ ] **SCHED-03**: Each hourly run sequentially triggers `csv_ingest` for customers, then orders,
+- [x] **SCHED-03**: Each hourly run sequentially triggers `csv_ingest` for customers, then orders,
       then `report_ready`, waiting for each to actually finish before the next step starts
       (customers must fully commit before orders, per the Phase 7 FK-existence DB trigger)
 - [x] **SCHED-04**: Only one hourly cycle runs at a time (`max_active_runs=1` on the new DAG),
@@ -41,7 +41,7 @@ Requirements for this milestone. Each maps to roadmap phases.
       filename
 - [x] **SCHED-05**: If `csv_ingest` or `report_ready` is ever manually paused, the hourly cycle
       fails loudly and immediately instead of hanging (`fail_when_dag_is_paused=True`)
-- [ ] **SCHED-06**: `csv_ingest.py` and `report_ready.py` remain completely unmodified and
+- [x] **SCHED-06**: `csv_ingest.py` and `report_ready.py` remain completely unmodified and
       independently triggerable (e.g. still directly usable from the Airflow UI or REST API, as
       before)
 - [x] **SCHED-07**: Each hourly cycle logs a one-line cascade summary (dataset row counts,
@@ -94,10 +94,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENV-03 | Phase 8 | Complete |
 | SCHED-01 | Phase 9 | Complete |
 | SCHED-02 | Phase 9 | Complete |
-| SCHED-03 | Phase 9 | Pending |
+| SCHED-03 | Phase 9 | Complete |
 | SCHED-04 | Phase 9 | Complete |
 | SCHED-05 | Phase 9 | Complete |
-| SCHED-06 | Phase 9 | Pending |
+| SCHED-06 | Phase 9 | Complete |
 | SCHED-07 | Phase 9 | Complete |
 | SCHED-08 | Phase 9 | Complete |
 | SCHED-10 | Phase 9 | Complete |

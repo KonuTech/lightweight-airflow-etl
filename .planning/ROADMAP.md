@@ -33,7 +33,7 @@ manual `make generate` step.
       can import the generator and faker, and can write generated CSVs into `data/<dataset>/` on a
       genuinely fresh clone
 
-- [ ] **Phase 9: Hourly Orchestrator DAG (`csv_generate_schedule`)** - A new hourly DAG generates
+- [x] **Phase 9: Hourly Orchestrator DAG (`csv_generate_schedule`)** - A new hourly DAG generates (completed 2026-09-01)
       fresh CSVs and chain-triggers `csv_ingest` (customers → orders) then `report_ready`, fully
       unattended
 
@@ -123,7 +123,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 09-04-PLAN.md — Live verification (deferred states, overlap queuing, paused-DAG failure) + evidence capture
+- [x] 09-04-PLAN.md — Live verification (deferred states, overlap queuing, paused-DAG failure) + evidence capture
 
 **Implementation note**: the three `TriggerDagRunOperator` chain-trigger tasks use
 `deferrable=True` (resolves research/SUMMARY.md's Open Decision in favor of Position B — consistent
@@ -177,6 +177,6 @@ Phases execute in numeric order: 8 → 9 → 10
 | 6. End-to-End Verification, Benchmark, CI & Docs | v1.0 | 5/5 | Complete | 2026-08-30 |
 | 7. Correlated Customer-Order Business Report | v1.0 | 6/6 | Complete | 2026-08-30 |
 | 8. Environment & Docker Fixes for Container-Side Generation | v1.1 | 2/2 | Complete    | 2026-09-01 |
-| 9. Hourly Orchestrator DAG (`csv_generate_schedule`) | v1.1 | 3/4 | In Progress|  |
+| 9. Hourly Orchestrator DAG (`csv_generate_schedule`) | v1.1 | 4/4 | Complete   | 2026-09-01 |
 | 10. `OraclePartitionReadyTrigger` Robustness Fix | v1.1 | 0/TBD | Not started | - |
 </content>
