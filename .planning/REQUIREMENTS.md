@@ -80,23 +80,23 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ENV-01 | TBD | Pending |
-| ENV-02 | TBD | Pending |
-| SCHED-01 | TBD | Pending |
-| SCHED-02 | TBD | Pending |
-| SCHED-03 | TBD | Pending |
-| SCHED-04 | TBD | Pending |
-| SCHED-05 | TBD | Pending |
-| SCHED-06 | TBD | Pending |
-| SCHED-07 | TBD | Pending |
-| SCHED-08 | TBD | Pending |
-| ROBUST-01 | TBD | Pending |
+| ENV-01 | Phase 8 | Pending |
+| ENV-02 | Phase 8 | Pending |
+| SCHED-01 | Phase 9 | Pending |
+| SCHED-02 | Phase 9 | Pending |
+| SCHED-03 | Phase 9 | Pending |
+| SCHED-04 | Phase 9 | Pending |
+| SCHED-05 | Phase 9 | Pending |
+| SCHED-06 | Phase 9 | Pending |
+| SCHED-07 | Phase 9 | Pending |
+| SCHED-08 | Phase 9 | Pending |
+| ROBUST-01 | Phase 10 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 11 total
-- Mapped to phases: 0
-- Unmapped: 11 ⚠️ (roadmap creation pending)
+- Mapped to phases: 11
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-09-01*
-*Last updated: 2026-09-01 after initial v1.1 definition*
+*Last updated: 2026-09-01 after ROADMAP.md creation (Phases 8-10, 100% coverage)*
