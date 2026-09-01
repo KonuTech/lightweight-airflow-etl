@@ -115,6 +115,11 @@ table, and reports back a clear processing summary — end to end, reproducibly,
 - ✓ Naive-vs-bulk benchmark re-measured against the schema carrying the new PK/index/trigger
       overhead: **67.41×** speedup (down from Phase 6's pre-DDL 182.85×, consistent with the new
       `customers_valid` PK/implicit-index cost) — Phase 7, `docs/benchmark.md`.
+- ✓ Airflow container can generate CSVs in-process (`generator/` mounted, extended `PYTHONPATH`,
+      `faker==40.37.0` pinned) and genuinely write into `data/<dataset>/` on a fresh clone
+      (`airflow-init` root-user repair step for both `data/` ownership and the
+      passwords-file bind-mount gotcha), proven by a permanent `make verify-phase8` check and a
+      live fresh-clone/idempotency proof, not just code inspection (ENV-01/02/03) — Phase 8.
 
 ### Active
 
@@ -129,7 +134,8 @@ table, and reports back a clear processing summary — end to end, reproducibly,
       robustness gap worth a follow-up fix. **In scope for v1.1.**
 - [ ] New `csv_generate_schedule` DAG regenerates customers/orders CSVs hourly and chain-triggers
       `csv_ingest` (both datasets) then `report_ready`, so the full pipeline runs unattended once
-      per hour with no manual `make generate` step — v1.1
+      per hour with no manual `make generate` step — v1.1 (Phase 9, depends on Phase 8's
+      environment fixes, now shipped)
 
 ### Out of Scope
 
@@ -274,12 +280,16 @@ which validates and bulk-loads CSV rows into Oracle with checksum-keyed idempote
 `customers ⋈ orders` business report; CI (`ci.yml` + `readme-summary.yml`, PR-based with a scoped
 PAT — see Key Decisions) enforces this on every change.
 
+**v1.1 progress:** Phase 8 (Environment & Docker Fixes for Container-Side Generation) complete
+(2026-09-01) — 2/2 plans, goal-backward verification passed 8/8 must-haves against the live stack.
+Phase 9 (`csv_generate_schedule` orchestrator DAG) is next, now unblocked.
+
 ### Next Milestone Goals
 
 v1.1 (Hourly Ingestion Automation) is now underway — see "Current Milestone" above. Both items
 previously flagged here are resolved: `SEED-001-python-to-plsql-migration` was explicitly declined
 (2026-09-01 — see the seed file's `status: declined`), and the `OraclePartitionReadyTrigger`
-exception-handling gap is now in v1.1's scope.
+exception-handling gap is now in v1.1's scope (Phase 10).
 
 ## Evolution
 
@@ -299,4 +309,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-09-01 after starting v1.1 milestone (Hourly Ingestion Automation)*
+*Last updated: 2026-09-01 after Phase 8 completion (v1.1 Hourly Ingestion Automation)*
