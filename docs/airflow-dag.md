@@ -401,6 +401,117 @@ unrelated pre-existing issues discovered only by attempting a real trigger:
 Both fixes were verified via `uv run pytest tests/unit/dags/ -x` (18 passed) and a live
 `BundleDagBag` structural check (`DAGBAG_OK`) before the successful run captured above.
 
+#### SCHED-04: overlapping cycle queues, never races
+
+Triggered `csv_generate_schedule` twice in immediate succession, then polled both `DagRun`
+states repeatedly until the first became non-terminal (`running`), capturing both states at that
+same moment:
+
+```bash
+RUN_ID_1=$(curl -s -X POST "http://localhost:8080/api/v2/dags/csv_generate_schedule/dagRuns" \
+  -H "Authorization: Bearer ${JWT}" -H "Content-Type: application/json" \
+  -d '{"logical_date": null}' | jq -r '.dag_run_id')
+RUN_ID_2=$(curl -s -X POST "http://localhost:8080/api/v2/dags/csv_generate_schedule/dagRuns" \
+  -H "Authorization: Bearer ${JWT}" -H "Content-Type: application/json" \
+  -d '{"logical_date": null}' | jq -r '.dag_run_id')
+# RUN_ID_1 = manual__2026-09-01T23:18:54.542817+00:00
+# RUN_ID_2 = manual__2026-09-01T23:18:54.584699+00:00 (created 42ms later)
+
+curl -s -H "Authorization: Bearer ${JWT}" \
+  "http://localhost:8080/api/v2/dags/csv_generate_schedule/dagRuns/${RUN_ID_1}" | jq '{dag_run_id, state}'
+curl -s -H "Authorization: Bearer ${JWT}" \
+  "http://localhost:8080/api/v2/dags/csv_generate_schedule/dagRuns/${RUN_ID_2}" | jq '{dag_run_id, state}'
+```
+
+Captured the instant `RUN_ID_1` transitioned out of `queued`:
+
+```json
+{
+  "dag_run_id": "manual__2026-09-01T23:18:54.542817+00:00",
+  "state": "running"
+}
+```
+
+```json
+{
+  "dag_run_id": "manual__2026-09-01T23:18:54.584699+00:00",
+  "state": "queued"
+}
+```
+
+`RUN_ID_2` remained in `queued` state while `RUN_ID_1` was `running` -- confirming
+`max_active_runs=1` (SCHED-04) genuinely queues the second cycle rather than racing it. Both runs
+were then waited out to completion (`.../wait?result=trigger_report_ready&interval=2`) and both
+independently reached `{"state": "success"}`, so neither run was left dangling.
+
+#### SCHED-05: paused child DAG fails the parent run immediately
+
+Confirmed no `csv_generate_schedule` run was active, then paused `csv_ingest` (the exact `PATCH`
+pattern already documented in this file's "One-time setup note" above):
+
+```bash
+curl -s -X PATCH "http://localhost:8080/api/v2/dags/csv_ingest" \
+  -H "Authorization: Bearer ${JWT}" -H "Content-Type: application/json" \
+  -d '{"is_paused": true}'
+```
+
+```json
+{
+  "dag_id": "csv_ingest",
+  "is_paused": true
+}
+```
+
+Triggered a new `csv_generate_schedule` run and polled `trigger_customers`'s task-instance state:
+
+```bash
+RUN_ID_3=$(curl -s -X POST "http://localhost:8080/api/v2/dags/csv_generate_schedule/dagRuns" \
+  -H "Authorization: Bearer ${JWT}" -H "Content-Type: application/json" \
+  -d '{"logical_date": null}' | jq -r '.dag_run_id')
+# RUN_ID_3 = manual__2026-09-01T23:20:46.466749+00:00
+
+curl -s -H "Authorization: Bearer ${JWT}" \
+  "http://localhost:8080/api/v2/dags/csv_generate_schedule/dagRuns/${RUN_ID_3}/taskInstances/trigger_customers" \
+  | jq '{task_id, state, start_date, end_date}'
+```
+
+```json
+{
+  "task_id": "trigger_customers",
+  "state": "failed",
+  "start_date": "2026-09-01T23:20:47.974536Z",
+  "end_date": "2026-09-01T23:20:48.286314Z"
+}
+```
+
+`trigger_customers` reached a terminal `failed` state within about 2 seconds of the DagRun
+starting (never left `deferred`/`running` past the bounded poll window). Its captured exception
+confirms the exact mechanism:
+
+```json
+{
+  "exc_type": "DagIsPaused",
+  "exc_value": "Dag csv_ingest is paused"
+}
+```
+
+`fail_when_dag_is_paused=True` on the operator detects `csv_ingest`'s paused state immediately at
+task-start time rather than deferring/polling indefinitely. The parent `csv_generate_schedule`
+DagRun itself reached a terminal `failed` state seconds later (downstream tasks correctly
+resolving `upstream_failed`). `csv_ingest` was restored to unpaused immediately afterward:
+
+```bash
+curl -s -X PATCH "http://localhost:8080/api/v2/dags/csv_ingest" \
+  -H "Authorization: Bearer ${JWT}" -H "Content-Type: application/json" \
+  -d '{"is_paused": false}'
+
+curl -s -H "Authorization: Bearer ${JWT}" "http://localhost:8080/api/v2/dags/csv_ingest" | jq '.is_paused'
+```
+
+```json
+false
+```
+
 ## Full HTTP-to-Oracle-rows automated testing
 
 This document records this phase's own manual/live verification evidence only. Fully automated
