@@ -1,270 +1,180 @@
 # Feature Research
 
-**Domain:** Lightweight local Airflow-orchestrated CSV→database ETL (single reusable CSV processing
-engine, thin TaskFlow DAG, Oracle Database Free target)
-**Researched:** 2026-08-28
-**Confidence:** MEDIUM (project's own spec/PROJECT.md already pin most decisions at HIGH internal
-confidence; external validation via web search is LOW-confidence supporting color, Airflow/
-python-oracledb specifics via Context7 are MEDIUM-confidence official docs)
+**Domain:** Scheduled Airflow "orchestrator" DAG that regenerates fixture data and cascades into
+existing config-driven ingestion DAGs (TriggerDagRunOperator chain-triggering)
+**Researched:** 2026-09-01
+**Confidence:** HIGH for Airflow operator mechanics (verified against `apache-airflow-providers-
+standard` source at the exact pinned tag, `1.17.0`, and this project's own pinned `apache/
+airflow:3.3.1-python3.12`); MEDIUM for open-bug applicability (some GitHub issues were filed
+against older provider versions and fix-landing version isn't fully confirmed).
+
+## Context recap (from files read)
+
+- `csv_ingest` (`airflow/dags/csv_ingest.py`): `schedule=None`, `catchup=False`, two runtime
+  `Param`s (`dataset` enum `["customers","orders"]`, `config_path` string). Internally: config
+  load → branch → deferrable `FileSensor(deferrable=True, poke_interval=10, timeout=3600)` →
+  `process_csv_task` → `load_results_task` → `report_result_task`. No `max_active_runs` set on the
+  DAG (Airflow default applies). Domain failures (bad config, bad file) never raise — the task
+  graph always reaches `report_result_task` and the DAG run still ends `success`.
+- `report_ready` (`airflow/dags/report_ready.py`): `schedule=None`, `catchup=False`, no runtime
+  params at all. Deferrable `ReportReadySensor` (custom `OraclePartitionReadyTrigger`, polls Oracle
+  `ingestion_metadata` every 30s) → `build_report_task`. No `max_active_runs` set.
+- `generator/generate_csv.py`: `output_path()` produces exactly one file per calendar day —
+  `data/<dataset>/<dataset>_<YYYYMMDD>.csv` — **overwritten** on every call that day via
+  `write_staged()`'s atomic staged-rename. Running the generator a second time in the same hour (or
+  same day) replaces the prior file at the same path; it does not create a second, distinguishable
+  file.
+- Pinned versions: `apache/airflow:3.3.1-python3.12`, `apache-airflow-providers-standard==1.17.0`,
+  `apache-airflow-providers-oracle==4.6.2`.
 
 ## Feature Landscape
 
-### Table Stakes (Project Doesn't Meet Its Own Definition of Done Without These)
-
-These map directly to PROJECT.md's Active requirements and the 60-point spec. Missing any of
-these means the "reusable CSV engine + thin DAG" story is incomplete, not just less polished.
+### Table Stakes (users/operators expect these)
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| HTTP-triggerable DAG with runtime conf (dataset + config path) | Core Value statement requires "a single HTTP request can trigger" ingestion end to end | LOW | Airflow's own REST API (`POST /dags/{dag_id}/dagRuns`) is sufficient — no custom FastAPI wrapper needed |
-| Thin TaskFlow DAG (config → wait → process → load-results → report) | Explicit architectural goal: Airflow orchestrates, does not implement CSV logic | LOW | Keep task count small; don't split every internal step into its own task (spec §6) |
-| File-availability wait as deferrable operator/trigger | Async, non-blocking wait is called out as "especially appropriate" in spec §11 and is cheap given Airflow ships it | LOW | Airflow's built-in `FileSensor` (`airflow.providers.standard.sensors.filesystem.FileSensor`) already supports `deferrable=True` and releases the worker to the Triggerer — use this rather than hand-rolling a custom `Trigger` unless glob/pattern semantics require it (verified via Context7, MEDIUM confidence) |
-| Config-driven processing (`config.json`: file pattern, dialect, schema, target/invalid tables) | Spec §7-8: config is "the contract between the generated CSV and the processing engine" | MEDIUM | Pydantic v2 model, validated once per run before any row processing (already pinned decision) |
-| Reusable `csv_processor.process(file_path, config)` engine | This is the stated primary deliverable, not the DAG | MEDIUM | Engine must be Airflow-agnostic — importable and testable with no Airflow runtime present |
-| Structural validation (column count/missing/unexpected columns) | Spec §28 category 1; a CSV missing a column shouldn't silently misalign into wrong fields | LOW-MEDIUM | Must run before type validation — bad structure makes type validation meaningless |
-| Type validation (integer/decimal/date parsing) | Spec §28 category 2; Oracle has no forgiving implicit CSV-string coercion worth relying on | MEDIUM | Explicit CSV string → Python type → Oracle type conversion, no accidental implicit Oracle casts (spec §30) |
-| Nullability validation (required field empty) | Spec §28 category 3 | LOW | Depends on schema config already parsed |
-| Invalid-row quarantine with error metadata (error_code, error_message, source_file, row_number + original data) | Spec §26-27: "why was this row rejected?" must be answerable later, not just "row N failed" | MEDIUM | Confirmed as standard practice in lightweight CSV ETL more broadly (quarantine-not-crash pattern) — LOW-confidence web corroboration, but matches spec directly |
-| Invalid row isolation (one bad row doesn't fail the whole file) | Spec §32; 100K rows with 150 bad ones should yield 99,850 valid + 150 invalid, not a hard failure | MEDIUM | Configurable behavior per spec, but default should be collect-and-continue |
-| Chunked/bulk processing throughout (no per-row DB round-trips) | Spec §18-20; stated efficiency goal of the whole project | MEDIUM | Configurable chunk size; read via generator/iterator to avoid loading full file into memory (spec §19), balanced against not over-engineering for style |
-| Oracle bulk loading via `python-oracledb` `executemany()` array binding | Oracle has no `COPY`; `executemany()` vs. row-by-row `execute()` is measurably and dramatically faster (confirmed via Oracle's own benchmark notebook, MEDIUM confidence) | MEDIUM | `cursor.setinputsizes()` avoids per-batch memory reallocation; consider `batcherrors=True` + `getbatcherrors()` as a defensive layer, not the primary invalid-row mechanism (validation already happens pre-insert) |
-| Two Oracle tables per dataset (`<DATASET>_VALID`, `<DATASET>_INVALID`) | Spec §24-26; already decided | LOW | Straightforward DDL, one join key: none needed since it's a straight split, not a normalized model |
-| Structured `ProcessingResult` + distinct status semantics (SUCCESS / SUCCESS_WITH_INVALID_ROWS / FILE_NOT_FOUND / INVALID_FILE / CONFIGURATION_ERROR / DATABASE_ERROR / PROCESSING_ERROR) | Spec §33-35; Airflow task state should reflect severity — data-quality issues aren't the same as technical failures | MEDIUM | Depends on invalid-row isolation existing first; without it there's nothing to distinguish "success with errors" from plain success |
-| Idempotency via filename + checksum + dataset | Spec §36, §38; retrying an Airflow task must not duplicate data | MEDIUM | Requires the ingestion metadata table to exist as the source of truth for "have I seen this file+checksum before" |
-| Minimal ingestion metadata table (file_name, checksum, dataset, timestamp, row counts, status) | Spec §37; supports idempotency and gives a query surface for "what ran, when, with what result" | LOW-MEDIUM | This is the dependency root for idempotency — build it before or alongside the idempotency check, not after |
-| Config validation before CSV processing begins (Pydantic v2, once per run) | Spec §39; a bad config should fail fast, not mid-file | LOW | Already a pinned decision (CLAUDE.md); the "once per run, not per row" framing is deliberate — Pydantic's raise-on-first-error model fights the collect-and-continue row model, so it must stay scoped to config only |
-| Deterministic CSV generator (valid + invalid rows, all schema types) | Spec §13-15; validator needs a repeatable adversarial fixture, not hand-written test files | LOW-MEDIUM | Feeds directly into unit tests, integration tests, and the benchmark — build early since almost everything downstream consumes its output |
-| Two full datasets end-to-end (customers, orders) | PROJECT.md: proves config-drivenness generalizes beyond one hard-coded schema | MEDIUM | Second dataset should require zero engine code changes — if it does, the config contract is under-specified |
-| docker-compose provisioning (Airflow LocalExecutor + metadata DB + pinned Oracle Free tag) | Spec §22-23, 47-50; DoD requires the whole environment stood up from this repo | MEDIUM | Pin exact Oracle Free image tag (not `latest`) — reproducibility requirement, not a nice-to-have |
-| Unit + Oracle integration + one end-to-end test | Spec §51-54; explicit DoD item, and "do not mock Oracle for all tests" is explicit | MEDIUM-HIGH | End-to-end test is the "primary demonstration of the platform" per spec §54 — treat as a first-class deliverable, not an afterthought |
-| Performance/benchmark test (~100K rows, row-by-row vs. chunked/bulk) | Spec §55-56; the project's stated purpose is understanding efficient CSV processing | MEDIUM | Needs the CSV generator and both a naive and bulk code path to compare against — comparison is the point, not just measuring the final approach alone |
-| Minimal CI (lint, type check, unit tests, build/check) | Spec §57 | LOW | Oracle integration tests in CI are optional per spec — don't block on making that reliable |
-| Minimal docs (README + architecture/config/csv-engine/oracle/development) | Spec §58; clone-to-first-ingest walkthrough with no undocumented manual steps | LOW-MEDIUM | This is a completion-quality gate, not a feature, but it's explicitly part of DoD |
+| `@hourly`-scheduled parent DAG (`csv_generate_schedule`) with `catchup=False` | This is the literal ask — "no manual `make generate` step" | LOW | Standard `@dag(schedule="@hourly", catchup=False)`; `catchup=False` is non-negotiable here — with `catchup=True` a first deploy would immediately backfill every missed hourly interval since `start_date`, each one regenerating (overwriting) the *same* day's file and re-triggering downstream, which is pure wasted work for fixture data that has no real historical meaning. |
+| `max_active_runs=1` on the **new parent DAG only** | Prevents two full generate→ingest→ingest→report cascades running concurrently if one cycle overruns into the next hour | LOW | This is a parameter on the *new* DAG, not a change to `csv_ingest`/`report_ready`. Directly motivated by a real collision risk found in this research: `csv_ingest`'s existing `wait_for_file` has `timeout=3600` — exactly one hour. If generation ever fails to produce a file, that FileSensor can occupy nearly the full hour before timing out, right up against the next scheduled cycle. Without `max_active_runs=1`, the next parent run could start generating (overwriting) the same day's CSV file out from under a `csv_ingest` run still in its `wait_for_file`/`process_csv_task` window from the previous cycle — a real race on the *same* filename. `max_active_runs=1` serializes cycles at the parent level and removes this risk entirely, at the cost of a run occasionally queuing rather than firing exactly on the hour. |
+| A `generate_csv_task` (`@task` calling `generator.generate_csv`'s public functions directly, or `PythonOperator`/`BashOperator` wrapping the CLI) that runs `--correlated` generation | Produces the fresh customers+orders pair the rest of the chain depends on | LOW | Prefer calling `generate_correlated_datasets()` + `write_staged()` in-process (TaskFlow `@task`, mirrors `csv_ingest.py`'s own "thin DAG, no subprocess" style) over shelling out to the CLI via `BashOperator` — avoids a second process-invocation contract to maintain and keeps error handling in Python exceptions Airflow already understands. |
+| Sequential `TriggerDagRunOperator` chain: generate → trigger `csv_ingest` (customers) → trigger `csv_ingest` (orders) → trigger `report_ready` | Matches the milestone's literal ordering requirement and the real data dependency (orders' `customer_id` FK-enforcing DB trigger needs `customers_valid` populated; `report_ready` needs both datasets' `ingestion_metadata` rows) | LOW–MEDIUM | Three separate `TriggerDagRunOperator` tasks (not a loop over a list) — keeps `conf={"dataset": ..., "config_path": ...}` per-call explicit and matches `csv_ingest`'s existing `Param` contract exactly. Chained with `>>`, each `wait_for_completion=True` (see below) so the DAG-level `>>` ordering is redundant-but-explicit documentation of the real dependency, not the actual blocking mechanism. |
+| `wait_for_completion=True` on every `TriggerDagRunOperator` in the chain | Required for correct sequencing — orders must not start until customers' `csv_ingest` run has actually finished (not just been queued), and `report_ready` must not start until both `csv_ingest` runs have finished | LOW | Without this, `TriggerDagRunOperator` returns as soon as the triggered run is *created*, not when it *finishes* — the "cascade" would fire all three downstream runs almost simultaneously with no real ordering guarantee, defeating the point of chaining. |
+| `deferrable=True` on every `TriggerDagRunOperator` in the chain | Matches this project's own established convention (`FileSensor(deferrable=True)`, custom `OraclePartitionReadyTrigger`) of never occupying a worker slot for a wait that can be minutes long | LOW | With `wait_for_completion=True` + `deferrable=True`, the operator defers to the stock `DagStateTrigger` (ships in `apache-airflow-providers-standard`) instead of blocking a LocalExecutor worker slot for the (potentially near-3600s, given `csv_ingest`'s FileSensor timeout) duration of the downstream run. |
+| Leave `trigger_run_id` unset (`None`) on every call | Auto-generated run IDs are unique per invocation (timestamp-derived), so a fresh hourly cycle never collides with a prior cycle's run ID for the same target DAG | LOW | If left unset, there is no `DagRunAlreadyExists` scenario to handle in the normal/happy path — this sidesteps the entire `reset_dag_run` question. Do **not** synthesize a deterministic `trigger_run_id` (e.g. from the logical/schedule timestamp) unless there's a real reason to want idempotent re-triggering — see Anti-Features below. |
+| Explicit `conf` payload matching `csv_ingest`'s existing `Param` contract | `csv_ingest` requires `dataset` + `config_path` as runtime conf; nothing about it changes for programmatic triggering vs. the existing HTTP-trigger path | LOW | `conf={"dataset": "customers", "config_path": "configs/datasets/customers.json"}` and the `orders` equivalent — identical shape to what a human/HTTP caller already passes. `report_ready` takes no conf at all (`schedule=None`, no `params={}` declared) — its `TriggerDagRunOperator` call needs no `conf` argument. |
+| `fail_when_dag_is_paused=True` on every `TriggerDagRunOperator` in the chain | If `csv_ingest` or `report_ready` is ever manually paused by an operator, the parent should fail loudly and immediately rather than hang for up to `poke_interval`×many polls (or the task's `execution_timeout`, if any) waiting on a run that will never execute | LOW | Requires Airflow 3.2.0+ (this project pins 3.3.1, so it's available) — on Airflow 3.0/3.1 this parameter raises `NotImplementedError` if set, so this is version-sensitive; verify against the actually-pinned image tag before relying on it. Default is `False`, so it must be set explicitly. |
+| Failure propagation: a failed `csv_ingest`/`report_ready` run fails the corresponding `TriggerDagRunOperator` task, which fails the parent DAG run | Standard, expected Airflow semantics — a cascade shouldn't silently report "success" if a downstream stage actually failed | LOW | Confirmed from the operator's own source: when `wait_for_completion=True`, after the triggered run finishes, the operator checks the final state against `allowed_states` (default `[SUCCESS]`) / `failed_states` (default `[FAILED]`); a `failed_states` match raises `AirflowException` in the parent task, which — with no non-default `trigger_rule` — fails the parent DAG run. No extra code needed to get this; it is the operator's built-in behavior, not something to opt into. |
 
-### Differentiators (Nice-to-Have, Likely v2 — Not Required to Meet Project's Own Goals)
-
-Nothing here is needed to satisfy the spec's Definition of Done. These are directions the project
-could grow in later without contradicting its "lightweight, not another production platform" thesis
-— include only if there's slack after table stakes are solid.
+### Differentiators (nice, not required for the milestone)
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| `batcherrors=True` / `getbatcherrors()` on the Oracle `executemany()` call | Extra defense-in-depth against a bad row slipping past CSV-level validation and hitting a DB constraint (e.g. Oracle-side length/precision truncation) at insert time | LOW | Confirmed available in `python-oracledb` (Context7, MEDIUM confidence); purely additive — doesn't change the validation architecture, just adds a safety net at the DB boundary |
-| Regex-based file pattern matching (in addition to glob) | Spec §9 explicitly says "optionally regular expressions" | LOW-MEDIUM | Glob alone (`customers_*.csv`) covers the stated examples; add regex only if a real dataset needs pattern matching glob can't express |
-| Basic configurable business-rule checks beyond structural/type/nullability | Spec §28 mentions "basic business rules where configured" as an aside | MEDIUM | Genuinely optional per the spec's own wording ("where configured") — don't build a rules engine; if added, one or two simple per-column predicate checks (e.g. min/max range) is the ceiling |
-| Resource-config JSON (documented CPU/RAM as data, not an enforcement mechanism) | Spec §48 frames this as documentation/dev-env config, not automation | LOW | Explicitly not meant to dynamically control Docker Desktop — treat as a docs artifact, and only formalize as JSON if the README prose isn't enough |
-| Second-tier CI stage running Oracle integration tests in GitHub Actions | Would catch Oracle-specific regressions pre-merge | MEDIUM-HIGH | Spec explicitly makes this optional ("if the container can be reliably started within the workflow") — CI-hosted Oracle containers are the risky, high-maintenance part; defer unless local CI reliability is proven first |
-| Containerized `csv_processor` (its own Dockerfile) | Reference repo has one; could make the engine deployable independent of the Airflow worker image | MEDIUM | Only relevant if this project later needs to run the engine outside Airflow's LocalExecutor process — not needed while everything runs in-process |
+| Slack/email/logged summary of the full cascade at the parent level (e.g. "cycle N: customers X rows, orders Y rows, report ready") | Single glance at cascade health without opening three separate DAGs' logs | LOW | Mirrors the existing `report_result_task`/`build_report_task` "log only, no Slack/email" convention (D-07/D-27) — if added, should stay log-only for consistency, not introduce a new notification channel this project has explicitly avoided elsewhere. |
+| Passing the parent's own trigger timestamp into the generator (e.g. as a seed component or log field) for cross-run traceability | Makes it possible to tie a specific hourly cascade back to the exact CSV it generated, useful for debugging a bad cycle | LOW | `generate_csv.py`'s existing `--seed` defaults to a fixed constant (`20260101`) for determinism; don't change generator determinism semantics to satisfy this — log the schedule timestamp alongside the (still-deterministic) generated file instead. |
+| Configurable row counts / invalid-ratio per scheduled cycle (e.g. via `Param`s on the new parent DAG) | Lets an operator dial up/down synthetic load without editing code | LOW–MEDIUM | Optional convenience; `generate_correlated_datasets()` already accepts `customers_rows`/`orders_rows`/`invalid_ratio`/`seed` as parameters, so this is just exposing them as parent-DAG `Param`s, not new generator logic. |
 
-### Anti-Features (Explicitly Excluded — Do Not Build)
+### Anti-Features (seem good, cause real problems here)
 
-These are the reference repo's actual capabilities. Each looks like "the more complete/correct way
-to do ETL," but PROJECT.md and the spec explicitly scope them out, and the market research below
-confirms *why* that scoping is sound rather than merely cheap.
-
-| Feature | Why It Looks Appealing | Why Problematic Here | Alternative |
-|---------|------------------------|------------------------|-------------|
-| CDC (Change Data Capture) | "Real" data platforms track incremental source changes, not full-file drops | Requires a persistent-cursor/log-following mechanism, a materially different ingestion model than "detect a dropped file" — pure scope multiplication for a project ingesting whole CSV snapshots | Each CSV drop is a complete valid/invalid snapshot; no incremental-change tracking |
-| SCD (Slowly Changing Dimensions) / historization | Feels more "production-grade" than plain overwrite/append | Needs versioning, effective-dating, and reconciliation logic layered on top of load — the reference repo's superset feature this project explicitly excludes | Plain valid/invalid snapshot tables per load; no historical dimension modeling |
-| Referential integrity / uniqueness / volume-anomaly / completeness / circuit-breaker validation | The reference repo enforces `orders.customer_id → customers.customer_id`, so it's tempting to "just add the FK check since it's a real relationship" | Explicitly excluded by spec §28 even where the relationship is real — expanding validation scope here reopens the door to reproducing the 95-point platform's full validation framework, which is the opposite of the stated goal | Structural + type + nullability only; document the FK as unenforced, not as a gap to quietly close later |
-| Full data lineage / complex schema registry | Good practice at platform scale (Airbyte/Meltano/dlt-class tools bundle this) | Web research confirms these are meaningfully heavier operationally (deployment, monitoring, upgrades, connector maintenance) than a 2-dataset fixed-schema pipeline justifies (LOW-confidence web corroboration, but directionally consistent with spec's own framing) | Minimal ingestion metadata table (file/checksum/dataset/timestamp/counts/status) is enough lineage for "what ran, when, with what result" |
-| Adopting a full data-quality framework (e.g. Great Expectations) for row validation | Mature, well-documented, "the standard tool" for data validation | Built for large-scale/distributed pipelines; for pure structural/type/nullability checks on two fixed schemas it's disproportionate tooling weight and an extra dependency surface (LOW-confidence web corroboration) | Custom Pydantic v2-config-driven validator functions, scoped exactly to spec §28's three categories |
-| Kubernetes / kind / KubernetesExecutor / KubernetesPodOperator | Reference repo's real deployment target; "more correct" for production | No orchestration need at this scale; adds a cluster, RBAC, image-build/push loop with zero payoff for a 2-dataset local project | Airflow LocalExecutor; `process_csv` runs in-process |
-| MinIO / S3-style object storage | Reference repo's storage layer | Local filesystem CSV drop is the entire input surface here; object storage adds a service and an abstraction layer with nothing to abstract over | Plain `pathlib`/`open()` against a local/WSL-native directory |
-| Vault (secrets management) | "Correct" secrets handling at production scale | Local dev credentials (Oracle Free, Airflow) don't need dynamic secret leasing; adds a service dependency for a threat model this project doesn't have | `.env`/docker-compose environment variables or Airflow Connections, documented plainly |
-| Celery/Redis-backed executor | Needed once LocalExecutor's single-machine parallelism isn't enough | Two datasets processed occasionally on one machine never hits LocalExecutor's ceiling | LocalExecutor (already pinned) |
-| Custom FastAPI wrapper around Airflow's trigger API | Feels like a "proper" API surface for triggering ingestion | Airflow's own REST API already does `POST /dags/{dag_id}/dagRuns` with a `conf` payload — a wrapper adds a service with no capability gain | Trigger the DAG directly via Airflow's REST API |
-| Production-grade observability stack (metrics/tracing platform) | Standard expectation for "real" data platforms | No operational stakeholder depends on this locally; adds Prometheus/Grafana/OTel-class infrastructure for a project run by one developer | Airflow's own logging + task logs; structured Python logging in the engine |
-| Multi-database warehouse architecture | The reference repo targets a fuller warehouse shape | Single Oracle Database Free instance is the only target; multi-DB routing/federation has no use case here | One Oracle Database Free container, two datasets, two table-pairs each |
+| Feature | Why Requested | Why Problematic | Alternative |
+|---------|---------------|------------------|-------------|
+| `reset_dag_run=True` on any `TriggerDagRunOperator` in the chain | Looks like the "safe" way to handle "what if a run for this ID already exists" | Combined with `deferrable=True` + an explicit `trigger_run_id`, there is a documented, filed Airflow bug (apache/airflow#57756: "Deferrable mode of TriggerDagRunOperator stays stuck if used with `reset_dag_run`") where the triggering task remains permanently deferred even after the downstream run completes. Filed against `apache-airflow-providers-standard==1.9.0`; this project pins `1.17.0` and whether the fix (#57968) landed by then isn't confirmed from research — treat as still-risky. It is also simply unnecessary here: leaving `trigger_run_id` unset means no `DagRunAlreadyExists` case ever arises in normal operation, so there's nothing to "reset." | Leave `trigger_run_id=None` (table stakes above); never combine `reset_dag_run=True` with `deferrable=True`. |
+| A deterministic/derived `trigger_run_id` (e.g. from the parent's logical date) "for idempotency" | Feels like it prevents duplicate downstream runs on retry | Retrying the parent's `generate_and_trigger` task would then call `TriggerDagRunOperator` again with the *same* `trigger_run_id` for a run that may already be in progress or finished, hitting `DagRunAlreadyExists` and forcing a `reset_dag_run=True`/`skip_when_already_exists=True` decision that this project doesn't need to make at all in the default (unset ID) path. `csv_ingest`'s own idempotency already comes from filename+checksum dedup at the `ingestion_metadata`/Oracle layer (v1.0, Phase 4) — a second trigger of the same day's file is already a safe no-op at that layer, so run-ID-level idempotency solves a problem that's already solved one layer down. | Leave `trigger_run_id` unset; rely on the existing checksum-based idempotency in `csv_processor`/`ingestion_metadata` if a retry re-triggers ingestion of the same file. |
+| Fan-out / parallel triggering of `csv_ingest` for customers and orders simultaneously (e.g. two `TriggerDagRunOperator` tasks with no ordering edge between them) | Looks faster — "why wait for customers before starting orders?" | Phase 7's DB-level `BEFORE INSERT` trigger on `orders_valid` rejects any row whose `customer_id` doesn't yet exist in `customers_valid` — if orders' `csv_ingest` run starts loading before customers' run has committed, the whole orders batch fails at the DB layer on a data dependency that has nothing to do with Airflow scheduling. | Keep the customers → orders ordering strictly sequential via `wait_for_completion=True`, exactly as the milestone already specifies. |
+| Modifying `csv_ingest.py`/`report_ready.py` to add a `dataset`-scoped `max_active_runs` guard, a "skip if already running" branch, or new params, in order to make chain-triggering "safer" | Feels like defense-in-depth against overlapping runs | The milestone explicitly requires both existing DAGs to remain unmodified and independently triggerable — any change here also risks breaking the still-live manual/HTTP-trigger path (`POST /dags/{dag_id}/dagRuns`) that v1.0 proved end-to-end. All the sequencing/overlap-prevention needed for this milestone is achievable entirely from the *new* parent DAG's own parameters (`max_active_runs=1`, `wait_for_completion=True`, `deferrable=True`) — see Table Stakes and Dependencies below. | Solve overlap/ordering entirely in the new `csv_generate_schedule` DAG; treat `csv_ingest.py`/`report_ready.py` as closed for this milestone. |
+| `schedule="@hourly"` with `FileSensor`'s existing `timeout=3600` left unexamined, assuming "an hour is plenty of time" | The numbers *look* like they trivially fit (schedule period == sensor timeout) | They're the same number, not a comfortable margin — a slow generation step, a delayed cascade start (queued behind `max_active_runs=1`), or a genuinely late file write leaves zero slack before `wait_for_file` would time out right at the boundary of the next scheduled cycle. This is a real, structural tightness worth being aware of even though fixing `csv_ingest.py`'s sensor timeout is out of scope for this milestone (see Anti-Feature above). | Don't treat "schedule period == sensor timeout" as safe by inspection; rely on `max_active_runs=1` (Table Stakes) to contain the blast radius if a cycle does run long, and flag the 3600s/hourly coincidence for awareness rather than silently assuming it's fine. |
 
 ## Feature Dependencies
 
 ```
-CSV Generator (deterministic, valid+invalid)
-    └──feeds──> Unit tests (parser/type-conversion/validator)
-    └──feeds──> Oracle integration tests
-    └──feeds──> End-to-end test
-    └──feeds──> Performance/benchmark test (row-by-row vs. chunked/bulk)
+[generate_csv_task]
+    └──produces file for──> [trigger csv_ingest(customers)]
+                                  └──must commit customers_valid before──> [trigger csv_ingest(orders)]
+                                                                                 └──required for──> [trigger report_ready]
 
-Config schema (Pydantic v2 model)
-    └──requires──> Config validation (fail-fast before CSV processing)
-                       └──gates──> csv_processor.process() entrypoint
+[max_active_runs=1 on csv_generate_schedule]
+    └──prevents──> [overlapping generate_csv_task writes to the same-day filename]
 
-Structural validation
-    └──requires──> Config schema (column names/order known)
-    └──precedes──> Type validation (garbage columns make type-checking meaningless)
-                       └──precedes──> Nullability validation
-                                          └──feeds──> Normalize/convert (CSV string → Python type)
-                                                          └──feeds──> Split valid/invalid
+[wait_for_completion=True + deferrable=True]
+    └──enables──> [correct sequential ordering without blocking a worker slot]
 
-Split valid/invalid
-    └──requires──> Invalid-row error metadata model (error_code/message/source_file/row_number)
-    └──feeds──> Chunked bulk load (VALID rows → executemany())
-    └──feeds──> Chunked bulk load (INVALID rows → executemany())
-                       └──enables──> ProcessingResult with SUCCESS_WITH_INVALID_ROWS semantics
+[trigger_run_id left unset]
+    └──avoids needing──> [reset_dag_run] (conflicts with deferrable=True, see Anti-Features)
 
-Ingestion metadata table (file/checksum/dataset/status)
-    └──requires──> File checksum computation
-    └──enables──> Idempotency check (has this file+checksum+dataset been processed?)
-                       └──gates──> process_csv() task (skip or short-circuit on duplicate)
-
-File-availability wait (deferrable FileSensor or custom Trigger)
-    └──precedes──> process_csv() task (nothing to process until file exists)
-
-ProcessingResult + status semantics
-    └──requires──> Split valid/invalid AND Invalid-row isolation (config: don't fail whole file on one bad row)
-    └──feeds──> Airflow report_result() task (human-readable summary)
-
-Two-dataset proof (customers + orders)
-    └──requires──> Config schema being genuinely generic (no dataset-specific code branches in csv_processor)
-
-batcherrors=True (differentiator)
-    └──enhances──> Chunked bulk load (defense-in-depth, does not replace pre-insert validation)
-
-Referential integrity / CDC / SCD / lineage / schema registry (anti-features)
-    └──conflicts with──> "reusable, small, understandable" project thesis — explicitly excluded, not deferred
+[fail_when_dag_is_paused=True]
+    └──requires──> Airflow 3.2.0+ (available: pinned 3.3.1)
 ```
 
 ### Dependency Notes
 
-- **Structural → Type → Nullability validation must run in that order**: validating types on a
-  row with the wrong column count produces meaningless errors (misaligned fields look like wrong
-  types). This ordering is implicit in spec §28's own listing and should be enforced in the
-  processing pipeline, not left to convention.
-- **Ingestion metadata table is a hard prerequisite for idempotency**, not a parallel feature —
-  there is nowhere else to record "this checksum was already loaded." Build the metadata table
-  and the checksum computation before wiring up the idempotency short-circuit.
-- **Config validation (Pydantic v2) gates everything downstream**: a project decision already
-  pinned in CLAUDE.md is that this validation happens once per run, not per row — this is a
-  deliberate boundary, since per-row Pydantic validation would fight the collect-and-continue
-  invalid-row model that structural/type/nullability validation depends on.
-- **File-availability wait and the processing engine are independent** — the deferrable
-  sensor/trigger only decides *when* `process_csv()` runs, not *how*. They can be built and tested
-  in parallel once the config contract exists.
-- **`batcherrors=True` enhances but does not replace** validation-then-split — it's a second,
-  optional line of defense at the Oracle boundary, not a substitute for CSV-level type/nullability
-  checks. Do not use it as an excuse to skip pre-insert validation.
-- **Anti-features don't "unlock" anything else in this project's scope** — none of table
-  stakes or differentiators require CDC/SCD/lineage/schema-registry/referential-integrity as a
-  building block. They're excluded outright, not just sequenced later.
+- **`trigger csv_ingest(orders)` requires `trigger csv_ingest(customers)` to have finished (not just
+  started):** Phase 7's `BEFORE INSERT` FK-existence trigger on `orders_valid` makes this a hard
+  data dependency, not just a scheduling nicety — `wait_for_completion=True` is what turns "trigger
+  is queued" into "trigger has actually finished" before the next step runs.
+- **`max_active_runs=1` on the new parent DAG prevents `generate_csv_task` overlap:** because
+  `generate_csv.py`'s `output_path()` always writes the same filename for "today," a second
+  concurrent parent run's generation step would race the first cycle's still-in-flight
+  `csv_ingest`/`report_ready` chain over that same file. This is the one new operational risk this
+  research surfaced that isn't already handled by existing idempotency guarantees.
+- **`reset_dag_run` conflicts with `deferrable=True`:** not a hard technical incompatibility in all
+  cases, but a documented bug when combined with an explicit `trigger_run_id` and
+  `wait_for_completion=True` — since this milestone has no actual need for `reset_dag_run` (see
+  Anti-Features), simply never use it here rather than relying on an unconfirmed-fixed-by-1.17.0
+  edge case.
 
 ## MVP Definition
 
-### Launch With (v1)
+### Launch With (v1.1, this milestone)
 
-Everything in Table Stakes above is v1 — this project's Definition of Done (spec §59) is itself
-already a minimal, tightly-scoped list; there isn't a smaller "v0" that still demonstrates the
-stated goal ("build a clean, efficient, reusable CSV engine and orchestrate it against Oracle").
-Highlighting the ones most load-bearing to sequence first:
-
-- [ ] CSV generator (valid + invalid rows, full type coverage) — everything else needs fixtures
-- [ ] Config schema + Pydantic v2 validation — the contract everything else reads
-- [ ] `csv_processor.process()`: structural → type → nullability validation, split valid/invalid
-- [ ] Ingestion metadata table + checksum-based idempotency
-- [ ] Chunked Oracle bulk load via `executemany()` for both VALID and INVALID tables
-- [ ] Thin TaskFlow DAG (config → wait → process → load-results → report), HTTP-triggerable
-- [ ] Deferrable file-availability wait (built-in `FileSensor(deferrable=True)` unless pattern
-      needs exceed it)
-- [ ] `ProcessingResult` + status semantics surfaced to Airflow
-- [ ] Second dataset (orders) proving config-drivenness — without it, "reusable engine" is
-      unverified, just asserted
-- [ ] Unit + Oracle integration + end-to-end tests
-- [ ] Performance benchmark (row-by-row vs. chunked/bulk) at ~100K rows
-- [ ] docker-compose (Airflow LocalExecutor + metadata DB + pinned Oracle Free tag)
-- [ ] Minimal CI + minimal docs
+- [ ] `csv_generate_schedule` DAG, `schedule="@hourly"`, `catchup=False`, `max_active_runs=1` —
+      required for the "no manual `make generate` step" goal and to close the same-filename race
+      risk identified above
+- [ ] `generate_csv_task` calling `generate_correlated_datasets()` + `write_staged()` in-process —
+      required to actually produce fresh data each cycle
+- [ ] Three sequential `TriggerDagRunOperator` tasks (customers `csv_ingest` → orders `csv_ingest`
+      → `report_ready`), each `wait_for_completion=True`, `deferrable=True`,
+      `fail_when_dag_is_paused=True`, `trigger_run_id` unset — required for correct ordering,
+      worker-slot efficiency (matches project convention), and clean failure propagation
+- [ ] No changes to `csv_ingest.py`/`report_ready.py` — required by the milestone's own stated
+      scope; verified in this research that nothing about chain-triggering *needs* a change to
+      either file
 
 ### Add After Validation (v1.x)
 
-- [ ] `batcherrors=True` defensive layer on Oracle inserts — add once the primary
-      validate-then-split path is proven correct and a real DB-side rejection (constraint
-      violation) is observed in practice
-- [ ] Regex file-pattern support — add only if a real dataset's filenames can't be expressed as a
-      glob
-- [ ] Simple configurable business-rule checks (min/max, allowed-value sets) — add only if a
-      concrete dataset needs one; don't speculatively build a rules engine
+- [ ] Cascade-level summary logging at the parent DAG (mirrors existing `report_result_task`/
+      `build_report_task` log-only convention) — add once the hourly cascade has run unattended
+      long enough to know what's actually worth summarizing
+- [ ] Configurable row counts/invalid-ratio via parent-DAG `Param`s — add if/when someone actually
+      needs to vary synthetic load without a code change
 
-### Future Consideration (v2+) — Only If Project Scope Deliberately Expands
+### Future Consideration (v2+)
 
-- [ ] Oracle-integration-test stage in CI — defer until local CI reliability with a containerized
-      Oracle is proven; spec explicitly makes this optional
-- [ ] Containerized `csv_processor` with its own Dockerfile — only relevant if the engine needs to
-      run outside the Airflow worker process
-- [ ] Resource-config JSON (formalizing CPU/RAM documentation as data) — only if README prose
-      proves insufficient in practice
-
-Everything else in the Anti-Features table (CDC, SCD, referential/uniqueness/volume/completeness/
-circuit-breaker validation, lineage, schema registry, Kubernetes, MinIO, Vault, Celery/Redis,
-custom FastAPI trigger wrapper, observability stack, multi-DB warehouse) is **not a future
-version of this project** — it belongs to the reference repo's superset architecture and should be
-treated as permanently out of scope for this project's own roadmap, not merely deferred.
+- [ ] Any fix to `csv_ingest.py`'s `wait_for_file` timeout being numerically equal to the new
+      hourly schedule period — flagged here for awareness only; changing it is out of this
+      milestone's scope (would touch a file this milestone must leave unmodified) and should be a
+      deliberate, separately-scoped decision, not a side effect of adding the scheduler
 
 ## Feature Prioritization Matrix
 
 | Feature | User Value | Implementation Cost | Priority |
 |---------|------------|---------------------|----------|
-| CSV generator (valid+invalid, full types) | HIGH | LOW-MEDIUM | P1 |
-| Config schema + Pydantic v2 validation | HIGH | MEDIUM | P1 |
-| Structural/type/nullability validation | HIGH | MEDIUM | P1 |
-| Invalid-row quarantine with error metadata | HIGH | MEDIUM | P1 |
-| Chunked/bulk `executemany()` Oracle load | HIGH | MEDIUM | P1 |
-| Ingestion metadata + checksum idempotency | HIGH | MEDIUM | P1 |
-| Thin TaskFlow DAG + HTTP trigger | HIGH | LOW | P1 |
-| Deferrable file-availability wait | MEDIUM-HIGH | LOW | P1 |
-| `ProcessingResult` + status semantics | MEDIUM-HIGH | MEDIUM | P1 |
-| Second dataset (orders) | HIGH | MEDIUM | P1 |
-| Unit + integration + e2e tests | HIGH | MEDIUM-HIGH | P1 |
-| Performance benchmark (100K rows) | MEDIUM | MEDIUM | P1 |
-| docker-compose provisioning | HIGH | MEDIUM | P1 |
-| Minimal CI + docs | MEDIUM | LOW-MEDIUM | P1 |
-| `batcherrors=True` defensive layer | LOW-MEDIUM | LOW | P2 |
-| Regex file-pattern matching | LOW | LOW-MEDIUM | P3 |
-| Configurable basic business rules | LOW | MEDIUM | P3 |
-| Oracle-integration CI stage | LOW-MEDIUM | MEDIUM-HIGH | P3 |
-| Containerized `csv_processor` | LOW | MEDIUM | P3 |
-| CDC / SCD / lineage / schema registry / K8s / MinIO / Vault | N/A (excluded) | N/A (excluded) | Excluded |
+| `@hourly` parent DAG, `catchup=False` | HIGH | LOW | P1 |
+| `max_active_runs=1` on parent | HIGH | LOW | P1 |
+| In-process `generate_csv_task` | HIGH | LOW | P1 |
+| Sequential `TriggerDagRunOperator` chain, `wait_for_completion=True` | HIGH | LOW | P1 |
+| `deferrable=True` on chain operators | MEDIUM | LOW | P1 |
+| `fail_when_dag_is_paused=True` | MEDIUM | LOW | P1 |
+| Leave `trigger_run_id` unset (no `reset_dag_run`) | HIGH (avoids a known bug class) | LOW | P1 |
+| Cascade summary logging | LOW–MEDIUM | LOW | P2 |
+| Configurable row counts via `Param`s | LOW | LOW–MEDIUM | P3 |
 
 **Priority key:**
-- P1: Must have — part of this project's own Definition of Done
-- P2: Should have, add when core is proven and a concrete trigger appears
-- P3: Nice to have, only if scope deliberately grows beyond the current spec
-- Excluded: Not on this project's roadmap under any priority — reference repo's territory only
-
-## Competitor / Comparable-Tool Feature Analysis
-
-Framed against "comparable tools," not literal competitors — this project isn't shipping a
-product, but it's useful to know where it sits relative to the two obvious alternatives someone
-might reach for instead of a custom engine.
-
-| Feature | Full platforms (Airbyte/Meltano/Singer/dlt) | Data-quality frameworks (Great Expectations) | This project's approach |
-|---------|------------------------------------------|-----------------------------------------------|--------------------------|
-| Connector breadth | Large connector catalogs, variable quality (esp. Singer) | N/A (validation-only tool) | One connector: local-filesystem CSV, by design |
-| CDC | Batch CDC common; real-time CDC only in some managed offerings | N/A | Not supported — explicitly out of scope, full-snapshot model only |
-| Validation depth | Varies by connector/tool | Deep: profiling, expectations-as-config, distributed-scale support | Narrow and explicit: structural + type + nullability only |
-| Operational overhead | Real: deployment/monitoring/upgrades/connector maintenance even when self-hosted | Moderate: an extra framework/dependency and its own DSL | Minimal: one Python package, no extra service |
-| Lineage/schema registry | Yes, to varying degrees | No | No — ingestion metadata table substitutes as minimal "what ran, when" record |
-| Fit for a 2-dataset, fixed-schema, local project | Overkill — engineering overhead exceeds payoff at this scale | Overkill for validation scope this narrow | Right-sized — this is exactly the gap these heavier tools overshoot |
+- P1: Must have for this milestone
+- P2: Should have, add when possible
+- P3: Nice to have, future consideration
 
 ## Sources
 
-- Project's own spec and requirements (PRIMARY, HIGH confidence, internal):
-  `/home/user/projects/lightweight-airflow-etl/.planning/research/lightweight-spec.md`,
-  `/home/user/projects/lightweight-airflow-etl/.planning/PROJECT.md`
-- Apache Airflow official docs via Context7 (`/apache/airflow`, MEDIUM confidence): FileSensor
-  deferrable mode, custom Trigger implementation requirements (`__init__`/`serialize`/async `run`),
-  `end_from_trigger` — https://github.com/apache/airflow/blob/main/providers/standard/docs/sensors/file.rst,
-  https://github.com/apache/airflow/blob/main/airflow-core/docs/authoring-and-scheduling/deferring.rst
-- `python-oracledb` official docs/samples via Context7 (`/oracle/python-oracledb`, MEDIUM
-  confidence): `executemany()` array binding, `setinputsizes()`, `batcherrors=True` +
-  `getbatcherrors()`, `arraydmlrowcounts` —
-  https://github.com/oracle/python-oracledb/blob/main/samples/notebooks/3-DML.ipynb,
-  https://github.com/oracle/python-oracledb/blob/main/doc/src/user_guide/batch_statement.md
-- Web search, general lightweight CSV/ETL quarantine and chunked-loading patterns (LOW confidence,
-  supporting color only) — BulkFlow (PyPI), Integrate.io CSV ETL guidance
-- Web search, full data-integration platform scope comparison (LOW confidence) — Airbyte vs.
-  Meltano comparisons, ETL tool landscape roundups (Estuary, Weld, Domo, dataexpert.io)
-- Web search, data-quality framework scope comparison (LOW confidence) — Great Expectations vs.
-  lightweight validators (Medium/DEV Community articles on Great Expectations and Cerberus)
+- `airflow.providers.standard.operators.trigger_dagrun` source at the
+  `providers-standard/1.17.0` tag (this project's exact pinned version) — fetched via
+  `raw.githubusercontent.com`, HIGH confidence: full constructor parameter list (`trigger_dag_id`,
+  `trigger_run_id`, `conf`, `logical_date`, `run_after`, `reset_dag_run`, `wait_for_completion`,
+  `poke_interval`, `allowed_states`, `failed_states`, `skip_when_already_exists`,
+  `fail_when_dag_is_paused`, `deferrable`, `openlineage_inject_parent_info`) and execution logic
+  (DagRunAlreadyExists handling, deferred-vs-blocking wait flow, allowed/failed state evaluation
+  and exception propagation on failure).
+- [apache/airflow#57756 — "Deferrable mode of TriggerDagRunOperator stays stuck if used with
+  `reset_dag_run`"](https://github.com/apache/airflow/issues/57756) — MEDIUM confidence: confirms
+  the bug and its trigger conditions; filed against `apache-airflow-providers-standard==1.9.0`
+  (older than this project's pinned `1.17.0`), fix PR #57968 exists but landing version not
+  independently confirmed in this research.
+- WebSearch: `fail_when_dag_is_paused` default value and Airflow 3.2.0+ version gate — MEDIUM
+  confidence (search-engine synthesis citing the operator's own docs and
+  [PR adding the parameter](https://github.com/apache/airflow/commit/96c6daa97c94b20b14ec5fa7f39de26b3f2d2559));
+  consistent with the source-code read above.
+- This project's own `.planning/PROJECT.md`, `airflow/dags/csv_ingest.py`,
+  `airflow/dags/report_ready.py`, `airflow/dags/_common/oracle_partition_trigger.py`,
+  `generator/generate_csv.py`, `docker/airflow/Dockerfile` — read directly, HIGH confidence, source
+  of every "existing DAG behavior" and "pinned version" claim above.
 
 ---
-*Feature research for: Lightweight local Airflow CSV→Oracle ETL platform*
-*Researched: 2026-08-28*
+*Feature research for: hourly CSV-generation-and-ingestion orchestrator DAG*
+*Researched: 2026-09-01*

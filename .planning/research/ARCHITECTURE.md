@@ -1,423 +1,448 @@
-# Architecture Research
+# Architecture Research: Hourly CSV-Generation-and-Ingestion Orchestrator DAG
 
-**Domain:** Local Airflow-orchestrated CSV→Oracle ETL (single-node, two datasets, no Kubernetes)
-**Researched:** 2026-08-28
-**Confidence:** HIGH (component boundaries, build order — derived from reading the actual reference
-repo's working code plus current Airflow docs) / MEDIUM (Airflow API specifics fetched via
-Context7, cross-check against installed provider version during implementation)
+**Domain:** Airflow-native scheduling/orchestration integration (v1.1 milestone) — not a new
+ecosystem/stack question, a "how does this new DAG wire into this repo's actual docker-compose
+and DAG topology" question.
+**Researched:** 2026-09-01
+**Confidence:** HIGH for docker-compose/Dockerfile/permission mechanics (verified against this
+repo's real files + Airflow's own official docker-compose.yaml, Context7-sourced); HIGH for
+`TriggerDagRunOperator` worker-slot semantics (verified against `apache/airflow`'s own source via
+Context7); MEDIUM for the exact `faker` pip-install placement (untested against this project's own
+constraints file — flagged as a build-order verification step, not asserted as certain).
 
 ## Standard Architecture
 
 ### System Overview
 
 ```
-┌───────────────────────────────────────────────────────────────────────────┐
-│                         Airflow (LocalExecutor)                            │
-│  ┌───────────────────────────────────────────────────────────────────┐    │
-│  │  DAG per dataset (customers_ingest, orders_ingest) — thin TaskFlow │    │
-│  │                                                                     │    │
-│  │  validate_config → wait_for_file → process_csv → load_results →   │    │
-│  │  report                                                            │    │
-│  │       │               │ (deferred,        │                        │    │
-│  │       │               │  class-based      │                        │    │
-│  │       │               │  FileSensor,      │                        │    │
-│  │       │               │  NOT @task)       │                        │    │
-│  └───────┼───────────────┼───────────────────┼────────────────────────┘    │
-│          │               │                   │ in-process function call    │
-├──────────┼───────────────┼───────────────────┼──────────────────────────────┤
-│          ▼               ▼                   ▼                              │
-│   csv_processor.config   (filesystem      csv_processor.process(path, cfg) │
-│   (Pydantic v2)           glob/mtime         │                              │
-│                           check only —       ▼                              │
-│                           no CSV parsing) detect → parse → validate →       │
-│                                           normalize → chunk → load          │
-│                                              │                              │
-├──────────────────────────────────────────────┼──────────────────────────────┤
-│                                                ▼                             │
-│                                    Oracle Database Free (pinned tag)        │
-│                              ┌─────────────┐ ┌──────────────┐ ┌──────────┐  │
-│                              │ <DS>_VALID  │ │ <DS>_INVALID │ │ ingestion│  │
-│                              │             │ │              │ │_metadata │  │
-│                              └─────────────┘ └──────────────┘ └──────────┘  │
-└───────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                     airflow-scheduler / airflow-dag-processor            │
+│  (existing 5-service x-airflow-common topology, LocalExecutor, uid 50000)│
+├──────────────────────────────────────────────────────────────────────────┤
+│  NEW: csv_generate_schedule  (schedule="@hourly")                        │
+│  ┌────────────────┐  ┌─────────────────┐  ┌────────────────┐  ┌────────┐│
+│  │ generate_task   │→│ trigger_customers│→│ trigger_orders │→│trigger_ ││
+│  │ (@task, in-     │  │ (TriggerDagRun-  │  │ (TriggerDagRun-│  │report_ ││
+│  │  process import │  │  Operator, wait_ │  │  Operator, wait│  │ready   ││
+│  │  of generator.  │  │  for_completion= │  │  _for_complet.=│  │(Trigger││
+│  │  generate_csv)  │  │  True)           │  │  True)         │  │DagRun) ││
+│  └────────────────┘  └─────────────────┘  └────────────────┘  └────────┘│
+│         │                     │                     │               │    │
+│         ▼                     ▼                     ▼               ▼    │
+│  writes CSVs to        triggers existing      triggers existing  triggers│
+│  /opt/airflow/data/    csv_ingest DAG run      csv_ingest DAG run existing│
+│  {customers,orders}/   (conf: dataset=         (conf: dataset=    report_│
+│  via write_staged()    customers)              orders)            ready  │
+├──────────────────────────────────────────────────────────────────────────┤
+│  UNCHANGED: csv_ingest (schedule=None)   UNCHANGED: report_ready         │
+│  (config→wait_for_file→process→load→report)  (poll ingestion_metadata → │
+│                                                 build_report_task)        │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
-Two things distinguish this from the reference platform's shape (K8s pods, S3, Vault, a custom
-streaming pipeline engine): (1) everything downstream of the DAG runs **in-process**, in the same
-Python interpreter the LocalExecutor worker uses — `process_csv` is a plain function call, not a
-pod launch, so there is no XCom-sidecar-file convention, no pod resource sizing, no image-signing
-retry logic; (2) `csv_processor` here is a plain importable package/module tree, not a separately
-versioned, `pip`-installable sibling package — this project has exactly one consumer (its own DAGs)
-and one runtime (the Airflow worker container), so there is no packaging boundary to maintain.
+`csv_generate_schedule` is the only new DAG. `csv_ingest` and `report_ready` are consumed exactly
+as they exist today — triggered via `TriggerDagRunOperator`, the same mechanism their existing
+`schedule=None` design already anticipates (they're "manually/API-triggered only," and a DAG-to-DAG
+trigger is just another trigger source, no different in kind from the REST API trigger Phase 5
+already proved).
 
 ### Component Responsibilities
 
-| Component | Responsibility | Typical Implementation |
+| Component | Responsibility | Real file in this repo |
 |-----------|----------------|-------------------------|
-| DAG module (`dags/customers_ingest.py`, `dags/orders_ingest.py`) | Wires 5 tasks in order, passes runtime `conf` (dataset/config path) through XCom as plain dicts. Contains **zero** parsing/validation/SQL. | `@dag`/`@task` TaskFlow, one module per dataset, both built from a shared factory to avoid duplicating the 5-step graph |
-| `dags/_common/` (this project's shrunk equivalent) | Anything genuinely shared across the two dataset DAGs: the file-wait sensor/trigger, a `build_dataset_dag()` factory, XCom (de)serialization helpers | Plain Python module, imported by both DAG files — mirrors the reference repo's `_common/` role minus every K8s-pod-specific file (`kpo.py`, `tracing_kpo.py` are explicitly out of scope) |
-| `csv_processor.config` | Load + validate `config.json` **once per run** via Pydantic v2; the single source of truth for file pattern, dialect, schema, target tables | `DatasetConfig(BaseModel)` + `load_config(path) -> DatasetConfig`, raises `ConfigurationError` (a plain project-local exception, not imported from anywhere) on invalid config |
-| `csv_processor.detect` | Sniff compression / encoding / dialect / header **once**, from a small bounded sample, before any row is streamed | Tier-A vendored files (`dialect.py`, `encoding.py`, `header.py`, `filename.py`, `schema.py`, `compression.py`) with the 1-2 line `dataplat.errors` import swapped for a local exception module |
-| `csv_processor.source` / `csv_processor.io` | Open the file, apply the detected profile, stream rows in bounded **record-count** chunks (never byte/line offsets) | Small orchestrator function following the reference `CsvSource`'s sequence (Tier B: read the algorithm, rewrite smaller) — no `Source`/`RecordStream` protocol, no schema-repository lookup, no multipart handling (all out of scope here) |
-| `csv_processor.normalize` / `csv_processor.validate` | Per-chunk: convert CSV strings to typed Python values; check structural/type/nullability; split rows into valid/invalid with error metadata | Plain functions operating on `list[dict]` or `list[tuple]` per chunk — reimplemented per-stage logic from the reference's `normalize/*`/`validate/*` (Tier B), with none of the `StreamingStage`/`BarrierStage`/observability scaffolding |
-| `csv_processor.process()` | The one public entrypoint: `process(file_path, config) -> ProcessingResult`. Owns the whole detect→parse→validate→normalize→chunk→load sequence and all status/exception translation | Orchestrator function; internally re-validates its `config` argument (cheap, once per file) so it is safely callable outside the DAG (tests, a future CLI) without relying on the DAG's `validate_config` task having already run |
-| `csv_processor.load` (Oracle) | Bulk-insert each chunk's valid/invalid rows via `python-oracledb` `executemany()`; write the `ingestion_metadata` row | One connection per `process()` call (opened/closed inside the function, not held across DAG tasks) |
-| Oracle Database Free | Durable store: `<DATASET>_VALID`, `<DATASET>_INVALID`, `ingestion_metadata` | DDL owned by this project (migration scripts or a bootstrap SQL file run at compose-up), pinned image tag |
-| CSV generator | Deterministic fixture producer for both datasets (valid + invalid rows, all supported types) | Separate small script/package; depends only on the dataset schema shape, not on `csv_processor` |
+| `csv_generate_schedule` (new) | Hourly cron entrypoint: generate fresh CSVs in-process, then chain-trigger the 3 downstream DAGs sequentially | `airflow/dags/csv_generate_schedule.py` (new) |
+| `generate_task` | Calls `generator.generate_csv.main(["--correlated"])` in-process (mirrors `process_csv_task`'s existing in-process-call pattern, not a subprocess/BashOperator) | new `@task` inside the new DAG file |
+| `trigger_customers`/`trigger_orders`/`trigger_report_ready` | `TriggerDagRunOperator` instances, sequential, `wait_for_completion=True` | new, inside the same DAG file |
+| `csv_ingest` (unchanged) | Detect→parse→validate→load one dataset's CSV into Oracle | `airflow/dags/csv_ingest.py` (no changes) |
+| `report_ready` (unchanged) | Poll for both datasets' current-day partition, log business report | `airflow/dags/report_ready.py` (no changes) |
+| `docker-compose.yml` (modified) | Mount `generator/`, extend `PYTHONPATH`, fix `data/` ownership at `airflow-init` | root of repo |
+| `docker/airflow/Dockerfile` (modified) | Add `faker` to the image's installed packages | `docker/airflow/Dockerfile` |
 
-## Recommended Project Structure
+## Integration Point 1 — Exposing `generator/generate_csv.py` in the container
 
-```
-lightweight-airflow-etl/
-├── docker-compose.yml                # Airflow (LocalExecutor) + Airflow metadata DB + Oracle Free
-├── docker/
-│   └── oracle/init/                  # DDL run at container init: VALID/INVALID/ingestion_metadata tables
-├── configs/
-│   └── datasets/
-│       ├── customers.json            # config.json per dataset (this project's own contract shape)
-│       └── orders.json
-├── src/
-│   └── csv_processor/                # the reusable engine — NO Airflow import anywhere in this tree
-│       ├── config/
-│       │   ├── models.py             # Pydantic v2: DatasetConfig, ColumnSpec, OracleTargetSpec
-│       │   └── loader.py             # load_config(path) -> DatasetConfig
-│       ├── detect/                   # Tier A: vendored from reference repo, import fixed
-│       │   ├── dialect.py
-│       │   ├── encoding.py
-│       │   ├── header.py
-│       │   ├── filename.py
-│       │   └── schema.py
-│       ├── compression.py            # Tier A: vendored, S3 stream swapped for plain open()
-│       ├── source.py                 # Tier B: rewritten smaller — inspect() + chunked_records()
-│       ├── normalize.py              # Tier B: reimplemented per-type conversion functions
-│       ├── validate.py               # Tier B: reimplemented structural/type/nullability checks
-│       ├── load.py                   # python-oracledb executemany() bulk loader
-│       ├── models.py                 # ProcessingResult, RowError, Status enum
-│       ├── errors.py                 # local exception hierarchy (replaces dataplat.errors)
-│       └── engine.py                 # process(file_path, config) -> ProcessingResult — the public API
-├── generator/
-│   └── generate_csv.py               # deterministic valid+invalid row generator, both datasets
-├── airflow/
-│   └── dags/
-│       ├── _common/
-│       │   ├── dag_factory.py        # build_dataset_dag(dataset_name, config_path) shared by both DAGs
-│       │   ├── sensors.py            # FileSensor(deferrable=True) wrapper / custom trigger if needed
-│       │   └── xcom.py               # DatasetConfig <-> dict round-trip helpers
-│       ├── customers_ingest.py
-│       └── orders_ingest.py
-└── tests/
-    ├── unit/                         # config, detect, normalize, validate — no Airflow, no Oracle
-    ├── integration/                  # csv_processor.load against a real Oracle container
-    └── e2e/                          # HTTP trigger -> DAG -> Oracle VALID/INVALID tables
-```
-
-### Structure Rationale
-
-- **`src/csv_processor/` has zero Airflow imports.** This is the single most important boundary in
-  the whole system: every unit test for parsing/validation/normalization runs as plain Python,
-  no Airflow scheduler, no DAG parsing, no metadata DB. The reference repo enforces the same
-  direction with an import-linter contract (`csv_processor` may depend on `dataplat`, never the
-  reverse) — this project doesn't need import-linter for two small packages, but the discipline
-  (engine knows nothing about its orchestrator) is worth keeping.
-- **`airflow/dags/_common/` is deliberately thin** compared to the reference repo's version. Only
-  the file-wait mechanism and a DAG-factory function are genuinely shared; everything KPO-shaped
-  (`kpo.py`, `tracing_kpo.py`, resource-sizing helpers, image-signing retry tuning) has no
-  equivalent here because there is no Kubernetes.
-- **`configs/datasets/*.json`, not YAML.** The spec calls the format `config.json`; the reference
-  repo's `.yaml` shape (columns, types, nullability, business keys) is the right shape to mirror
-  minus the `quality:`/`scd:`/`retention:` blocks, which map to explicitly out-of-scope validators.
-- **`generator/` is independent of `csv_processor`.** It only needs to know the target schema
-  (column names/types/nullable + which rows should be deliberately invalid), not the detection or
-  validation code — this is what makes it buildable early and testable standalone.
-
-## Architectural Patterns
-
-### Pattern 1: Config validated once, rehydrated per task via XCom dict
-
-**What:** `validate_config` is the DAG's first task. It calls `csv_processor.config.load_config`,
-which raises on the first Pydantic validation error and never runs per-row. Its return value is
-`config.model_dump(mode="json")` — a plain dict — because Airflow's XCom backend serializes to
-JSON by default; a Pydantic model instance is not natively XCom-safe. Every downstream task that
-needs the config calls `DatasetConfig.model_validate(config_dict)` to rehydrate it.
-
-**When to use:** Any config/contract object that must cross a task boundary. Never pass ORM/Pydantic
-model instances through XCom directly — pass their serialized dict form.
-
-**Trade-offs:** A small amount of repeated `model_validate()` (cheap, once per task, not per row) in
-exchange for keeping every task's input/output plain-JSON-serializable, which is required for
-Airflow's default XCom backend and avoids surprises if the deployment later switches to a custom
-XCom backend.
-
-**Example:**
-```python
-@task
-def validate_config(config_path: str) -> dict:
-    config = load_config(Path(config_path))  # raises ConfigurationError on invalid config.json
-    return config.model_dump(mode="json")
-
-@task
-def process_csv(config_dict: dict, file_path: str) -> dict:
-    config = DatasetConfig.model_validate(config_dict)
-    result = process(file_path, config)       # csv_processor's one public entrypoint
-    return result.model_dump(mode="json")      # ProcessingResult, not raw row data, crosses XCom
-```
-
-### Pattern 2: File-wait is a class-based deferrable Sensor, not a `@task`
-
-**What:** Airflow's deferral mechanism ("release the worker slot, resume later via a Trigger") is
-**only available to traditional class-based operators/sensors — it cannot be used inside a
-`@task`-decorated Python function** (confirmed in Airflow's own deferring docs). Airflow's
-`airflow.providers.standard.sensors.filesystem.FileSensor` already supports `deferrable=True`
-for the local filesystem and understands glob-style `filepath` patterns, so — unlike the reference
-repo, which built this against S3 via `S3KeySensor` — this project does not need a hand-written
-`BaseTrigger` subclass at all for the MVP:
+**Verified against the actual file** (`generator/generate_csv.py` lines 33-35):
 
 ```python
-from airflow.providers.standard.sensors.filesystem import FileSensor
-
-wait_for_file = FileSensor(
-    task_id="wait_for_file",
-    fs_conn_id="fs_default",
-    filepath="/opt/airflow/data/customers/*.csv",
-    deferrable=True,
-    poke_interval=10,
-)
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_CONFIGS_DIR = _REPO_ROOT / "configs"
+_DATA_DIR = _REPO_ROOT / "data"
 ```
 
-**When to use:** Default to `FileSensor(deferrable=True)`. Only reach for a hand-rolled
-`BaseTrigger` if a requirement emerges that `FileSensor` cannot express (e.g. "wait for a file AND
-verify its checksum is new before waking the DAG" — idempotency is a project requirement, but it
-can equally be checked inside `process_csv`, which already needs to read the file, rather than
-inside the wait step). If a custom trigger does become necessary, organize it the way Airflow's own
-provider packages do: a `triggers.py` module (the `BaseTrigger` subclass: `__init__`/`serialize`/
-async `run`) is imported by a separate operator/sensor class, never inlined into the DAG file
-itself — this keeps the DAG module itself thin and the trigger independently testable.
+This is a load-bearing detail: `_REPO_ROOT` is computed as *two levels up* from the script's own
+file location (`generate_csv.py`'s directory, then its parent). If `generator/` is bind-mounted at
+exactly `/opt/airflow/generator`, then inside the container `_REPO_ROOT` resolves to
+`/opt/airflow` — which is **already** the parent of the two mounts that exist today:
+`./configs:/opt/airflow/configs:ro` and `./data:/opt/airflow/data`. In other words, mounting
+`generator/` at that one specific path makes the script's own path-relative logic land on the
+existing mounts with zero code changes. Mounting it anywhere else (e.g. nested under `dags/`) would
+silently break `_CONFIGS_DIR`/`_DATA_DIR` resolution.
 
-**Trade-offs:** `FileSensor`'s glob matching is coarse (existence only, no content inspection) —
-acceptable here because idempotency/checksum logic already has to live in `process_csv` regardless
-(a Sensor cannot easily also update Oracle's `ingestion_metadata` table before deferring).
+**Required changes:**
 
-### Pattern 3: `ProcessingResult`, not raw rows, is what crosses the DAG↔engine boundary
+1. **`docker-compose.yml`** — add one line to `x-airflow-common.volumes`, alongside the existing
+   `./data`/`./configs` mounts:
+   ```yaml
+   - ./generator:/opt/airflow/generator
+   ```
+   (Read-write, not `:ro` — `write_staged()` only ever writes under `/opt/airflow/data/`, never
+   under `/opt/airflow/generator/`, so this mount only needs to be readable; mounting it writable
+   is harmless but read-only is the tighter, more correct choice — recommend `:ro` here, unlike
+   `./data`.)
 
-**What:** `process_csv`'s XCom payload is the aggregated `ProcessingResult` (total/valid/invalid
-counts, duration, status) — never per-row invalid-row detail. The reference repo's `Receipt`
-follows the identical discipline (`csv_processor/cli.py`'s `_write_xcom` always serializes a
-`Receipt`-shaped or `{"status": ...}`-shaped payload, on every exit path, success or failure, never
-a raw row dump) for exactly this reason: Airflow's metadata-DB-backed XCom is not sized for
-row-level payloads, and a `report` task only ever needs the summary, not the data.
+2. **`docker-compose.yml`** — extend `PYTHONPATH` in `x-airflow-common-env`:
+   ```yaml
+   PYTHONPATH: "/opt/airflow/dags:/opt/airflow"
+   ```
+   `generator/` has no `__init__.py` (confirmed: this repo's own root `pyproject.toml` already
+   documents `generator/`, `tools/`, and `airflow/dags/` as namespace packages resolved relative to
+   the repo root for mypy's `explicit_package_bases`/`mypy_path` settings — the same convention
+   applies at runtime). For `from generator.generate_csv import main` to resolve inside a DAG task,
+   `/opt/airflow` (the parent of the mounted `generator/` directory) must be on `sys.path`. Keep
+   `/opt/airflow/dags` first in the list — the triggerer's existing `_common` import (documented in
+   this file's own comment block, "found via a real live deferral of report_ready's custom
+   trigger") depends on that entry already being present; this only *adds* a second path segment,
+   it doesn't replace the first.
 
-**When to use:** Always, for any pipeline whose "did it work" summary is orders of magnitude
-smaller than the data it processed. Invalid-row detail belongs in Oracle's `<DATASET>_INVALID`
-table (which already carries `error_code`/`error_message`/`source_file`/`row_number` per the
-project's own requirements), not in an XCom payload.
+3. **`docker/airflow/Dockerfile`** — add `faker` to the installed packages, pinned to the exact
+   version already locked in the root `pyproject.toml`/`uv.lock` (`faker==40.37.0`) — same "pin an
+   exact version, matched to what's already approved elsewhere in the repo" discipline this
+   Dockerfile already applies to `oracledb`/`pydantic`/`clevercsv`/etc. Try it in the **first,
+   Airflow-constrained** `pip install` call first (alongside `oracledb`/`pydantic`):
+   ```dockerfile
+   RUN pip install --no-cache-dir \
+         "oracledb==4.0.2" \
+         "pydantic==2.13.4" \
+         "faker==40.37.0" \
+         "apache-airflow-providers-standard==1.17.0" \
+         "apache-airflow-providers-oracle==4.6.2" \
+       --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-3.3.1/constraints-3.12.txt" \
+   ```
+   `faker` is not an Airflow dependency, so it's very unlikely to appear in Airflow's own
+   constraints file at all (unlike `clevercsv`/`chardet`/`charset-normalizer`, which were moved to
+   the *second*, unconstrained `pip install` specifically because their exact pinned versions
+   conflicted with Airflow's constraints-resolved versions of those same packages — verified by
+   reading the Dockerfile's own comment). **Verification step, not a certainty:** if this first
+   `pip install` throws `ResolutionImpossible` on `faker` when the image is actually rebuilt, move
+   it to the second (unconstrained) `pip install` call instead, mirroring the existing
+   `clevercsv`/`chardet` treatment exactly. This is a MEDIUM-confidence recommendation precisely
+   because it wasn't build-tested as part of this research pass — flag it as the first thing to
+   confirm when this phase actually runs `make rebuild`.
 
-**Trade-offs:** None significant here — this is a straightforward capacity/relevance match, not a
-compromise.
+4. **DAG-side invocation** — call `generate_csv.main()` **in-process**, not via `BashOperator`/
+   `subprocess`, mirroring `csv_ingest.py`'s own established pattern of calling
+   `csv_processor.engine.process()` directly inside a `@task` rather than shelling out:
+   ```python
+   from generator.generate_csv import main as generate_csv_main
 
-## Data Flow
+   @task
+   def generate_task() -> None:
+       exit_code = generate_csv_main(["--correlated"])
+       if exit_code != 0:
+           raise AirflowException(f"generate_csv.py exited {exit_code}")
+   ```
+   `main()` returns `int` (0 on success) rather than calling `sys.exit()` itself — only the
+   `if __name__ == "__main__":` guard at the bottom of `generate_csv.py` wraps it in
+   `raise SystemExit(main())`, so calling `main([...])` directly from a task body is safe and
+   already the file's own documented calling convention. A genuine generation failure (e.g. the
+   `ValueError: cannot generate correlated orders: valid-customer pool is empty` raised inside
+   `generate_correlated_datasets()`) propagates as a real exception and fails the task outright —
+   correctly, since (unlike `csv_ingest`'s `process()`) generation failure has no equivalent
+   "domain status that shouldn't fail the task" concept; there's nothing to report if there's no
+   file.
 
-### Ingestion Flow (per DAG run)
+## Integration Point 2 — `TriggerDagRunOperator` + `wait_for_completion=True` + `LocalExecutor`
 
+**Verified directly against `apache/airflow`'s own source** (via Context7,
+`providers/standard/src/airflow/providers/standard/operators/trigger_dagrun.py`):
+
+```python
+if self.wait_for_completion:
+    if self.deferrable:
+        self.defer(trigger=DagStateTrigger(...), method_name="execute_complete")
+    while True:
+        self.log.info("Waiting for %s on %s to become allowed state %s ...", ...)
+        time.sleep(self.poke_interval)
+        dag_run.refresh_from_db()
+        state = dag_run.state
+        if state in self.failed_states:
+            raise AirflowException(...)
+        if state in self.allowed_states:
+            return
 ```
-HTTP POST /dags/{dag_id}/dagRuns  { conf: {dataset, config_path} }
-    ↓
-validate_config  →  DatasetConfig (validated once) → XCom (dict)
-    ↓
-wait_for_file  (deferred; FileSensor glob-matches configured pattern; resumes on match)
-    ↓
-process_csv  (in-process function call, LocalExecutor worker)
-    │
-    ├─ csv_processor.detect  (once: compression → encoding → dialect → header, bounded sample)
-    ├─ csv_processor.source  (open file, apply detected profile)
-    ├─ per chunk (bounded row count):
-    │     parse → normalize (typed conversion) → validate (structural/type/nullable)
-    │     → split into valid rows / invalid rows (+error metadata)
-    │     → executemany() bulk insert into <DATASET>_VALID / <DATASET>_INVALID
-    ├─ compute file checksum, upsert ingestion_metadata (idempotency key: filename+checksum+dataset)
-    └─ return ProcessingResult(status, total, valid, invalid, duration)
-    ↓
-load_results  (XCom: ProcessingResult dict only)
-    ↓
-report  (log/summarize; no further DB writes)
+
+**Answer: yes, it blocks a worker slot for the entire wait — unless `deferrable=True` is also set.**
+`deferrable` defaults to `False`. With the default, `wait_for_completion=True` runs a genuine
+blocking `while True: time.sleep(poke_interval)` loop *inside the LocalExecutor worker process*
+that's executing the `TriggerDagRunOperator` task — that process (and the worker slot it occupies)
+is unavailable for any other task for the full duration of the triggered DAG run. This is the exact
+same "held slot" cost as a non-deferrable `BaseSensorOperator` in `mode="poke"` — confirmed via
+Airflow's own docs (`authoring-and-scheduling/deferring.rst`, Context7): "Standard operators and
+sensors occupy a worker slot for their entire duration, even when idle." Setting `deferrable=True`
+instead routes through `DagStateTrigger` on the triggerer (the same component `report_ready`'s
+custom `OraclePartitionReadyTrigger` already runs on) and does **not** hold a worker slot — Airflow's
+own scheduler concurrency accounting (`ConcurrencyMap.load`, Context7-verified) explicitly excludes
+`DEFERRED`-state task instances from `dag_run_active_tasks_map`, the structure that counts against
+`max_active_tasks`/parallelism.
+
+**Does it matter at this project's tiny scale? No — recommend `deferrable=False` (the default) for
+v1.1.** Reasoning:
+- LocalExecutor's default `[core] parallelism` is 32 concurrent task slots; this hourly chain is
+  the only pipeline in the project and runs one task at a time by construction (`generate_task >>
+  trigger_customers >> trigger_orders >> trigger_report_ready`), so it never contends with itself
+  or anything else for slots.
+- The benchmark work already on record (`docs/benchmark.md`, 780K rows/sec bulk-loading) means the
+  full chain — generate a couple hundred rows, ingest customers, ingest orders, poll+build the
+  report — completes in low tens of seconds, once per hour. A single worker slot held for that
+  duration, once an hour, is immaterial against a 32-slot budget with nothing else competing for it.
+- `deferrable=True` on `TriggerDagRunOperator` has multiple **open, unresolved upstream bugs** as of
+  this research pass — GitHub issues [#60049](https://github.com/apache/airflow/issues/60049)
+  (defers even when `wait_for_completion=False`), [#57756](https://github.com/apache/airflow/issues/57756)
+  (stuck deferred state combined with `reset_dag_run`), and [#52247](https://github.com/apache/airflow/issues/52247)
+  (deferred trigger tasks stuck in 3.0.2). Given this repo's own working style — "verify by
+  actually running it, not assumed" (see PROJECT.md's Key Decisions on the FileSensor/deferrable
+  research) — adopting `deferrable=True` here would need its own live-verification pass against the
+  exact pinned `apache-airflow-providers-standard==1.17.0`/Airflow `3.3.1` combination before being
+  trusted, for a benefit (freeing one worker slot for tens of seconds, hourly) that doesn't
+  materially matter at this scale. **Recommendation: ship `deferrable=False` (implicit default) for
+  v1.1; revisit only if a future milestone adds enough concurrent DAG activity that worker-slot
+  pressure becomes real.**
+
+**One real (non-hypothetical) side-effect to flag, not fix, in this phase:** `csv_ingest`'s own
+`report_result_task` uses `trigger_rule="none_failed_min_one_success"` and — per PROJECT.md's Key
+Decisions table — `process_csv_task` never fails the DAG for any of `process()`'s domain-status
+outcomes (`INVALID_FILE`, `CONFIGURATION_ERROR`, etc.). That means a `csv_ingest` run can reach
+`DagRunState.SUCCESS` even when the file was invalid or misconfigured. `TriggerDagRunOperator`'s
+default `allowed_states` includes `SUCCESS`, so `trigger_customers`/`trigger_orders` will report
+success back to `csv_generate_schedule` even on a domain failure inside `csv_ingest` — the hourly
+chain will happily proceed to `report_ready` even after a "silent" ingestion failure. This is not a
+new bug introduced by this milestone (it's an existing, already-recorded design choice from Phase
+5), but chaining DAGs together is what makes it newly *reachable* unattended, hourly, with nobody
+watching the UI. Worth a follow-up (log-based alerting, or checking `result_dict["status"]` some
+other way) in a later milestone — out of scope to fix as part of wiring the orchestrator itself.
+
+## Integration Point 3 — Fixing `data/`'s root-owned permissions at the compose level
+
+**The problem, precisely:** `./data:/opt/airflow/data` is a bind mount. On a genuinely fresh clone,
+`./data` does not exist on the host yet. Docker Engine auto-creates it **as root** the moment the
+first container with that mount starts (already independently confirmed live in this repo, per
+`docs/environment.md`'s "Known First-Boot Gotcha" section and the CI fix in commit `caf5bfa`). The
+existing fix — `mkdir -p data/customers data/orders` as a manual/CI pre-step, done by the *host*
+user — only works because, until now, **generation happens on the host** (`make generate` runs
+`generator/generate_csv.py` as the host user, which writes as that host user; the container only
+ever *reads* from `data/`, and `755`-style read+traverse permissions on a host-user-owned directory
+are sufficient for the container's uid 50000 to read files it didn't create). v1.1 changes this
+premise: `generate_task` runs generation **inside the container**, as uid 50000. Writing into
+`data/customers/.staging/` etc. now requires uid 50000 to have *write* access, not just traversal —
+being merely able to `cd` into a host-user-owned, mode-755 directory is not enough to create files
+in it. Two failure modes compound on a fresh clone:
+1. The top-level `data/` itself, if Docker auto-creates it as root before anything else runs, blocks
+   uid 50000 from creating *any* new subdirectory directly under it (this is the literal gap the
+   milestone context names).
+2. Even the existing `mkdir -p data/customers data/orders` host-side workaround doesn't fully solve
+   the *new* problem: those directories, once pre-created by the host user, are owned by the host
+   user (not uid 50000) at default `755` — sufcient for the container to read/traverse, but **not**
+   to write, since only the owner (not "other") gets write bits at `755`.
+
+**What this project already tried (and why it's not the durable fix going forward):** a documented
+manual `mkdir -p data/customers data/orders` step, done by a human or CI, before first
+`docker compose up`. This is host-side, easy to forget on a genuinely fresh clone (as its own
+"Known First-Boot Gotcha" write-up admits), and — per the analysis above — was only ever sufficient
+because nothing needed to *write* into those directories from inside the container until now.
+
+**Recommended fix — adopt the same pattern Apache Airflow's own official quick-start
+`docker-compose.yaml` uses for exactly this class of problem** (verified via Context7 against
+`apache/airflow`'s `airflow-core/docs/howto/docker-compose/docker-compose.yaml`): give the
+`airflow-init` service a **root-user override** so it can `chown` the bind-mounted directory to
+match the non-root `AIRFLOW_UID` every other service runs as, *before* any other service starts.
+Airflow's own file does exactly this for `logs`/`dags`/`plugins`/`config`:
+```yaml
+airflow-init:
+  entrypoint: /bin/bash
+  user: "0:0"
+  command:
+    - -c
+    - |
+      mkdir -v -p /opt/airflow/{logs,dags,plugins,config}
+      chown -R "${AIRFLOW_UID:-50000}:0" /opt/airflow/
+      ...
+```
+Applied to this repo's own `airflow-init` service (which today only runs `command: db migrate`,
+inheriting the anchor's non-root `user: "${AIRFLOW_UID:-50000}:0"` — meaning it currently has no
+permission to `chown` a root-owned host directory at all), the minimal targeted change is:
+
+```yaml
+airflow-init:
+  <<: *airflow-common
+  user: "0:0"                      # override the anchor's non-root user for this service only
+  depends_on:
+    postgres:
+      condition: service_healthy
+  command: >
+    bash -c "mkdir -p /opt/airflow/data/customers /opt/airflow/data/orders &&
+             chown -R ${AIRFLOW_UID:-50000}:0 /opt/airflow/data &&
+             exec airflow db migrate"
+  environment:
+    <<: *airflow-common-env
 ```
 
-### Key Data Flows
+No `entrypoint:` override is needed here (unlike Airflow's own full quick-start file, which
+overrides `entrypoint: /bin/bash` too) — the base `apache/airflow` image's default entrypoint script
+already execs whatever command it's given verbatim when that command isn't one of its own
+recognized subcommands (`webserver`, `scheduler`, `db`, ...); `bash -c "..."` is passed straight
+through. `${AIRFLOW_UID:-50000}` inside the `command:` string is resolved by **docker compose
+itself**, at compose-file-parse time, from the project's `.env` file (the same substitution
+mechanism the existing `user: "${AIRFLOW_UID:-50000}:0"` line already relies on) — it does not need
+to exist as a container-internal environment variable for this to work.
 
-1. **Config flow:** `config.json` (disk) → `DatasetConfig` (validated once, in `validate_config`) →
-   dict over XCom → rehydrated in every downstream task that needs it. Config never touches Oracle
-   or the CSV file directly; it only parameterizes the engine call.
-2. **Row flow:** CSV file (disk) → `csv_processor` in bounded chunks (never fully materialized in
-   memory) → typed rows → Oracle, via `executemany()` array binding, chunk by chunk. Rows never
-   cross an Airflow task boundary — only the file *path* does (into `process_csv`) and only the
-   *summary* does (out of `process_csv`).
-3. **Idempotency flow:** filename + file checksum + dataset is computed once, inside `process_csv`
-   (it already has the file open), checked/recorded against Oracle's `ingestion_metadata` table
-   before any row is bulk-loaded — a retried task or a re-encountered file short-circuits here
-   rather than re-inserting.
+**Why this is more robust than the current manual step, not just a rearrangement of it:**
+- `chown -R` fixes ownership recursively — it repairs a genuinely-fresh, root-owned `data/`
+  (mkdir'd by this same command, then immediately chowned) *and* repairs ownership drift on a
+  long-lived clone where some files/dirs under `data/` were created by the host user (uid 1000, via
+  `make generate`) and others will now be created by the container (uid 50000) — both ownership
+  origins converge to uid 50000 after every `docker compose up`/`make up`, since `airflow-init` runs
+  this on every startup, not just the first one (idempotent: `mkdir -p` and `chown -R` are both
+  safe to repeat).
+- It runs *before* any other service, because `airflow-apiserver`/`airflow-scheduler`/etc. already
+  gate on `airflow-init: condition: service_completed_successfully` in the existing
+  `x-airflow-common.depends_on` block — no new dependency wiring needed, this ordering is already
+  in place.
+- It requires zero action from a human on a fresh clone (no `mkdir -p data/customers data/orders`
+  step to remember) — closing exactly the "genuinely fresh clone doesn't hit this" gap the milestone
+  context asks about. The existing `docs/environment.md` "Known First-Boot Gotcha: Permission Error
+  Creating `data/<dataset>/`" section and the CI pre-create step in `.github/workflows/ci.yml`
+  become **removable** once this lands (a currently-necessary workaround becomes dead weight, not a
+  belt-and-suspenders redundancy — since the CI step runs `mkdir -p data/customers data/orders` as
+  the **runner user**, `docker compose up`'s subsequent `airflow-init` `chown -R` would immediately
+  reassign that ownership to uid 50000 anyway, so leaving the CI step in place is harmless but
+  redundant, not actively wrong).
 
-## Scaling Considerations
+**Alternatives considered and rejected:**
+- *Named volume instead of bind mount for `data/`* — rejected: `make generate`, `tests/e2e/`
+  fixtures, and `scripts/verify_evidence.sql`'s evidence capture all currently depend on host-side
+  processes reading/writing `./data/` directly (the existing `D-06` comment in `docker-compose.yml`
+  says this explicitly: "generate_csv.py writes to `./data/<dataset>/` on the host"). A named volume
+  is only directly accessible from inside a container, which would break every host-side script that
+  isn't run through Docker.
+- *A one-off manual `chmod -R 777 data/`* — rejected: works, but is the same class of "must remember
+  it, host-only, undocumented-until-it-bites-someone" fix this repo has already twice hit (the
+  passwords-file `chmod 666` and the current `mkdir -p data/customers data/orders`) — compose-level
+  automation via `airflow-init` removes the human dependency entirely rather than adding a third
+  instance of the same pattern.
 
-This project's explicit target is "a single generated CSV file, ~100K rows, one Oracle Free
-instance, one Airflow worker" — the table below is deliberately narrow in range; the spec has no
-ambition beyond this.
+## Anti-Patterns to Avoid
 
-| Scale | Architecture Adjustments |
-|-------|---------------------------|
-| Small files (≤ a few MB, low thousands of rows) | Default chunk size (e.g. 1,000 rows) is already generous; no tuning needed |
-| ~100K rows (the project's own benchmark target) | Chunk size and `executemany()` array size become the two levers that matter — this is exactly what the required benchmark (row-by-row vs chunked/bulk) is meant to demonstrate; peak memory should track `chunk_size × row width`, not file size |
-| Beyond this project's scope (millions of rows, multiple concurrent files) | Would need streaming backpressure, parallel file processing (Dynamic Task Mapping, as the reference repo does with KPO), and a real object store — all explicitly out of scope here |
+### Anti-Pattern 1: Mounting or copying `generator/` at the wrong container path
 
-### Scaling Priorities
+**What people do:** Bind-mount `generator/` under `/opt/airflow/dags/generator` (reasoning "it's
+DAG-adjacent code") or `COPY` it into the image the way `packages/csv-processor/` is copied.
+**Why it's wrong:** `generate_csv.py`'s `_REPO_ROOT = Path(__file__).resolve().parent.parent` is a
+hard-coded two-levels-up computation. Mounting one level too deep (or too shallow) silently changes
+`_CONFIGS_DIR`/`_DATA_DIR` to point somewhere that doesn't have the `configs`/`data` mounts already
+in place — the failure mode is not an import error, it's a confusing `FileNotFoundError` at config
+load or file write time, deep inside otherwise-correct code.
+**Instead:** Mount at exactly `/opt/airflow/generator` — this is the one path where the script's
+existing, unmodified path math lines up with mounts that already exist for other reasons.
 
-1. **First (and only) bottleneck this project should hit:** Oracle round-trip count. Chunked
-   `executemany()` array binding is the whole mitigation — never a per-row `INSERT` in a loop. The
-   required benchmark test exists specifically to make this measurable.
-2. **Not a real concern at this scale:** Airflow scheduler/worker throughput, XCom backend size
-   (payloads are summaries, not row data — see Pattern 3), concurrent DAG runs (LocalExecutor,
-   two datasets, one file each, no fan-out).
+### Anti-Pattern 2: Reaching for `deferrable=True` on `TriggerDagRunOperator` by default
 
-## Anti-Patterns
+**What people do:** Since this project has an established preference for deferrable operators
+(`FileSensor(deferrable=True)`, the custom `OraclePartitionReadyTrigger`), it's tempting to reflexively
+set `deferrable=True` here too, treating it as "the more correct choice, full stop."
+**Why it's wrong:** Unlike `FileSensor`, which this project already live-verified as sufficient,
+`TriggerDagRunOperator`'s `deferrable` mode has multiple open upstream bugs on file as of this
+research pass (see Integration Point 2). Enabling it here would be adopting an unverified, actively
+buggy code path for a benefit (freeing a worker slot for tens of seconds, once an hour, in a
+32-slot-parallelism LocalExecutor with nothing else running) that doesn't matter at this project's
+scale.
+**Instead:** Use the default (`deferrable=False`). Revisit only if a future milestone's real,
+observed worker-slot contention makes it matter — and even then, budget time to live-verify against
+the exact pinned provider version first, this project's own established discipline.
 
-### Anti-Pattern 1: Business logic inside the `@task` function
+### Anti-Pattern 3: Treating the `data/` permission fix as a one-time manual step
 
-**What people do:** Inline CSV parsing, type conversion, or `INSERT` statements directly inside a
-DAG's `@task`-decorated function "because it's quick."
-**Why it's wrong:** Makes the logic untestable outside Airflow (no DAG parsing/scheduler needed for
-a unit test), breaks the "thin TaskFlow DAG delegates to a reusable engine" architecture the spec
-requires, and silently duplicates logic once a second dataset DAG is added.
-**Do this instead:** Every DAG task body is a thin wrapper calling into `csv_processor`. The task's
-only jobs are: shape inputs from XCom, call the engine function, shape the engine's return value
-back into XCom.
+**What people do:** Document "run `mkdir -p data/customers data/orders` before first boot" and
+consider the gap closed (this is literally what this repo already did once).
+**Why it's wrong:** It was sufficient when only host processes wrote into `data/`. It stops being
+sufficient the moment a container-side process needs write access too — and it depends on a human
+(or CI script) remembering to run it, every time a volume gets wiped (`make reset`/`make destroy`),
+not just on the very first clone.
+**Instead:** Fix it inside `docker-compose.yml` itself, in a service that already runs before
+everything else and already gates all other services' startup (`airflow-init`) — see Integration
+Point 3.
 
-### Anti-Pattern 2: Detecting encoding/dialect/header per chunk
+## Build Order for This Phase
 
-**What people do:** Re-run dialect/encoding/header sniffing on every chunk "to be safe."
-**Why it's wrong:** Wasteful (a chunk is a slice of one already-opened, single-dialect file) and can
-produce **inconsistent** results chunk-to-chunk if a heuristic sniffer's confidence varies with
-sample content — the header row exists exactly once, at the top of the file, not once per chunk.
-**Do this instead:** Run detection exactly once, from one small bounded sample (the reference repo
-uses a fixed 64 KiB sample), before any `RecordStream`/chunk iterator is constructed. Every chunk
-then reuses the same resolved dialect/encoding/header profile.
+The dependency here is strict, not stylistic — the DAG cannot be verified to actually run until the
+environment can support it:
 
-### Anti-Pattern 3: Chunking by byte offset or line count instead of record count
-
-**What people do:** Split a file into chunks by seeking to byte offsets, or by counting `\n`
-characters, to "resume" or parallelize reading.
-**Why it's wrong:** A CSV field can legally contain an embedded newline inside a quoted value —
-splitting by byte/line position can land mid-record, silently corrupting or truncating a row. This
-is a documented, named pitfall in the reference repo (its own "PITFALLS.md E1").
-**Do this instead:** Chunk by **record ordinal**, using the stdlib `csv.reader` as the sole
-row-boundary authority (e.g. `itertools.batched(reader, chunk_size)`), and never claim resumability
-from an arbitrary byte/line offset — resuming means re-streaming from the start and discarding
-already-processed whole records, not seeking.
-
-### Anti-Pattern 4: Unbounded `csv.field_size_limit`
-
-**What people do:** Leave Python's default CSV field-size limit alone, or set it very high "to
-avoid errors on wide fields."
-**Why it's wrong:** A single malformed/unterminated quote can make `csv.reader` treat the rest of
-the file as one giant field, growing without bound until the process is OOM-killed.
-**Do this instead:** Set an explicit, documented `csv.field_size_limit` (e.g. 1 MiB) before
-constructing the reader, sourced from the dataset's own config rather than a magic constant buried
-in code.
-
-### Anti-Pattern 5: Validating `config.json` with Pydantic on every row
-
-**What people do:** Wrap each parsed CSV row in the same Pydantic model used for the dataset
-contract, relying on its `ValidationError` to drive row-level rejection.
-**Why it's wrong:** Pydantic model construction has real per-instance cost at 100K-row scale, and
-critically, Pydantic **raises** on the first invalid field rather than collecting every violation —
-this fights the "collect every invalid row with its error metadata, keep going" model the spec
-requires for the `<DATASET>_INVALID` table.
-**Do this instead:** Pydantic v2 validates `config.json` itself, exactly once per run (Pattern 1).
-Per-row structural/type/nullability checks are plain, fast functions that **collect** violations
-into a row-level error record rather than raising.
+1. **`docker-compose.yml`: `airflow-init` chown fix (Integration Point 3)** — land and verify first,
+   independent of everything else. Verify via `make destroy && make up` (the deepest teardown target
+   this repo already has, per the `Makefile` diff currently staged) against a genuinely fresh
+   `./data` state, then `ls -la data/ data/customers data/orders` from the host to confirm uid 50000
+   ownership. This has zero dependency on the DAG or the generator mount and can be proven correct
+   on its own.
+2. **`docker-compose.yml`: mount `generator/` + `PYTHONPATH` extension, `docker/airflow/Dockerfile`:
+   add `faker` (Integration Point 1)** — land together (they're both "make the container able to run
+   `generate_csv.py`" changes), then verify with `make rebuild` (already a Makefile target) followed
+   by a one-off manual exec check:
+   ```bash
+   docker compose exec -T airflow-scheduler python -c \
+     "from generator.generate_csv import main; print(main(['--correlated']))"
+   ```
+   proving the import path and the `faker` install both resolve correctly *before* wiring it into a
+   real DAG — isolates any `ResolutionImpossible`/`ModuleNotFoundError` surprises from DAG-authoring
+   mistakes.
+3. **New `airflow/dags/csv_generate_schedule.py` DAG (Integration Point 2)** — only after 1 and 2 are
+   independently proven. Structural verification first (mirroring this repo's own
+   `verify-phase5`/`verify-phase7` Makefile pattern: a live `BundleDagBag` import-error check), then
+   a real live-triggered/live-scheduled run watched end-to-end through the Airflow UI, the same
+   "don't trust it structurally, watch it actually run" discipline this repo has applied at every
+   prior DAG-introducing phase (Phase 5's `csv_ingest`, Phase 7's `report_ready`).
+4. **`OraclePartitionReadyTrigger.run()` exception-handling fix** (the other Active v1.1 item, per
+   PROJECT.md) — independent of 1-3, can land in parallel or in either order; noted here only to be
+   explicit that it's not a blocking dependency for the orchestrator DAG itself.
 
 ## Integration Points
-
-### External Services
-
-| Service | Integration Pattern | Notes |
-|---------|----------------------|-------|
-| Airflow REST API | External HTTP trigger, `POST /dags/{dag_id}/dagRuns` with a JSON `conf` (dataset name + config path) | No custom FastAPI wrapper — explicitly out of scope; Airflow's own stable REST API is the trigger surface |
-| Oracle Database Free | `python-oracledb`, thin mode (no Oracle Client install), one connection opened/closed per `process()` call | Bulk insert exclusively via `cursor.executemany()` array binding — Oracle has no `COPY` equivalent; connection lifecycle is scoped to the engine call, not held across DAG tasks |
-| Local filesystem | `FileSensor(deferrable=True)` glob-matches the dataset's configured file pattern under a mounted volume | No object store (MinIO explicitly out of scope) — files land on a Docker-mounted local path readable by both the generator and the Airflow worker |
 
 ### Internal Boundaries
 
 | Boundary | Communication | Notes |
-|----------|----------------|-------|
-| DAG ↔ `csv_processor` | Direct in-process Python function call (`process(file_path, config)`), input/output shaped as plain dicts at the task boundary for XCom | No network hop, no serialization protocol beyond XCom's own JSON — this is the biggest structural simplification versus the reference repo's KubernetesPodOperator pattern |
-| `csv_processor.engine` ↔ `csv_processor.load` (Oracle) | Direct function call, chunk-by-chunk, inside one `process()` invocation | `load.py` has no knowledge of Airflow, config-loading, or CSV parsing — it only accepts already-validated/normalized rows plus target table names |
-| `csv_processor` ↔ generator | None — deliberately zero coupling; the generator only needs the dataset schema shape (columns/types/nullability), which both it and `csv_processor.config` derive independently from the same `config.json` | Keeps the generator buildable and testable before the processing engine exists |
+|----------|---------------|-------|
+| `csv_generate_schedule.generate_task` ↔ `generator.generate_csv` | Direct in-process Python call (`main(["--correlated"])`), not subprocess | Requires `/opt/airflow` on `PYTHONPATH`; requires `generator/` mounted at exactly `/opt/airflow/generator` |
+| `csv_generate_schedule` ↔ `csv_ingest` (×2) | `TriggerDagRunOperator(wait_for_completion=True)`, `conf={"dataset": ..., "config_path": ...}` | Sequential (customers before orders) — required by the Phase 7 DB-level `BEFORE INSERT` FK trigger on `orders_valid`, which needs `customers_valid` rows to already exist |
+| `csv_generate_schedule` ↔ `report_ready` | `TriggerDagRunOperator(wait_for_completion=True)`, empty `conf` | Runs last; `report_ready`'s own deferrable sensor still independently polls `ingestion_metadata`, so this trigger is really just "kick it off now" rather than a strict data dependency |
+| `airflow-init` (root, `user: "0:0"`) ↔ every other Airflow service (`user: "${AIRFLOW_UID:-50000}:0"`) | Shared bind-mounted host directory (`./data`), ownership fixed by the former before the latter start | Existing `depends_on: airflow-init: condition: service_completed_successfully` on the shared anchor already enforces this ordering — no new dependency wiring needed |
 
-## Suggested Build Order
+### External Services
 
-Ordered by genuine dependency, not by feature checklist order in the spec:
-
-1. **Oracle schema + docker-compose environment.** Everything downstream needs a real Oracle
-   instance to test against sooner or later (the project's own DoD requires integration tests
-   against a real container, not mocks); getting the pinned image tag, connection, and
-   `<DATASET>_VALID`/`<DATASET>_INVALID`/`ingestion_metadata` DDL working first removes the
-   biggest infrastructure unknown early.
-2. **`csv_processor.config`: Pydantic v2 models + `config.json` shape for both datasets.** This is
-   also what the CSV generator needs (schema shape), so it unblocks two branches of work at once
-   and has no dependency on Oracle or on the detection/parsing code.
-3. **`csv_processor.detect` (Tier A vendoring) + `csv_processor.source`/parse/normalize/validate
-   (Tier B rewrite), fully unit-testable with local fixture files, no Airflow, no Oracle.** This is
-   the core engineering the project exists to prove out — build and test it standalone before
-   wiring anything else to it.
-4. **CSV generator**, built in parallel with or right after step 2 (only needs the schema shape) —
-   needed before any real end-to-end run exists to test against, and useful for step 3's own test
-   fixtures too.
-5. **`csv_processor.load` (Oracle bulk loader via `executemany()`) + `ingestion_metadata`
-   idempotency logic**, wiring steps 1 and 3 together. First point where integration tests against
-   a real Oracle container become meaningful.
-6. **`csv_processor.engine.process()`**: the public entrypoint assembling steps 2-5 into one
-   function with the full `ProcessingResult`/status-enum contract. This is the exact function the
-   DAG will call — it should be complete and tested *before* any DAG code exists, since the DAG is
-   "thin" by design and has nothing to wrap otherwise.
-7. **Airflow DAG wiring**: the shared `_common` factory, the `FileSensor(deferrable=True)` wait
-   step, and the two thin per-dataset DAGs calling `process()`.
-8. **HTTP trigger wiring + end-to-end test** (Airflow REST API → DAG → Oracle tables).
-9. **Benchmark (row-by-row vs chunked/bulk) + CI**, once the whole path is real and stable enough
-   to measure meaningfully.
-
-**Why this order, explicitly:**
-- The csv engine (steps 2-6) is entirely Airflow-agnostic and should be fully built and unit-tested
-  *before* any DAG wiring — building DAG plumbing first would have nothing real to call.
-- The generator only depends on the schema/config shape (step 2), not on the processing engine
-  itself, so it can and should be pulled forward rather than sequenced after the engine.
-- Oracle schema (step 1) has to exist before the bulk-load code (step 5) can be written against it,
-  but does not block the pure-Python detect/parse/normalize/validate work (step 3), which needs no
-  database at all — these two branches can proceed in parallel once config models exist.
+| Service | Integration Pattern | Notes |
+|---------|---------------------|-------|
+| None new | — | This milestone introduces no new external service — it wires existing in-repo DAGs together and fixes environment/permission gaps. Oracle and the Airflow metadata Postgres are unchanged. |
 
 ## Sources
 
-- `/home/user/projects/airflow-platform/packages/csv-processor/src/csv_processor/source.py` — read
-  for the detect→open→chunk sequence (Tier B, per this project's PROJECT.md reuse decision); not
-  vendored as a file (fully coupled to `dataplat`'s `Source`/`SchemaRepository`/`RecordChunk`
-  protocol, which has no equivalent here).
-- `/home/user/projects/airflow-platform/packages/csv-processor/src/csv_processor/cli.py` — read for
-  the "structured result written on every exit path, success or failure" pattern this project's own
-  `ProcessingResult`/status-enum requirement mirrors.
-- `/home/user/projects/airflow-platform/airflow/dags/csv_ingest_customers.py` and
-  `/home/user/projects/airflow-platform/airflow/dags/_common/` — read for the thin-DAG-delegates-
-  to-an-engine shape; Kubernetes-pod-specific parts (`kpo.py`, `tracing_kpo.py`) excluded per
-  PROJECT.md's own scope decision.
-- `/home/user/projects/airflow-platform/configs/datasets/customers.yaml` — read for the real
-  per-column config shape (types/nullable/required/format) this project's smaller `config.json`
-  should mirror, minus `quality:`/`scd:`/`retention:` blocks.
-- Apache Airflow docs (Context7, `/apache/airflow`, MEDIUM confidence — verify exact provider
-  version/behavior against the pinned Airflow release at implementation time):
-  - `airflow-core/docs/authoring-and-scheduling/deferring.rst` — deferral is exclusive to
-    class-based operators/sensors, unavailable inside `@task` TaskFlow functions; custom triggers
-    belong in a `triggers.py` module (`BaseTrigger` subclass: `__init__`/`serialize`/async `run`),
-    separate from the operator/sensor class that uses them.
-  - `providers/standard/docs/sensors/file.rst` — `airflow.providers.standard.sensors.filesystem.
-    FileSensor` supports `deferrable=True` for the local filesystem out of the box; no custom
-    trigger is needed for the basic file-wait step this project requires.
+- This repo's own files (read directly, not assumed): `docker-compose.yml`, `docker/airflow/Dockerfile`,
+  `generator/generate_csv.py`, `docs/environment.md`, `airflow/dags/_common/paths.py`,
+  `airflow/dags/csv_ingest.py`, `airflow/dags/report_ready.py`, `pyproject.toml`, `Makefile`,
+  `.env.example`, `.github/workflows/ci.yml`, `.planning/PROJECT.md`
+- `apache/airflow` GitHub source, `providers/standard/src/airflow/providers/standard/operators/trigger_dagrun.py`
+  (Context7, HIGH confidence) — the `wait_for_completion`/`deferrable` blocking-loop-vs-`DagStateTrigger`
+  code path
+- `apache/airflow` GitHub source, `airflow-core/src/airflow/jobs/scheduler_job_runner.py`
+  (Context7, HIGH confidence) — `ConcurrencyMap.load`, confirming `DEFERRED` task instances don't
+  count toward worker-slot/`max_active_tasks` accounting
+- `airflow-core/docs/authoring-and-scheduling/deferring.rst` (Context7, HIGH confidence) — "Standard
+  operators and sensors occupy a worker slot for their entire duration, even when idle."
+- `apache/airflow`'s own official `airflow-core/docs/howto/docker-compose/docker-compose.yaml`
+  (verified via WebFetch/Context7, HIGH confidence) — the `airflow-init` `user: "0:0"` +
+  `mkdir`/`chown -R "${AIRFLOW_UID:-50000}:0"` pattern this research recommends adapting
+- [`TriggerDagRunOperator` defers even when `wait_for_completion=False` · Issue #60049](https://github.com/apache/airflow/issues/60049)
+- [Deferrable mode of `TriggerDagRunOperator` stays stuck if used with `reset_dag_run` · Issue #57756](https://github.com/apache/airflow/issues/57756)
+- [Deferred trigger tasks seem to get stuck in Airflow 3.0.2 · Issue #52247](https://github.com/apache/airflow/issues/52247)
+- This repo's own git history: `caf5bfa fix(06): pre-create data/ subdirectories in CI to avoid
+  root-owned bind mount` — confirms the exact failure mode this research addresses was already hit
+  once, in CI, for the host-only-write case
 
 ---
-*Architecture research for: Lightweight Airflow CSV→Oracle ETL Platform*
-*Researched: 2026-08-28*
+*Architecture research for: hourly CSV-generation-and-ingestion orchestrator DAG (v1.1 milestone)*
+*Researched: 2026-09-01*

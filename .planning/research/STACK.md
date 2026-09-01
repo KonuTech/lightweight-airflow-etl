@@ -1,115 +1,164 @@
 # Stack Research
 
-**Domain:** Local Airflow CSV→Oracle ETL platform (thin TaskFlow DAG + reusable CSV processing engine + Oracle bulk load)
-**Researched:** 2026-08-28
-**Confidence:** MEDIUM-HIGH (core versions verified against PyPI's live index; Airflow/oracledb/Pydantic API shapes verified against Context7-fetched official docs; Oracle image tag and CI conventions verified via web search only — see per-row confidence)
+**Domain:** Airflow orchestrator DAG — in-process CSV generation task + sequential chain-triggering of existing DAGs
+**Researched:** 2026-09-01
+**Confidence:** HIGH (verified against this repo's own pinned versions + this session's live-confirmed import; MEDIUM on TriggerDagRunOperator's `deferrable` behavior, flagged below)
+
+This is a delta document. It assumes everything in "Existing validated capabilities" (Airflow
+3.3.1, `apache-airflow-providers-standard==1.17.0`, `apache-airflow-providers-oracle==4.6.2`,
+`python-oracledb==4.0.2`, `csv_processor`, `TriggerDagRunOperator` import path) is already settled
+and does **not** re-litigate it. It covers only what's net-new for the `csv_generate_schedule` DAG.
 
 ## Recommended Stack
 
 ### Core Technologies
 
+No new frameworks. This milestone adds one library dependency (`faker`) and two integration
+changes (a volume mount, a `PYTHONPATH` extension) to the existing Docker image — no new operator
+types, no new provider packages.
+
 | Technology | Version | Purpose | Why Recommended |
 |------------|---------|---------|-----------------|
-| Apache Airflow | 3.3.1 (`apache-airflow`) | Orchestrator — TaskFlow DAG, LocalExecutor, Triggerer, REST API | Current stable 3.x line. Airflow 3 moved the REST API to `/api/v2/...` (v1 is gone) and ships the Triggerer as a first-class component the docker-compose quick-start already wires up — both are load-bearing for this project's two hard requirements (HTTP trigger with runtime `conf`, deferrable file-wait). Confidence: MEDIUM (Context7 `/apache/airflow` docs, official GitHub source) |
-| `apache-airflow-providers-standard` | 1.18.0 | Ships `FileSensor` (with `deferrable=True`) and other core sensors/operators | As of Airflow 2.8+/3.x, filesystem/bash/python operators moved out of airflow-core into this provider — must be installed explicitly, it's not bundled implicitly the way "core" once was. Gives an off-the-shelf deferrable file sensor instead of hand-rolling one from scratch (see Pattern note below). Confidence: MEDIUM |
-| Python | 3.12 | Runtime for Airflow, `csv_processor` package, generator, tests | Airflow 3.3.1 supports 3.10–3.14 (`!=3.15`); oracledb, Pydantic 2, ruff, mypy, pytest, Faker, clevercsv, charset-normalizer all declare 3.9/3.10+ compatibility. 3.12 is the sweet spot: mature wheel availability for all C-extension-backed deps (oracledb, clevercsv), one full year+ of ecosystem shakeout past 3.13, and avoids being an early adopter on whichever Python Airflow's own CI has least soak time on. Confidence: HIGH (PyPI classifiers cross-checked directly) |
-| `oracledb` (python-oracledb) | 4.0.2 | Oracle Database driver — connections + bulk load via `executemany()` | Oracle's own actively maintained driver, official successor to `cx_Oracle` (which is in maintenance-only mode). Default **thin mode** needs no separate Oracle Client install — critical for a "clone and go" WSL/Docker Desktop setup. `cursor.executemany(sql, rows, batcherrors=True)` is the array-bind bulk-insert primitive; Oracle has no `COPY`, so this *is* the bulk path. Confidence: MEDIUM (Context7 `/oracle/python-oracledb` docs) / version number HIGH (PyPI) |
-| Pydantic | 2.13.4 | Validate `config.json` once per run, before CSV processing starts | v2's `model_validate_json()` / `model_validate()` raises a single `ValidationError` that collects **every** field error at once (`err.errors()`), matching the spec's "fail fast on config, but tell me everything wrong with it" requirement. Deliberately **not** used per-CSV-row (see What NOT to Use). Confidence: MEDIUM (Context7 `/pydantic/pydantic` docs) / version HIGH (PyPI) |
-| `gvenzl/oracle-free` (Docker image) | `23.26.2-faststart` (pin exact digit-version + faststart, not `latest`) | Oracle Database Free container for docker-compose | De facto community-standard Oracle Free image (built from Oracle's own binaries via the `oracle/docker-images` project, referenced directly in the seed spec). The `-faststart` variant ships a pre-baked datafile set that cuts container boot from minutes to ~10-20s — meaningful for a local dev inner loop and CI. Use the non-`slim` full variant unless image size becomes a real constraint; `slim` strips components (e.g., some NLS/character-set and Java options) that are cheap insurance to keep during early development. Confidence: LOW (web search only — Docker Hub tag listing corroborates the version/tag scheme but this needs a one-time manual pull-and-boot check before locking it into docker-compose) |
+| `faker` | `==40.37.0` | Realistic-looking fake string values (`fake.name()`, `fake.word()`, `fake.country()`) inside `generator/generate_csv.py` | **Must match, not just approximate, the version already pinned in root `pyproject.toml`/`uv.lock`** (confirmed via `grep`: `faker==40.37.0` in both `pyproject.toml:14` and `uv.lock`). Using a different version inside the container than the one the repo's own `uv.lock` resolved would reintroduce exactly the kind of drift the Dockerfile's own comment about `clevercsv`/`charset-normalizer`/`chardet` already warns against — two environments generating CSVs with the same `--seed` should be able to produce byte-identical output, and `Faker`'s corpus/algorithm has changed between major versions historically. |
+| `TriggerDagRunOperator` | (ships in already-pinned `apache-airflow-providers-standard==1.17.0`) | Chain-trigger `csv_ingest` (customers), `csv_ingest` (orders), and `report_ready` sequentially, blocking each on the prior run's completion | Already confirmed importable in this exact built image this session (`airflow.providers.standard.operators.trigger_dagrun.TriggerDagRunOperator`) — no new package to add. Supports `wait_for_completion=True` plus `poke_interval`, `allowed_states`, `failed_states` natively; no custom sensor/trigger needed for "wait for each to complete before proceeding." |
 
 ### Supporting Libraries
 
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
-| `clevercsv` | 0.8.5 | CSV dialect (delimiter/quoting) sniffing | Vendor per the two-tier reuse decision — reference repo's `detect/dialect.py` uses this and is near-zero-coupling to port. Use for the "detect delimiter/quote-char" step before parsing; don't hand-roll dialect sniffing. |
-| `charset-normalizer` | 3.5.1 | Encoding detection for CSV files of unknown/mixed encoding | Vendor per two-tier reuse (`detect/encoding.py`). Modern, MIT-licensed, faster and more accurate than `chardet` for this use case; use it rather than assuming `utf-8` blindly, since generated files may deliberately include edge-case encodings. |
-| `Faker` | 40.37.0 | Deterministic-ish realistic test data (names, etc.) in the CSV generator | Use with a fixed `Faker.seed(n)` to keep the generator's "valid" rows deterministic across runs while still looking like realistic data; combine with plain `random.Random(seed)` for the numeric/date fields and the deliberate invalid-row injection, which Faker doesn't model well. |
-| `python-dateutil` | current (2.9.x) | Fallback flexible date parsing during **normalization exploration only** — not for validation | Do NOT use for the actual date **validator** (spec explicitly wants strict `datetime.strptime(value, configured_format)` rejection of anything not matching the configured format — that's the whole point of catching bad dates). Only reach for it if the CSV generator itself needs to emit varied-but-plausible date strings. |
-| `pytest` | 9.1.1 | Test runner — unit, Oracle integration, end-to-end | Standard choice; no rationale needed beyond "this is what everyone uses." Pair with `pytest-asyncio` if the custom Trigger's `run()` gets a direct unit test (most Trigger testing instead goes through Airflow's own trigger-test harness / integration test). |
-| `testcontainers` (Python, `testcontainers[oracle]` if available, else raw `docker` SDK) or a docker-compose-based CI job | current | Spin up a real Oracle container for integration tests | Spec explicitly requires "Oracle integration tests against a real container, not mocked." `testcontainers-python` is the standard way to do this from pytest with automatic container lifecycle management; alternative is a docker-compose service that CI starts before the test job (simpler, less new dependency surface — worth deciding in the phase that builds Oracle integration tests, not now). |
+None. `generate_csv.py`'s only non-stdlib imports are `faker` (new to the image) and
+`csv_processor.config` (already installed in the image via the Dockerfile's existing
+`pip install --no-deps packages/csv-processor/` line — no change needed there). `pyyaml==6.0.3`,
+also in root `pyproject.toml`, is unused by `generate_csv.py` and by `csv_processor.config.loader`
+(verified: `loader.py`'s only imports are `json`, `pathlib`, `pydantic`, and `csv_processor.config.*`
+— confirmed via direct read, no `yaml`/`pyyaml` import anywhere in `csv_processor`). Do not add
+`pyyaml` to the Docker image for this milestone; it would be dead weight with no import site.
 
 ### Development Tools
 
-| Tool | Purpose | Notes |
-|------|---------|-------|
-| `uv` (0.12.7) | Python package/dependency manager, lockfile, venv | Fast, single-binary, `pyproject.toml`-native; `uv sync --locked` in CI enforces the lockfile hasn't drifted. Standard 2026 default over pip/poetry for new Python projects. |
-| `ruff` (0.16.5) | Lint + format (replaces flake8 + black + isort) | One Rust-based tool for both `ruff check` and `ruff format --check`; this is what "minimal CI" means in practice now — one tool, two invocations. |
-| `mypy` (2.3.1) | Static type checking | Spec requires type hints throughout the CSV engine; `mypy` is the conventional enforcement tool for a `pyproject.toml`-based package. (`pyrefly` is a newer, faster alternative gaining traction — stick with `mypy` for now since it's the safer, better-documented default; revisit only if CI type-check time becomes a real bottleneck.) |
-| `astral-sh/setup-uv` GitHub Action (`@v10.0.1`, pin the exact immutable tag) | Installs `uv` in CI | As of `setup-uv` v8+, releases are immutable per-version tags — floating major-version tags (`@v8`) no longer resolve the way they used to on many other actions, so pin the full `vX.Y.Z` tag exactly. |
-| `docker-compose` | Local orchestration of Airflow + Airflow metadata DB + Oracle Free | Project deliverable per PROJECT.md — not pre-provisioned. Base it on Airflow's own official `docker-compose.yaml` quick-start (adds `airflow-triggerer` service, which this project actually needs, unlike a plain scheduler+webserver+worker setup) plus one more service block for `gvenzl/oracle-free`. |
+No new dev tooling. The existing `make lint` (ruff + mypy) and `make verify-phaseN` pattern
+already covers `generator/` (root `pyproject.toml`'s `[[tool.mypy.overrides]]` already lists
+`generator.*` in the strict-per-module block) and will pick up the new orchestrator DAG file the
+same way `verify-phase5`'s `BundleDagBag` check already covers `csv_ingest.py`.
 
 ## Installation
 
-```bash
-# Core
-uv add "apache-airflow==3.3.1" "apache-airflow-providers-standard==1.18.0" \
-       "oracledb==4.0.2" "pydantic==2.13.4"
-
-# Supporting (CSV engine + generator)
-uv add "clevercsv==0.8.5" "charset-normalizer==3.5.1" "Faker==40.37.0"
-
-# Dev dependencies
-uv add --dev "pytest==9.1.1" "ruff==0.16.5" "mypy==2.3.1"
+```dockerfile
+# docker/airflow/Dockerfile — add faker to the EXISTING constrained pip install line.
+# Verified: `faker` does not appear at all in Airflow's own
+# constraints-3.3.1/constraints-3.12.txt (checked via `curl | grep -i "^faker"` — zero
+# matches), unlike chardet/charset-normalizer, which DO appear there with different pins
+# than csv-processor needs (that's why those two get a SEPARATE unconstrained pip call).
+# Because faker has no competing constraint entry, --constraint has nothing to override
+# for it, so it is safe to add to the SAME constrained install line as oracledb/pydantic/
+# the two provider packages -- no ResolutionImpossible risk, no need for a second call.
+RUN pip install --no-cache-dir \
+      "oracledb==4.0.2" \
+      "pydantic==2.13.4" \
+      "apache-airflow-providers-standard==1.17.0" \
+      "apache-airflow-providers-oracle==4.6.2" \
+      "faker==40.37.0" \
+    --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-3.3.1/constraints-3.12.txt" \
+ && pip install --no-cache-dir \
+      "clevercsv==0.8.5" \
+      "charset-normalizer==3.5.1" \
+      "chardet==7.6.0"
 ```
 
-Note: Airflow's own installation is normally pinned against its published constraints file
-(`https://raw.githubusercontent.com/apache/airflow/constraints-3.3.1/constraints-3.12.txt`) rather
-than resolved freely — verify this constraints URL exists for 3.3.1/Python 3.12 before finalizing
-`pyproject.toml`, since Airflow's dependency graph is notoriously easy to break without it.
+```yaml
+# docker-compose.yml — x-airflow-common.volumes: mount generator/ alongside the
+# existing airflow/dags, data, configs mounts.
+volumes:
+  - ./docker/airflow/simple_auth_manager_passwords.json.generated:/opt/airflow/simple_auth_manager_passwords.json.generated
+  - ./airflow/dags:/opt/airflow/dags
+  - ./data:/opt/airflow/data
+  - ./configs:/opt/airflow/configs:ro
+  # NEW: mount at /opt/airflow/generator (not /opt/airflow/dags/generator) --
+  # generate_csv.py computes `_REPO_ROOT = Path(__file__).resolve().parent.parent`,
+  # which for /opt/airflow/generator/generate_csv.py resolves to /opt/airflow. That
+  # makes _CONFIGS_DIR = /opt/airflow/configs and _DATA_DIR = /opt/airflow/data --
+  # the SAME two paths already mounted above. Mounting anywhere else breaks that
+  # parent-parent arithmetic and silently points the generator at the wrong dirs.
+  - ./generator:/opt/airflow/generator
+  - airflow-logs:/opt/airflow/logs
+
+x-airflow-common-env:
+  # EXTEND (do not replace) the existing PYTHONPATH -- /opt/airflow/dags is still
+  # needed for the triggerer's `_common` import (Phase 7 decision, see Dockerfile/
+  # compose comments); add /opt/airflow so `generator` (a namespace package, no
+  # __init__.py at its top level -- see root pyproject.toml's own mypy comment on
+  # this) resolves as `generator.generate_csv` from inside the new DAG file.
+  PYTHONPATH: "/opt/airflow/dags:/opt/airflow"
+```
+
+No `pip install` step is needed for `generator/` itself — it's a plain namespace package (matching
+the existing `tools/` convention noted in root `pyproject.toml`), imported directly off
+`PYTHONPATH`, not an installed distribution. Do not add a `pyproject.toml`/`setup.py` under
+`generator/` to make it "installable" — that would be new packaging machinery this repo doesn't use
+anywhere else for a directory this small.
 
 ## Alternatives Considered
 
 | Recommended | Alternative | When to Use Alternative |
 |-------------|-------------|--------------------------|
-| `oracledb` thin mode | `oracledb` thick mode (with Oracle Instant Client) | Only if a feature thin mode doesn't support is needed (e.g., Native Network Encryption, some older wallet-based auth styles) — not expected for this project's local dev-only Oracle Free target. |
-| `oracledb` (successor driver) | `cx_Oracle` | Never for new code — `cx_Oracle` is in maintenance mode and Oracle itself directs new projects to `python-oracledb`. Already excluded per PROJECT.md's pinned decision. |
-| Airflow `FileSensor(deferrable=True)` from `apache-airflow-providers-standard` | Hand-written custom `BaseTrigger` + custom sensor operator | Use the hand-written custom Trigger if the file-wait needs project-specific semantics the stock FileSensor doesn't give you cheaply — e.g., matching a glob/regex **pattern** (`customers_*.csv`) rather than one exact path, or returning which specific file matched via the `TriggerEvent` payload for downstream tasks. Given the spec's requirement to resolve a *pattern*, expect to actually need a small custom Trigger subclassing the same async-polling shape FileSensor uses, not the stock sensor verbatim — treat FileSensor's source as the reference implementation to copy the shape of. |
-| `gvenzl/oracle-free:23.26.2-faststart` | `container-registry.oracle.com/database/free` (Oracle's own official registry) | Use Oracle's own registry image if there's an organizational policy requiring images be pulled only from Oracle-controlled registries (some enterprises require this for license/support reasons). For a personal local WSL/Docker Desktop project, `gvenzl/oracle-free` is lower friction (no Oracle account/login wall to pull) and is explicitly built from Oracle's own binaries, not reverse-engineered. |
-| `ruff` + `mypy` | `pyrefly` (Meta's newer, faster type checker) or `pyright` | Consider `pyrefly`/`pyright` if CI type-check time on a larger codebase becomes noticeably slow; not a concern at this project's scale (one small package + DAGs + tests). |
-| `uv` | `poetry`, plain `pip` + `venv` | `poetry` if the team has existing poetry tooling/CI muscle memory; plain `pip`/`venv` only for the absolute simplest throwaway scripts — neither offers `uv`'s speed or lockfile-enforced-in-CI story for a project this CI-conscious. |
+| Mount `./generator` read-write into the image, import it as a Python module from a `@task` | `COPY generator/ /opt/airflow/generator/` baked into the Dockerfile at build time | Only if `generator/` were meant to be immutable/versioned independently of the DAG code being iterated on. This repo's own precedent (`airflow/dags` and `configs` are both live-mounted, not `COPY`'d) is bind-mount for anything actively edited during development; `csv-processor` is the one thing that IS `COPY`'d, because it's an installed *package* with a build step (`pip install --no-deps`), not a plain script tree. `generator/` is a script tree like `airflow/dags/`, not a package like `csv-processor` — mount, don't copy. |
+| In-process `@task` calling `generator.generate_csv`'s functions directly (`load_config` + `generate_correlated_datasets` + `write_staged`) | Shell out via `BashOperator`/`subprocess.run(["python", "generator/generate_csv.py", "--correlated"])` | Never, for this repo. `csv_ingest.py`'s `process_csv_task` already establishes the pattern of importing the engine and calling it as a Python function in-process (never shelling to a CLI) — mirroring that here keeps the "thin TaskFlow DAG delegates to a reusable Python engine" philosophy consistent across both DAGs, and gives structured return values (paths, row counts) for XCom instead of parsing subprocess stdout. |
+| Plain synchronous `TriggerDagRunOperator(wait_for_completion=True, deferrable=False)` (poke, not defer) for the three chain-trigger steps | `TriggerDagRunOperator(..., deferrable=True)` | Only after live-verifying deferral behavior in this exact stack. `deferrable=True` on `TriggerDagRunOperator` has multiple still-open upstream issues as of Airflow 3.x (apache/airflow#60049 — defers even when `wait_for_completion=False`; apache/airflow#57756 — deferred mode "stuck" combined with `reset_dag_run`; apache/airflow#38353 — deferred `wait_for_completion` "not working as expected"). This project's LocalExecutor runs a small, hourly-cadence, single-active-DAG-run workload — there is no worker-slot-scarcity problem `deferrable=True` would actually solve here, unlike `FileSensor(deferrable=True)`'s genuine win in `csv_ingest` (which can sit for up to an hour waiting on an external file). Poke (`deferrable=False`, the operator's own default) with a `poke_interval` tuned to the expected sub-minute `csv_ingest`/`report_ready` runtime is simpler and avoids a known-flaky code path. |
 
 ## What NOT to Use
 
 | Avoid | Why | Use Instead |
 |-------|-----|--------------|
-| `cx_Oracle` | Maintenance-mode driver; Oracle itself recommends migrating off it; no new features, no thin mode | `oracledb` (python-oracledb) |
-| Pydantic validation **per CSV row** | Model construction cost per row at 100K+ rows is real overhead, and Pydantic's raise-on-first-invalid-field model fights the spec's "collect invalid rows and continue" requirement — you'd be catching `ValidationError` per row just to extract fields back out again | Plain, fast row-level validation functions (dataclass/TypedDict + explicit type-cast + collect-errors-in-a-list pattern) driven by the same schema the Pydantic `config.json` model already parsed once |
-| Airflow's legacy `/api/v1/...` REST endpoints or Airflow-2-style basic auth examples | Airflow 3's REST API is `/api/v2/...`; v1 documentation/examples floating around from Airflow 2 tutorials will silently 404 or hit the wrong auth flow | `/api/v2/dags/{dag_id}/dagRuns` with Airflow 3's auth manager (token-based `simple_auth_manager` for local dev, or FAB if configured) |
-| One-off `KubernetesPodOperator`/`kpo.py`-style patterns from the reference repo | No Kubernetes in this project at all | Airflow's `@task` TaskFlow decorator running `process_csv()` in-process under LocalExecutor |
-| Docker image tag `latest` for `gvenzl/oracle-free` or for the Airflow image | Non-reproducible builds — "works on my machine today, breaks next week" is explicitly the failure mode PROJECT.md calls out to avoid | Pin explicit tags everywhere: `gvenzl/oracle-free:23.26.2-faststart`, `apache/airflow:3.3.1-python3.12` (or whatever exact Airflow image tag matches the chosen Python) |
-| `chardet` for encoding detection | Slower and less actively maintained than the modern alternative; reference repo already moved on | `charset-normalizer` |
-| Celery/Redis, `CeleryExecutor`, `KubernetesExecutor` | No horizontal scaling need at this project's scale; adds services (broker, workers) with nothing to justify the operational cost | `LocalExecutor` (already pinned in PROJECT.md) |
+| `PythonVirtualenvOperator` (or `ExternalPythonOperator`) to run `generate_csv.py` in an isolated venv because it needs `faker` | Explicitly out of scope per this task's own framing, and unnecessary here — `faker` has zero conflicting transitive requirements with anything already in the image (confirmed: absent from Airflow's own constraints file entirely), so there's no dependency-isolation problem to solve. `PythonVirtualenvOperator` would also require pip/venv-building tooling inside the scheduler/worker container and add real per-task-run latency (venv creation) for a library that installs in seconds at image-build time. | Add `faker==40.37.0` straight to the existing Dockerfile pip-install layer (already the pattern for `oracledb`/`pydantic`/the two providers). |
+| `apt`/`uv`/`poetry`/any other package manager inside `docker/airflow/Dockerfile` | The image already exclusively uses plain `pip install` (base `apache/airflow` image ships pip; the Dockerfile never introduces `uv` or `poetry` even though the rest of the repo uses `uv` for local dev) — introducing a second package manager inside the image for one library breaks that one established convention for no benefit. | Extend the existing `pip install --no-cache-dir ... --constraint ...` line. |
+| A brand-new `apache-airflow-providers-*` package to get "a trigger-and-wait operator" | Already have it — `TriggerDagRunOperator` ships in `apache-airflow-providers-standard`, already pinned at `1.17.0`, already confirmed importable in the built image this session. | `from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator` |
+| Baking `generator/` into the image via `COPY` (like `csv-processor`) | `generator/` is edited alongside DAG code during active development, not a versioned installable package — `COPY`-ing it would require an image rebuild (`make rebuild`) on every generator tweak, unlike every other actively-edited path in this repo (`airflow/dags`, `configs`), which are live bind-mounts. | Bind-mount `./generator:/opt/airflow/generator`, same treatment as `./airflow/dags` and `./configs`. |
+| Writing generated CSVs directly via `output_path()` (skipping `write_staged()`) from inside the new DAG task | Phase 7's own recorded decision: `write_staged()` (staging path + atomic same-filesystem `rename()`) is "the one write path for every production CSV writer" specifically so a file is never visible to a watching `FileSensor` mid-write. The new orchestrator task calling `generate_correlated_datasets()` must still finish by calling `write_staged()` for both datasets, exactly like `generate_csv.py main()`'s own `--correlated` branch does. | Call `write_staged(generated, config, dataset, compress=...)` for both `customers` and `orders`, same as the CLI's own `--correlated` code path. |
 
 ## Stack Patterns by Variant
 
-**If the file-wait needs to match a glob pattern (`customers_*.csv`) and report back which file matched:**
-- Write a small custom `BaseTrigger` (async `run()`, `asyncio.sleep`-based poll loop, `pathlib.Path.glob()` — never a blocking `time.sleep`) that yields a `TriggerEvent` carrying the resolved file path.
-- Because the stock `FileSensor(deferrable=True)` checks one exact `filepath`, not a pattern — copying its *shape* (defer/resume lifecycle, serialization contract) is right; using it unmodified is not enough for this spec's file-pattern requirement.
+**If the new task calls `generator.generate_csv`'s functions directly (recommended):**
+- `from generator.generate_csv import generate_correlated_datasets, write_staged` inside the new
+  `@task` function body (not at DAG-parse top-level, to keep DAG-file import errors isolated the
+  same way `csv_ingest.py` keeps `csv_processor` imports scoped to what's actually needed at parse
+  time — though note `csv_ingest.py` itself imports `csv_processor.engine` at module top-level, so
+  either placement is consistent with existing precedent; prefer top-level for parse-time import
+  error visibility, matching `csv_ingest.py`).
+- Load `customers_config`/`orders_config` via `csv_processor.config.loader.load_config` against
+  `/opt/airflow/configs/datasets/{customers,orders}.json` — the exact same `_common.paths.
+  CONFIGS_ROOT`/`DATASETS_CONFIG_ROOT` constants `csv_ingest.py` already uses, not
+  `generate_csv.py`'s own host-relative `_CONFIGS_DIR` (which happens to resolve to the same place
+  under the recommended mount, but reusing `_common.paths` keeps one source of truth for the
+  container-side path convention rather than two independently-correct-by-coincidence ones).
 
-**If Oracle integration tests need to run in GitHub Actions (not just locally):**
-- Use a `services:` block in the workflow YAML running `gvenzl/oracle-free:23.26.2-faststart` (faststart matters here — a normal Oracle Free boot can eat 2+ minutes of CI time per run) with a `wait-for-it`/healthcheck loop before running `pytest -m oracle`.
-- Because starting Oracle as a docker-compose stack from within the job is more moving parts than a single `services:` container Actions already manages for you.
+**If a future milestone needs the generator to run in a genuinely separate Python environment
+(e.g. a different Faker major version than the DAG code needs):**
+- That's the point at which `PythonVirtualenvOperator`/`ExternalPythonOperator` becomes justified.
+  Not needed now — flagged here only so this isn't re-litigated from scratch later.
 
 ## Version Compatibility
 
 | Package A | Compatible With | Notes |
 |-----------|------------------|-------|
-| `apache-airflow==3.3.1` | Python `>=3.10,!=3.15` (verified via PyPI classifiers: 3.10–3.14 supported) | Target 3.12 — comfortably inside the supported range with the widest wheel/tooling maturity. |
-| `apache-airflow==3.3.1` | `apache-airflow-providers-standard==1.18.0` | Install both explicitly; the provider is not bundled by default in 3.x the way filesystem/bash operators once were treated as "core." |
-| `oracledb==4.0.2` | Python `>=3.9` | No conflict with the 3.12 target. |
-| `pydantic==2.13.4` | Python `>=3.9` | No conflict; also confirm any Airflow-pinned Pydantic version in Airflow's constraints file doesn't collide — Airflow itself depends on Pydantic internally for some Airflow 3 API server models, so resolve `pyproject.toml` against Airflow's official constraints file (see Installation note) rather than letting `uv` freely pick a Pydantic version that Airflow's own server code wasn't tested against. |
-| `clevercsv==0.8.5` | Python `>=3.9.0` | No conflict. |
-| Airflow's Triggerer component | Requires `LocalExecutor` or any executor — Triggerer is a separate always-on service regardless of executor choice | docker-compose must include an `airflow-triggerer` service alongside scheduler/webserver/(local)worker; this is easy to forget when adapting an older Airflow 2 docker-compose example that predates deferrable operators being common. |
+| `faker==40.37.0` | Airflow `3.3.1` / `apache-airflow-providers-standard==1.17.0` (constraints-3.3.1/constraints-3.12.txt) | Confirmed via direct fetch of the pinned constraints file: `faker` has **zero** entry in `constraints-3.3.1/constraints-3.12.txt` (only `PyYAML==6.0.3` appears from the two names checked) — no version conflict is possible via `--constraint`; safe to add to the same constrained `pip install` call as `oracledb`/`pydantic`/the two providers, unlike `chardet`/`charset-normalizer` (which DO appear in that file with different pins than `csv-processor` needs, hence their separate unconstrained call). |
+| `faker==40.37.0` (image) | `faker==40.37.0` (root `pyproject.toml`/`uv.lock`, used by local `make generate` via `uv run`) | Must stay identical, not just "compatible" — this is a determinism requirement (D-14/D-06 style seed-reproducibility), not a looser SemVer-range compatibility question. Any future bump to root `pyproject.toml`'s `faker` pin must be mirrored into the Dockerfile in the same change. |
+| `TriggerDagRunOperator(deferrable=True)` | Airflow `3.3.1` / `apache-airflow-providers-standard==1.17.0` | MEDIUM confidence only — WebSearch-sourced (no Context7/official-docs paragraph found explicitly confirming defer behavior is bug-free at these exact pinned versions); multiple still-open upstream GitHub issues describe deferred-mode `TriggerDagRunOperator` edge cases across Airflow 3.0.x-3.1.x. Recommendation above is to use `deferrable=False` (poke) specifically to sidestep this uncertainty rather than resolve it. |
 
 ## Sources
 
-- Context7 `/apache/airflow` (benchmark score 75.3, High reputation) — REST API v2 dagRuns trigger + conf payload shape, Deferrable Operators & Triggers authoring guide (`airflow-core/docs/authoring-and-scheduling/deferring.rst`), `FileSensor` deferrable mode (`providers/standard/docs/sensors/file.rst`). Confidence: MEDIUM.
-- Context7 `/oracle/python-oracledb` (benchmark score 79.1, High reputation) — `executemany()` + `batcherrors=True` + `getbatcherrors()` pattern, `setinputsizes()`, `batch_size` chunking, thin-mode error semantics (`doc/src/user_guide/batch_statement.md`, `samples/notebooks/3-DML.ipynb`). Confidence: MEDIUM.
-- Context7 `/pydantic/pydantic` (benchmark score 79.9, High reputation) — `model_validate_json`, `ValidationError.errors()` collecting all field errors at once. Confidence: MEDIUM.
-- PyPI JSON API (`pypi.org/pypi/<pkg>/json`), queried live 2026-08-28, for exact current version numbers and `requires_python` classifiers of: `apache-airflow`, `apache-airflow-providers-standard`, `oracledb`, `pydantic`, `pytest`, `ruff`, `mypy`, `uv`, `Faker`, `clevercsv`, `charset-normalizer`. This is the canonical package registry, not a search-engine summary — treat version numbers pulled this way as HIGH confidence even though the generic provider-confidence tiering tool has no dedicated "registry API" bucket for it.
-- Docker Hub API (`hub.docker.com/v2/repositories/gvenzl/oracle-free/tags`), queried live 2026-08-28, for current tag list — confirms `23.26.2` is the latest version tag with `full`/`slim`/`faststart` variants. Confidence: MEDIUM for the tag list itself (Docker Hub API is authoritative for what tags exist), LOW carried over from the web-search-sourced interpretation of what each variant strips/keeps — worth a one-time manual `docker run` sanity check before locking into docker-compose.
-- Web search (WebSearch tool, no Context7/registry entry) — Oracle Database Free image ecosystem overview (gvenzl/oci-oracle-free GitHub, geraldonit.com release-announcement blog posts), and 2026 GitHub Actions Python CI conventions (`astral-sh/setup-uv` immutable-tag policy, `uv sync --locked` + ruff + mypy + pytest pipeline shape). Confidence: LOW — corroborated by a second independent hit each (Docker Hub tag list for Oracle; multiple independent blog/handbook sources converging on the same `uv`+`ruff`+`mypy`+`pytest` shape for CI) but not sourced from an authoritative registry/doc, so treat as directionally correct rather than pinned fact — re-verify `astral-sh/setup-uv`'s exact latest tag at implementation time since action releases move faster than this research's cache TTL.
+- `/home/konutec/projects/lightweight-airflow-etl/pyproject.toml` (root) — confirmed `faker==40.37.0`, confirmed `pyyaml==6.0.3` present but unused by anything this milestone touches
+- `/home/konutec/projects/lightweight-airflow-etl/uv.lock` — confirmed `faker` resolves to `40.37.0` with no version drift from the `pyproject.toml` pin
+- `/home/konutec/projects/lightweight-airflow-etl/docker/airflow/Dockerfile` — existing constrained/unconstrained two-call pip pattern, reused rather than reinvented
+- `/home/konutec/projects/lightweight-airflow-etl/docker-compose.yml` — existing volume mounts (`airflow/dags`, `data`, `configs`) and `PYTHONPATH` convention, extended rather than replaced
+- `/home/konutec/projects/lightweight-airflow-etl/generator/generate_csv.py` — confirmed `_REPO_ROOT`/`_CONFIGS_DIR`/`_DATA_DIR` path arithmetic, confirmed only non-stdlib imports are `faker` and `csv_processor.config`, confirmed `write_staged()`/`generate_correlated_datasets()`/`--correlated` as the functions/entry point to call from the new task
+- `/home/konutec/projects/lightweight-airflow-etl/airflow/dags/csv_ingest.py` — the existing TaskFlow-delegates-to-engine pattern mirrored for the new generate task
+- `/home/konutec/projects/lightweight-airflow-etl/airflow/dags/_common/paths.py` — `DATA_ROOT`/`CONFIGS_ROOT`/`DATASETS_CONFIG_ROOT` constants to reuse instead of duplicating path logic
+- `/home/konutec/projects/lightweight-airflow-etl/packages/csv-processor/src/csv_processor/config/loader.py` — confirmed zero `yaml`/`pyyaml` import
+- `curl https://raw.githubusercontent.com/apache/airflow/constraints-3.3.1/constraints-3.12.txt | grep -i "^faker\|^pyyaml"` — live-fetched, HIGH confidence: `faker` absent, `PyYAML==6.0.3` present
+- [TriggerDagRunOperator API docs (stable)](https://airflow.apache.org/docs/apache-airflow-providers-standard/stable/_api/airflow/providers/standard/operators/trigger_dagrun/index.html) — MEDIUM confidence, constructor signature (`wait_for_completion`, `poke_interval`, `allowed_states`, `failed_states`, `deferrable` defaults) confirmed via WebFetch of the "stable" version, not the pinned `1.17.0` docs snapshot specifically
+- [apache/airflow#60049 — TriggerDagRunOperator defers even when wait_for_completion=False](https://github.com/apache/airflow/issues/60049) — MEDIUM confidence, WebSearch-sourced open issue
+- [apache/airflow#57756 — Deferrable mode of TriggerDagRunOperator stays stuck if used with reset_dag_run](https://github.com/apache/airflow/issues/57756) — MEDIUM confidence, WebSearch-sourced open issue
+- [apache/airflow#38353 — TriggerDagRunOperator not working as expected in defer with wait_for_completion](https://github.com/apache/airflow/issues/38353) — MEDIUM confidence, WebSearch-sourced open issue
+- [apache/airflow#47949 — Support deferral mode for TriggerDagRunOperator with Task SDK](https://github.com/apache/airflow/issues/47949) — MEDIUM confidence, WebSearch-sourced, context on deferral maturity for this operator
 
 ---
-*Stack research for: Local Airflow CSV→Oracle ETL platform*
-*Researched: 2026-08-28*
+*Stack research for: hourly CSV-generation-and-ingestion orchestrator DAG (v1.1 milestone)*
+*Researched: 2026-09-01*
