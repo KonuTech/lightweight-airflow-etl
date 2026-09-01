@@ -189,6 +189,16 @@ services:
     #       data/customers/ and data/orders/ -- mkdir -p the two dataset
     #       subdirs, then chown -R the whole data/ tree to
     #       ${AIRFLOW_UID:-50000}:0, scoped to exactly this one path.
+    #       Also chmod -R 777 (not the tighter 664 used for the passwords
+    #       file above): unlike that file, data/ holds only synthetic CSV
+    #       fixture data (no secrets), and it's a bind mount -- chown/chmod
+    #       here changes HOST-side ownership too. A tighter mode (e.g. 775)
+    #       leaves the HOST user (whatever uid runs `make generate`/pytest
+    #       e2e/`scripts/regenerate_readme_summary.py` locally or in CI)
+    #       without write access unless it happens to share uid 50000 or
+    #       gid 0 -- a real regression caught by Phase 8's own post-merge
+    #       test gate. World-writable is the simplest fix that works for
+    #       both the container AND any host uid.
     # Both repairs are idempotent -- safe to run on every `make up`/`docker
     # compose up`, not just first boot.
     user: "0:0"
@@ -204,6 +214,7 @@ services:
         chmod 664 \"$$PWFILE\";
         mkdir -p /opt/airflow/data/customers /opt/airflow/data/orders;
         chown -R ${AIRFLOW_UID:-50000}:0 /opt/airflow/data;
+        chmod -R 777 /opt/airflow/data;
         exec airflow db migrate
       "
     environment:
