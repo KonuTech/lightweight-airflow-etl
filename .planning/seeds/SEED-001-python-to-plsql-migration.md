@@ -1,6 +1,6 @@
 ---
 id: SEED-001
-status: dormant
+status: declined
 planted: 2026-08-30
 planted_during: Phase 07 (Correlated Customer-Order Business Report)
 trigger_when: a future phase needs data-processing logic that's awkward or slow to express in the Python csv_processor engine, or Oracle-side performance/complexity pressure makes PL/SQL clearly the better fit
@@ -9,6 +9,8 @@ audit_acknowledged:
   milestone: v1.0
   at: 2026-08-30
   status: dormant
+declined_during: v1.1 milestone kickoff (2026-09-01)
+declined_reason: explicit user decision -- will not continue developing this idea
 ---
 
 # SEED-001: Consider moving more data-processing logic from Python to Oracle PL/SQL
@@ -49,3 +51,6 @@ shipped design decision, treat as at least milestone-sized until scoped.
 
 Captured via one-shot seed capture at Phase 7 close, per explicit user choice ("capture only, no
 research or decision now") over exploring it immediately or dropping it.
+
+**Declined 2026-09-01** at v1.1 milestone kickoff: explicit user decision not to continue
+developing this idea. Left in place (not deleted) purely as a record of the decision.

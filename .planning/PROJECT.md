@@ -18,6 +18,22 @@ bulk-loads its valid rows into Oracle, routes invalid rows (with error metadata)
 table, and reports back a clear processing summary — end to end, reproducibly, from a fresh
 `git clone`.
 
+## Current Milestone: v1.1 Hourly Ingestion Automation
+
+**Goal:** Automate the CSV → Oracle pipeline end-to-end on an hourly cadence, with no manual
+`make generate` step.
+
+**Target features:**
+- New `csv_generate_schedule` DAG (`schedule="@hourly"`) that runs the existing
+  `generator/generate_csv.py --correlated` script to produce fresh customers+orders CSVs
+- Chain-triggers `csv_ingest` for customers, then orders, then `report_ready` (all via
+  `TriggerDagRunOperator`, sequential, `wait_for_completion=True`) — `csv_ingest` and
+  `report_ready` themselves are unmodified, still independently triggerable
+- Supporting environment fixes: mount `generator/` + add `faker` to the Airflow image; fix
+  `data/` directory permissions so the container (`uid 50000:gid 0`) can write generated CSVs
+- Robustness fix: exception handling around `OraclePartitionReadyTrigger.run()`'s Oracle polling
+  loop (Phase 7 code-review Critical finding)
+
 ## Requirements
 
 ### Validated
@@ -110,7 +126,10 @@ table, and reports back a clear processing summary — end to end, reproducibly,
       crashes the deferred sensor permanently, with no retry/backoff. Flagged as a code-review
       Critical finding (07-REVIEW.md CR-01); did not block Phase 7 completion since the sensor's
       happy-path defer/poll/fire behavior is live-proven, but is a real production-shaped
-      robustness gap worth a follow-up fix.
+      robustness gap worth a follow-up fix. **In scope for v1.1.**
+- [ ] New `csv_generate_schedule` DAG regenerates customers/orders CSVs hourly and chain-triggers
+      `csv_ingest` (both datasets) then `report_ready`, so the full pipeline runs unattended once
+      per hour with no manual `make generate` step — v1.1
 
 ### Out of Scope
 
@@ -257,13 +276,10 @@ PAT — see Key Decisions) enforces this on every change.
 
 ### Next Milestone Goals
 
-No v2 scope has been chosen yet. Two seeds are on file for when a next milestone is planned:
-- `SEED-001-python-to-plsql-migration` — moving more data-processing logic from Python to Oracle
-  PL/SQL, dormant until a concrete performance/complexity trigger appears
-- The Airflow UI/logging robustness gap flagged in Phase 7's code review (`OraclePartitionReadyTrigger`
-  has no retry/backoff around its Oracle polling calls) remains open as a known gap, not yet scoped
-
-Run `/gsd-new-milestone` to start requirements gathering for v1.1/v2.0.
+v1.1 (Hourly Ingestion Automation) is now underway — see "Current Milestone" above. Both items
+previously flagged here are resolved: `SEED-001-python-to-plsql-migration` was explicitly declined
+(2026-09-01 — see the seed file's `status: declined`), and the `OraclePartitionReadyTrigger`
+exception-handling gap is now in v1.1's scope.
 
 ## Evolution
 
@@ -283,4 +299,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-30 after v1.0 milestone completion — all 7 phases shipped, archived, and tagged*
+*Last updated: 2026-09-01 after starting v1.1 milestone (Hourly Ingestion Automation)*
