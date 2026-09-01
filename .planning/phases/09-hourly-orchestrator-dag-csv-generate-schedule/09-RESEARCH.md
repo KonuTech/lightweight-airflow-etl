@@ -757,9 +757,9 @@ without failing the DagRun if cleanup itself fails.`
 **If empty:** N/A — see table above; three assumptions logged, all low-risk and already covered by
 the phase description's own mandated live-verification step.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Exact behavior of `apache-airflow-task-sdk` inside this project's own actual built image**
+1. **RESOLVED — non-blocking, operationalized as Plan 09-04's live-verification task.** Exact behavior of `apache-airflow-task-sdk` inside this project's own actual built image
    - What we know: The pinned provider (`apache-airflow-providers-standard==1.17.0`) source was read
      directly from the actual downloaded wheel — HIGH confidence, exact match. The task-sdk
      implementation of `_handle_trigger_dag_run()` was read from a *sibling* checkout
@@ -774,7 +774,7 @@ the phase description's own mandated live-verification step.
      correctly and the chain completes) as part of this phase's own acceptance criteria, exactly as
      already instructed at the phase-description level.
 
-2. **`poke_interval` exact value for the three trigger tasks**
+2. **RESOLVED — adopted verbatim in Plan 09-02.** `poke_interval` exact value for the three trigger tasks
    - What we know: CONTEXT.md leaves this to Claude's Discretion, suggesting consistency with
      `FileSensor`'s existing `poke_interval=10`.
    - What's unclear: Nothing technical — this is a pure style/consistency choice with no functional
