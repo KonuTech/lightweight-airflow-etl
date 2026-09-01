@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir \
       "pydantic==2.13.4" \
       "apache-airflow-providers-standard==1.17.0" \
       "apache-airflow-providers-oracle==4.6.2" \
+      "faker==40.37.0" \
     --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-3.3.1/constraints-3.12.txt" \
  && pip install --no-cache-dir \
       "clevercsv==0.8.5" \
