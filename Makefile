@@ -1,4 +1,4 @@
-.PHONY: up down reset destroy rebuild logs verify smoke-test generate fixtures fixtures-verify verify-phase2 verify-phase3 verify-phase4 verify-phase5 benchmark lint verify-evidence verify-phase6 verify-phase7 verify-phase8
+.PHONY: up down reset destroy rebuild logs verify smoke-test generate fixtures fixtures-verify verify-phase2 verify-phase3 verify-phase4 verify-phase5 benchmark lint verify-evidence verify-phase6 verify-phase7 verify-phase8 verify-phase9
 
 up:               ## Start the full stack (Airflow + Oracle)
 	docker compose up -d --wait
@@ -115,3 +115,24 @@ verify-phase7:     ## Phase 7's own combined local gate: unit + e2e + integratio
 # ENV-01/ENV-02), requires `make up` first.
 verify-phase8:     ## Phase 8's own combined local gate: container-exec import + data write-access checks (requires `make up` first)
 	uv run python scripts/verify_environment.py
+
+# Phase 9's own combined local gate -- mirrors verify-phase5's exact BundleDagBag shape,
+# swapped to csv_generate_schedule's own task_ids/Param defaults, plus the extra
+# max_active_runs/deferrable/fail_when_dag_is_paused/Param-default assertions SCHED-04/
+# SCHED-05/SCHED-08 need. Requires `make up` first, same as verify-phase5/verify-phase8.
+verify-phase9:     ## Phase 9's own combined local gate: unit suite + live DagBag structure check (requires `make up` first)
+	uv run pytest tests/unit/ -x
+	docker compose exec -T airflow-scheduler python -c "\
+from pathlib import Path; \
+from airflow.dag_processing.dagbag import BundleDagBag; \
+b = BundleDagBag(bundle_path=Path('/opt/airflow/dags'), dag_folder='/opt/airflow/dags'); \
+assert not b.import_errors, b.import_errors; \
+dag = b.dags['csv_generate_schedule']; \
+required = {'generate_task','trigger_customers','trigger_orders','trigger_report_ready','summary_task','retention_task'}; \
+assert required.issubset(set(dag.task_ids)), dag.task_ids; \
+assert dag.max_active_runs == 1, dag.max_active_runs; \
+assert dag.get_task('trigger_customers').deferrable is True; \
+assert dag.get_task('trigger_customers').fail_when_dag_is_paused is True; \
+assert dag.params['rows'] == 100, dag.params['rows']; \
+assert dag.params['invalid_ratio'] == 0.1, dag.params['invalid_ratio']; \
+print('DAGBAG_OK')"
