@@ -89,7 +89,12 @@ x-airflow-common: &airflow-common
     # OraclePartitionReadyTrigger fails immediately with
     # `ModuleNotFoundError: No module named '_common'`, observed live in
     # airflow-triggerer's own logs.
-    PYTHONPATH: "/opt/airflow/dags"
+    # Phase 8's own extension (ENV-01): appends /opt/airflow so `from
+    # generator.generate_csv import main` resolves from any task/exec context --
+    # /opt/airflow/generator (mounted below) is the actual generator/ package
+    # root, and Python needs its PARENT on PYTHONPATH for `generator.` to import
+    # as a package.
+    PYTHONPATH: "/opt/airflow/dags:/opt/airflow"
   user: "${AIRFLOW_UID:-50000}:0"
   volumes:
     - ./docker/airflow/simple_auth_manager_passwords.json.generated:/opt/airflow/simple_auth_manager_passwords.json.generated
@@ -101,6 +106,10 @@ x-airflow-common: &airflow-common
     # containers at all, so load_config_task could never read
     # /opt/airflow/configs/datasets/<dataset>.json without this.
     - ./configs:/opt/airflow/configs:ro
+    # Phase 8 (ENV-01): mounts the CLI generator so Phase 9's csv_generate_schedule
+    # DAG can `from generator.generate_csv import main` and run it in-process --
+    # read-only, since no Airflow task ever needs to write back into this package.
+    - ./generator:/opt/airflow/generator:ro
     # Debug session airflow-ui-logs-not-visible's own newly-discovered gap (found via a real
     # live UI log-fetch failure -- no prior phase ever recreated an Airflow container after a
     # task had already run, so this was never exercised before): without a shared log volume,
@@ -159,10 +168,44 @@ services:
 
   airflow-init:
     <<: *airflow-common
+    # Phase 8 (ENV-02/ENV-03, D-04/D-05): root override, this service only --
+    # every other service keeps the anchor's non-root user: "${AIRFLOW_UID:-50000}:0".
+    # Root is required to repair two bind-mount gotchas before any non-root
+    # service starts, gated by the depends_on: service_completed_successfully
+    # chain below on x-airflow-common:
+    #   (1) simple_auth_manager_passwords.json.generated getting auto-created as
+    #       a directory instead of a file (Docker's bind-mount-missing-path
+    #       auto-create behavior, already hit once per 05-02-SUMMARY.md) --
+    #       repaired via rmdir (safe: only succeeds on the empty directory
+    #       Docker's auto-create produces, never a destructive rm -rf), then
+    #       seeded with {"admin": "admin"} ONLY if still missing after that (an
+    #       unconditional overwrite would silently reset a real
+    #       already-generated/edited password on every restart -- see
+    #       SimpleAuthManager Password-File Semantics, 08-RESEARCH.md), then
+    #       chown+chmod 664 (tightest mode that still grants uid 50000
+    #       read/write; this stack is already 127.0.0.1-bound local-dev-only).
+    #   (2) data/ needing genuine write access (not just read) so
+    #       container-side CSV generation (Phase 9) can create files under
+    #       data/customers/ and data/orders/ -- mkdir -p the two dataset
+    #       subdirs, then chown -R the whole data/ tree to
+    #       ${AIRFLOW_UID:-50000}:0, scoped to exactly this one path.
+    # Both repairs are idempotent -- safe to run on every `make up`/`docker
+    # compose up`, not just first boot.
+    user: "0:0"
     depends_on:
       postgres:
         condition: service_healthy
-    command: db migrate
+    command: >
+      bash -c "
+        PWFILE=/opt/airflow/simple_auth_manager_passwords.json.generated;
+        if [ -d \"$$PWFILE\" ]; then rmdir \"$$PWFILE\"; fi;
+        if [ ! -f \"$$PWFILE\" ]; then echo '{\"admin\": \"admin\"}' > \"$$PWFILE\"; fi;
+        chown ${AIRFLOW_UID:-50000}:0 \"$$PWFILE\";
+        chmod 664 \"$$PWFILE\";
+        mkdir -p /opt/airflow/data/customers /opt/airflow/data/orders;
+        chown -R ${AIRFLOW_UID:-50000}:0 /opt/airflow/data;
+        exec airflow db migrate
+      "
     environment:
       <<: *airflow-common-env
 
