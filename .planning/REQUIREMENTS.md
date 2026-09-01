@@ -20,6 +20,11 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [ ] **ENV-02**: The Airflow container can write generated CSVs into `data/<dataset>/` on a
       genuinely fresh clone — `data/` gets a write-capable permission fix via a compose-level
       `airflow-init` chown step, not a manual host-side fix
+- [ ] **ENV-03** (added during Phase 8 planning, D-04 bundled scope addition): The
+      `docker/airflow/simple_auth_manager_passwords.json.generated` bind-mount-becomes-directory
+      gotcha is repaired proactively by the same compose-level `airflow-init` root-user mechanism
+      as ENV-02 — idempotently, on every `docker compose up`, not left as a documented manual
+      `chmod 666` step
 
 ### Scheduling / Orchestrator DAG (SCHED)
 
@@ -82,6 +87,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | ENV-01 | Phase 8 | Pending |
 | ENV-02 | Phase 8 | Pending |
+| ENV-03 | Phase 8 | Pending |
 | SCHED-01 | Phase 9 | Pending |
 | SCHED-02 | Phase 9 | Pending |
 | SCHED-03 | Phase 9 | Pending |
@@ -93,8 +99,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ROBUST-01 | Phase 10 | Pending |
 
 **Coverage:**
-- v1.1 requirements: 11 total
-- Mapped to phases: 11
+- v1.1 requirements: 12 total (11 original + ENV-03 added during Phase 8 planning per CONTEXT.md
+  D-04's user-approved bundled scope addition)
+- Mapped to phases: 12
 - Unmapped: 0 ✓
 
 ---
