@@ -67,8 +67,7 @@ Plans:
 **Goal**: The full CSV → Oracle pipeline runs unattended once per hour — no manual `make generate`
 step, no changes to `csv_ingest.py`/`report_ready.py`.
 **Depends on**: Phase 8
-**Requirements**: SCHED-01, SCHED-02, SCHED-03, SCHED-04, SCHED-05, SCHED-06, SCHED-07, SCHED-08,
-SCHED-10
+**Requirements**: SCHED-01, SCHED-02, SCHED-03, SCHED-04, SCHED-05, SCHED-06, SCHED-07, SCHED-08, SCHED-10
 **Success Criteria** (what must be TRUE):
   1. The `csv_generate_schedule` DAG is scheduled `@hourly` with `catchup=False` and, once
      unpaused, produces a new automatic DagRun every hour with no manual `make generate` step
