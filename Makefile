@@ -1,4 +1,4 @@
-.PHONY: up down reset logs verify smoke-test generate fixtures fixtures-verify verify-phase2 verify-phase3 verify-phase4 verify-phase5 benchmark lint verify-evidence verify-phase6 verify-phase7
+.PHONY: up down reset destroy rebuild logs verify smoke-test generate fixtures fixtures-verify verify-phase2 verify-phase3 verify-phase4 verify-phase5 benchmark lint verify-evidence verify-phase6 verify-phase7 verify-phase8
 
 up:               ## Start the full stack (Airflow + Oracle)
 	docker compose up -d --wait
@@ -8,6 +8,13 @@ down:              ## Stop containers only -- named volumes (D-13) stay intact
 
 reset:             ## Full wipe: stop containers AND remove volumes (D-15)
 	docker compose down -v
+
+destroy:           ## Deepest teardown: reset (D-15) PLUS remove locally-built images and orphan containers
+	docker compose down -v --rmi local --remove-orphans
+
+rebuild:           ## Rebuild locally-built images from scratch (no cache), then start the stack fresh
+	docker compose build --no-cache
+	$(MAKE) up
 
 logs:              ## Tail logs from every service
 	docker compose logs -f
@@ -101,3 +108,10 @@ verify-phase7:     ## Phase 7's own combined local gate: unit + e2e + integratio
 	uv run pytest tests/integration/ -x
 	$(MAKE) lint
 	$(MAKE) verify-evidence
+
+# Phase 8 introduces no new pytest-testable logic (compose/Dockerfile/docs wiring
+# only, per 08-RESEARCH.md) -- verify-phase8 is a thin wrapper around the now-extended
+# scripts/verify_environment.py (verify_generator_importable()/verify_data_write_access(),
+# ENV-01/ENV-02), requires `make up` first.
+verify-phase8:     ## Phase 8's own combined local gate: container-exec import + data write-access checks (requires `make up` first)
+	uv run python scripts/verify_environment.py

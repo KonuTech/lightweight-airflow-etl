@@ -95,9 +95,28 @@ x-airflow-common: &airflow-common
     # root, and Python needs its PARENT on PYTHONPATH for `generator.` to import
     # as a package.
     PYTHONPATH: "/opt/airflow/dags:/opt/airflow"
+    # Phase 8 gap-closure (live-reproduced during 08-02's own fresh-clone proof,
+    # see docker-compose.yml's airflow-init comment below for the full story):
+    # points SimpleAuthManager at a path INSIDE the always-existing, git-tracked
+    # ./docker/airflow/secrets/ mount instead of Airflow's own default
+    # (AIRFLOW_HOME/simple_auth_manager_passwords.json.generated, which used to be
+    # bind-mounted directly as a single file).
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE: "/opt/airflow/secrets/simple_auth_manager_passwords.json.generated"
   user: "${AIRFLOW_UID:-50000}:0"
   volumes:
-    - ./docker/airflow/simple_auth_manager_passwords.json.generated:/opt/airflow/simple_auth_manager_passwords.json.generated
+    # Phase 8 gap-closure: mounts the DIRECTORY (always exists in git via
+    # docker/airflow/secrets/.gitkeep), not the passwords file itself, directly.
+    # A single-file bind mount of a host path that doesn't exist yet makes Docker
+    # auto-create the host side AS A DIRECTORY, and that directory then becomes a
+    # busy mountpoint inside every container that shares this same mount -- `rmdir`
+    # from inside airflow-init (the original Plan 08-01 fix) fails with
+    # "Device or resource busy" against a live mountpoint, live-reproduced during
+    # this plan's own genuine fresh-clone proof (rm -f the old file + make destroy
+    # + make up). Mounting the parent directory instead sidesteps the whole bug
+    # class: a missing directory auto-creates fine AS a directory (which is what we
+    # want here), and the passwords file living inside it is a plain, non-mountpoint
+    # file that airflow-init can freely create/chown/chmod.
+    - ./docker/airflow/secrets:/opt/airflow/secrets
     - ./airflow/dags:/opt/airflow/dags
     # D-06: generate_csv.py writes to ./data/<dataset>/ on the host; mounted here
     # so Phase 5's DAG can read the same files from inside the container.
@@ -170,20 +189,29 @@ services:
     <<: *airflow-common
     # Phase 8 (ENV-02/ENV-03, D-04/D-05): root override, this service only --
     # every other service keeps the anchor's non-root user: "${AIRFLOW_UID:-50000}:0".
-    # Root is required to repair two bind-mount gotchas before any non-root
-    # service starts, gated by the depends_on: service_completed_successfully
-    # chain below on x-airflow-common:
+    # Root is required to repair a bind-mount gotcha and provision data/ before
+    # any non-root service starts, gated by the depends_on:
+    # service_completed_successfully chain below on x-airflow-common:
     #   (1) simple_auth_manager_passwords.json.generated getting auto-created as
     #       a directory instead of a file (Docker's bind-mount-missing-path
-    #       auto-create behavior, already hit once per 05-02-SUMMARY.md) --
-    #       repaired via rmdir (safe: only succeeds on the empty directory
-    #       Docker's auto-create produces, never a destructive rm -rf), then
-    #       seeded with {"admin": "admin"} ONLY if still missing after that (an
-    #       unconditional overwrite would silently reset a real
-    #       already-generated/edited password on every restart -- see
-    #       SimpleAuthManager Password-File Semantics, 08-RESEARCH.md), then
-    #       chown+chmod 664 (tightest mode that still grants uid 50000
-    #       read/write; this stack is already 127.0.0.1-bound local-dev-only).
+    #       auto-create behavior, already hit once per 05-02-SUMMARY.md).
+    #       Plan 08-01's original fix (rmdir the auto-created directory from
+    #       inside airflow-init) turned out NOT to work: live-reproduced during
+    #       Plan 08-02's own genuine fresh-clone proof, `rmdir` fails with
+    #       "Device or resource busy" because the auto-created directory is
+    #       itself a live bind-mount target inside airflow-init's own mount
+    #       namespace -- you cannot rmdir a busy mountpoint from inside the very
+    #       container it's mounted into. Fixed instead by mounting the PARENT
+    #       directory (./docker/airflow/secrets/, always exists in git via its
+    #       .gitkeep) rather than the single file directly (see
+    #       x-airflow-common.volumes above) -- the file itself is then just a
+    #       plain, non-mountpoint file this step can freely create/chown/chmod.
+    #       Seeded with {"admin": "admin"} ONLY if missing (an unconditional
+    #       overwrite would silently reset a real already-generated/edited
+    #       password on every restart -- see SimpleAuthManager Password-File
+    #       Semantics, 08-RESEARCH.md), then chown+chmod 664 (tightest mode that
+    #       still grants uid 50000 read/write; this stack is already
+    #       127.0.0.1-bound local-dev-only).
     #   (2) data/ needing genuine write access (not just read) so
     #       container-side CSV generation (Phase 9) can create files under
     #       data/customers/ and data/orders/ -- mkdir -p the two dataset
@@ -207,8 +235,7 @@ services:
         condition: service_healthy
     command: >
       bash -c "
-        PWFILE=/opt/airflow/simple_auth_manager_passwords.json.generated;
-        if [ -d \"$$PWFILE\" ]; then rmdir \"$$PWFILE\"; fi;
+        PWFILE=/opt/airflow/secrets/simple_auth_manager_passwords.json.generated;
         if [ ! -f \"$$PWFILE\" ]; then echo '{\"admin\": \"admin\"}' > \"$$PWFILE\"; fi;
         chown ${AIRFLOW_UID:-50000}:0 \"$$PWFILE\";
         chmod 664 \"$$PWFILE\";

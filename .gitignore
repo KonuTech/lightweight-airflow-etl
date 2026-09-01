@@ -1,5 +1,8 @@
 .env
-docker/airflow/simple_auth_manager_passwords.json.generated
+# Phase 8 gap-closure: the passwords file now lives inside the git-tracked
+# docker/airflow/secrets/ directory (see .gitkeep there) instead of being bind-
+# mounted directly by itself -- ignore only the generated file, not the directory.
+docker/airflow/secrets/simple_auth_manager_passwords.json.generated
 .venv/
 __pycache__/
 *.pyc
