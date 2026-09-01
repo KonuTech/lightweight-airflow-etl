@@ -29,7 +29,7 @@ Retrospective: `.planning/RETROSPECTIVE.md`
 **Milestone Goal:** Automate the CSV → Oracle pipeline end-to-end on an hourly cadence, with no
 manual `make generate` step.
 
-- [ ] **Phase 8: Environment & Docker Fixes for Container-Side Generation** - The Airflow container
+- [x] **Phase 8: Environment & Docker Fixes for Container-Side Generation** - The Airflow container (completed 2026-09-01)
       can import the generator and faker, and can write generated CSVs into `data/<dataset>/` on a
       genuinely fresh clone
 - [ ] **Phase 9: Hourly Orchestrator DAG (`csv_generate_schedule`)** - A new hourly DAG generates
@@ -60,7 +60,7 @@ to `data/<dataset>/`, proven independently before any DAG code depends on it.
 Plans:
 - [x] 08-01-PLAN.md — Docker environment foundation: generator/ mount + PYTHONPATH extension +
       faker==40.37.0 + airflow-init combined repair (data/ chown + passwords-file bind-mount fix)
-- [ ] 08-02-PLAN.md — Permanent verification (verify-phase8) + fresh-clone/idempotency proof +
+- [x] 08-02-PLAN.md — Permanent verification (verify-phase8) + fresh-clone/idempotency proof +
       docs/environment.md clean-state rewrite
 
 ### Phase 9: Hourly Orchestrator DAG (`csv_generate_schedule`)
@@ -135,7 +135,7 @@ Phases execute in numeric order: 8 → 9 → 10
 | 5. Airflow DAG Wiring & Deferrable File Wait | v1.0 | 2/2 | Complete | 2026-08-29 |
 | 6. End-to-End Verification, Benchmark, CI & Docs | v1.0 | 5/5 | Complete | 2026-08-30 |
 | 7. Correlated Customer-Order Business Report | v1.0 | 6/6 | Complete | 2026-08-30 |
-| 8. Environment & Docker Fixes for Container-Side Generation | v1.1 | 1/2 | In Progress|  |
+| 8. Environment & Docker Fixes for Container-Side Generation | v1.1 | 2/2 | Complete   | 2026-09-01 |
 | 9. Hourly Orchestrator DAG (`csv_generate_schedule`) | v1.1 | 0/TBD | Not started | - |
 | 10. `OraclePartitionReadyTrigger` Robustness Fix | v1.1 | 0/TBD | Not started | - |
 </content>
