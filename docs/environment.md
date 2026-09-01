@@ -135,50 +135,28 @@ working for your setup, find the WSL2 interface IP from Windows with `wsl hostna
 Windows terminal) and connect to that IP + port directly, rather than widening the docker-compose
 bind to `0.0.0.0`.
 
+## Generator Container Mount
+
+`./generator` is mounted **read-only** at `/opt/airflow/generator` in every Airflow container, and
+`PYTHONPATH` is extended to `/opt/airflow/dags:/opt/airflow` (alongside the existing DAGs-folder
+entry) so any Airflow task or `docker compose exec` context can `from generator.generate_csv import
+main` and run it **in-process**, without shelling out to a subprocess. `faker` — the only
+non-stdlib dependency `generate_csv.py` needs beyond the already-installed `csv_processor.config`
+— is installed in the image at the exact version pinned in the root `uv.lock`. This is what Phase
+9's `csv_generate_schedule` DAG uses to regenerate customers/orders CSVs on an hourly schedule
+without a manual `make generate` step.
+
 ## First-Clone Setup Gaps
 
-A genuinely fresh `git clone` needs two files created manually before `make up` — neither is
-generated automatically yet:
+A genuinely fresh `git clone` needs one file created manually before `make up` — not generated
+automatically yet:
 
 1. **`.env`** — `cp .env.example .env` (D-09). Placeholder `admin`/`admin` values are already
    correct for local dev; no editing required unless you want different credentials.
-2. **`docker/airflow/simple_auth_manager_passwords.json.generated`** — this file is gitignored (same
-   discipline as `.env`, even though it's a throwaway local-dev value) and has **no `.example`
-   template**. Create it manually before first boot:
-   ```bash
-   mkdir -p docker/airflow
-   echo '{"admin": "admin"}' > docker/airflow/simple_auth_manager_passwords.json.generated
-   ```
-   Without this file, `simple_auth_manager` falls back to auto-generating a random password and
-   printing it to the `airflow-apiserver` container logs — the container still boots fine, so
-   there's no obvious error, but `admin`/`admin` won't authenticate against `POST /auth/token` and
-   INFRA-03's single-credential-pair requirement silently breaks.
 
-## Known First-Boot Gotcha: Permission Error on the Passwords File
-
-On first boot, the `airflow-apiserver` service may crash with a `PermissionError` when trying to
-read/write `simple_auth_manager_passwords.json.generated`. This happens when the bind-mounted
-file's host-side permissions don't allow the container's `airflow` user (uid 50000) to read it —
-typically because the file was just created by the host user with restrictive default permissions,
-and WSL2's bind-mount UID mapping doesn't line up.
-
-**Fix:** `chmod 666 docker/airflow/simple_auth_manager_passwords.json.generated`, then re-run `make
-up` (or `docker compose up -d --wait`). This is safe for a throwaway local-dev credential file that
-is already gitignored and never leaves your machine.
-
-## Known First-Boot Gotcha: Permission Error Creating `data/<dataset>/`
-
-On a genuinely fresh checkout, `docker-compose.yml`'s `./data:/opt/airflow/data` bind mount does
-not exist on the host yet — Docker Engine auto-creates it as `root` the first time a container
-starts. Any host-side process that isn't root (your own shell, `make benchmark`, or the e2e/evidence
-test suites) then gets `PermissionError` trying to create a dataset subdirectory inside it
-(`data/customers`, `data/orders`) that doesn't exist yet — confirmed live on a CI runner in
-Phase 6's own PR (`PermissionError: [Errno 13] Permission denied: '.../data/customers'`).
-
-**Fix:** `mkdir -p data/customers data/orders` **before** the first `docker compose up`, so the
-directories already exist with your own user's ownership before Docker ever touches the mount.
-`.github/workflows/ci.yml` and `readme-summary.yml` do this automatically; a local fresh clone
-needs it done manually once.
+Everything else `make up` needs — the `docker/airflow/secrets/` mount, the `simple_auth_manager`
+passwords file living inside it, and `data/`'s write permissions — is provisioned automatically by
+the `airflow-init` service on every boot; nothing else needs manual setup.
 
 ## Verifying the Stack
 
