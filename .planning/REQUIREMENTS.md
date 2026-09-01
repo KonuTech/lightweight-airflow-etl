@@ -13,14 +13,14 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Environment (ENV)
 
-- [ ] **ENV-01**: `generator/generate_csv.py` runs inside the Airflow container — mounted at
+- [x] **ENV-01**: `generator/generate_csv.py` runs inside the Airflow container — mounted at
       `/opt/airflow/generator`, importable via an extended `PYTHONPATH`, with `faker==40.37.0`
       installed in the image (exact match to the version already pinned in root
       `pyproject.toml`/`uv.lock`)
-- [ ] **ENV-02**: The Airflow container can write generated CSVs into `data/<dataset>/` on a
+- [x] **ENV-02**: The Airflow container can write generated CSVs into `data/<dataset>/` on a
       genuinely fresh clone — `data/` gets a write-capable permission fix via a compose-level
       `airflow-init` chown step, not a manual host-side fix
-- [ ] **ENV-03** (added during Phase 8 planning, D-04 bundled scope addition): The
+- [x] **ENV-03** (added during Phase 8 planning, D-04 bundled scope addition): The
       `docker/airflow/simple_auth_manager_passwords.json.generated` bind-mount-becomes-directory
       gotcha is repaired proactively by the same compose-level `airflow-init` root-user mechanism
       as ENV-02 — idempotently, on every `docker compose up`, not left as a documented manual
@@ -85,9 +85,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ENV-01 | Phase 8 | Pending |
-| ENV-02 | Phase 8 | Pending |
-| ENV-03 | Phase 8 | Pending |
+| ENV-01 | Phase 8 | Complete |
+| ENV-02 | Phase 8 | Complete |
+| ENV-03 | Phase 8 | Complete |
 | SCHED-01 | Phase 9 | Pending |
 | SCHED-02 | Phase 9 | Pending |
 | SCHED-03 | Phase 9 | Pending |

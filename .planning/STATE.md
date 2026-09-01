@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Hourly Ingestion Automation
 status: executing
-stopped_at: Phase 8 context gathered
-last_updated: "2026-09-01T16:44:59.686Z"
-last_activity: 2026-09-01 -- Phase 8 planning complete
+stopped_at: Completed 08-01-PLAN.md
+last_updated: "2026-09-01T16:59:14.062Z"
+last_activity: 2026-09-01
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 2
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -28,12 +28,12 @@ from a fresh `git clone`.
 
 ## Current Position
 
-Phase: 8 of 10 (Environment & Docker Fixes for Container-Side Generation)
-Plan: — (not yet planned)
+Phase: 8 (Environment & Docker Fixes for Container-Side Generation) — EXECUTING
+Plan: 2 of 2
 Status: Ready to execute
-Last activity: 2026-09-01 -- Phase 8 planning complete
+Last activity: 2026-09-01
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: N/A (v1.1 not yet executed)
 
 *Updated after each plan completion*
+| Phase 08 P01 | 25 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -79,6 +80,9 @@ Recent decisions affecting current work:
 - REQUIREMENTS.md: SCHED-09 (FileSensor timeout == hourly schedule period tightness) deferred to
   Future Requirements — fixing it would require modifying `csv_ingest.py`, which SCHED-06 requires
   to stay unmodified this milestone.
+
+- [Phase 08]: airflow-init repair order: passwords-file repair (rmdir-if-dir, seed-only-if-missing, chown+chmod 664) before data/ mkdir+chown-R, before exec airflow db migrate last
+- [Phase 08]: faker==40.37.0 joins the FIRST (constrained) pip install call in the Dockerfile, not the second unconstrained clevercsv/charset-normalizer/chardet call -- confirmed zero entry in Airflow's constraints-3.3.1/constraints-3.12.txt
 
 ### Pending Todos
 
@@ -108,8 +112,8 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-01T16:14:54.082Z
-Stopped at: Phase 8 context gathered
+Last session: 2026-09-01T16:59:13.989Z
+Stopped at: Completed 08-01-PLAN.md
 requirements mapped across Phases 8-10, awaiting user approval to proceed to `/gsd:plan-phase 8`
-Resume file: .planning/phases/08-environment-docker-fixes-for-container-side-generation/08-CONTEXT.md
+Resume file: None
 </content>
