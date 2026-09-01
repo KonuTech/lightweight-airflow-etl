@@ -94,23 +94,50 @@ def csv_generate_schedule() -> None:
         rows = ctx["params"]["rows"]
         invalid_ratio = ctx["params"]["invalid_ratio"]
 
-        subprocess.run(
-            [
-                sys.executable,
-                "/opt/airflow/generator/generate_csv.py",
-                "--correlated",
-                "--rows",
-                str(rows),
-                "--invalid-ratio",
-                str(invalid_ratio),
-                "--seed",
-                str(seed),
-                "--compress",
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        try:
+            subprocess.run(
+                [
+                    sys.executable,
+                    "/opt/airflow/generator/generate_csv.py",
+                    "--correlated",
+                    "--rows",
+                    str(rows),
+                    "--invalid-ratio",
+                    str(invalid_ratio),
+                    "--seed",
+                    str(seed),
+                    "--compress",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                # A few minutes, well under the DAG's 45-minute dagrun_timeout
+                # (WR-02) -- bounds a hung generate_csv.py deterministically
+                # rather than relying on DAG-level bookkeeping to eventually
+                # notice and terminate an orphaned child OS process.
+                timeout=300,
+            )
+        except subprocess.CalledProcessError as exc:
+            # WR-01: CalledProcessError.__str__() only prints the command and
+            # return code -- it drops exc.stdout/exc.stderr, which is where
+            # generate_csv.py's own error message actually lives. Log both
+            # explicitly before re-raising so the task log has enough
+            # information to diagnose the failure.
+            logging.getLogger("airflow.task").error(
+                "generate_csv.py failed (exit %s):\nstdout:\n%s\nstderr:\n%s",
+                exc.returncode,
+                exc.stdout,
+                exc.stderr,
+            )
+            raise
+        except subprocess.TimeoutExpired as exc:
+            logging.getLogger("airflow.task").error(
+                "generate_csv.py timed out after %ss:\nstdout:\n%s\nstderr:\n%s",
+                exc.timeout,
+                exc.stdout,
+                exc.stderr,
+            )
+            raise
 
     trigger_customers = TriggerDagRunOperator(
         task_id="trigger_customers",
