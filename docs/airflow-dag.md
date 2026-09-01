@@ -209,16 +209,23 @@ generate_task -> trigger_customers -> trigger_orders -> trigger_report_ready -> 
   the same DagRun's `logical_date`.
 - `trigger_customers` — a `TriggerDagRunOperator(trigger_dag_id="csv_ingest", conf={"dataset":
   "customers", ...})`. Uses a deterministic `trigger_run_id` (`{{ dag_run.run_id }}__customers`,
-  D-06), `skip_when_already_exists=True` (D-07) so a retry never double-triggers the same cascade
-  run, and `deferrable=True` (D-08) so the wait releases its worker slot to the triggerer instead
-  of blocking one, matching this project's existing "defer, never block" convention.
+  D-06), `skip_when_already_exists=True` **and** `reset_dag_run=True` (D-07, corrected) so a
+  manual retry actually clears and re-runs the existing child DagRun for that `trigger_run_id`
+  instead of blindly skipping it — `skip_when_already_exists` alone is state-blind (it only checks
+  whether a DagRun exists, not whether it succeeded), so without `reset_dag_run=True` a retry after
+  a genuinely FAILED child run would silently resolve to `skipped`, masking that hour's real
+  ingestion failure as a cascading "success". `reset_dag_run=True` makes retrying an
+  already-succeeded run a safe no-op (this project's checksum-keyed idempotency already tolerates
+  re-ingesting the same data) and retrying a failed one a correct re-attempt. Also sets
+  `deferrable=True` (D-08) so the wait releases its worker slot to the triggerer instead of
+  blocking one, matching this project's existing "defer, never block" convention.
 - `trigger_orders` — identical shape to `trigger_customers`, targeting the `orders` dataset. Runs
   strictly after `trigger_customers` fully commits (SCHED-03) — Phase 7's DB-level `BEFORE INSERT`
   trigger on `orders_valid` rejects any row whose `customer_id` doesn't already exist in
   `customers_valid`.
 - `trigger_report_ready` — the same deterministic-`trigger_run_id`/`skip_when_already_exists`/
-  `deferrable` shape (D-06/D-07/D-08), targeting `report_ready` instead of `csv_ingest`. Runs only
-  after both dataset ingests complete.
+  `reset_dag_run`/`deferrable` shape (D-06/D-07/D-08), targeting `report_ready` instead of
+  `csv_ingest`. Runs only after both dataset ingests complete.
 - `summary_task` — queries `ingestion_metadata` directly via a bind-parameterized Oracle query for
   both datasets' latest ingestion (D-12/D-13/D-14) and logs one cascade summary line built by
   `format_cascade_summary()`, independent of any XCom pulled from the triggered DAGs.

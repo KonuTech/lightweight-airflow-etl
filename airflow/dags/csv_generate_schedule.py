@@ -13,6 +13,19 @@ trigger_report_ready -> summary_task -> retention_task``. ``trigger_orders``
 must run strictly after ``trigger_customers`` fully commits (SCHED-03) --
 Phase 7's DB-level ``BEFORE INSERT`` trigger on ``orders_valid`` rejects any
 row whose ``customer_id`` doesn't already exist in ``customers_valid``.
+
+D-07 (corrected): all three ``TriggerDagRunOperator`` tasks set
+``skip_when_already_exists=True`` *and* ``reset_dag_run=True``. Traced
+against the installed ``apache-airflow-providers-standard==1.17.0`` source,
+``skip_when_already_exists`` alone is state-blind -- it only checks whether a
+DagRun for the deterministic ``trigger_run_id`` *exists*, not whether it
+*succeeded*, so a manual retry after a genuinely FAILED child run would
+silently resolve to ``skipped`` (masking the failure as a cascading
+"success") without ``reset_dag_run=True``. Setting ``reset_dag_run=True``
+makes a retry actually clear and re-run the existing child DagRun -- a safe
+no-op for an already-succeeded run (this project's checksum-keyed
+idempotency guarantees re-ingesting the same data is harmless) and a
+correct re-attempt for a failed one.
 """
 
 from __future__ import annotations
@@ -105,6 +118,7 @@ def csv_generate_schedule() -> None:
         conf={"dataset": "customers", "config_path": "configs/datasets/customers.json"},
         trigger_run_id="{{ dag_run.run_id }}__customers",
         skip_when_already_exists=True,
+        reset_dag_run=True,
         wait_for_completion=True,
         deferrable=True,
         fail_when_dag_is_paused=True,
@@ -118,6 +132,7 @@ def csv_generate_schedule() -> None:
         conf={"dataset": "orders", "config_path": "configs/datasets/orders.json"},
         trigger_run_id="{{ dag_run.run_id }}__orders",
         skip_when_already_exists=True,
+        reset_dag_run=True,
         wait_for_completion=True,
         deferrable=True,
         fail_when_dag_is_paused=True,
@@ -130,6 +145,7 @@ def csv_generate_schedule() -> None:
         trigger_dag_id="report_ready",
         trigger_run_id="{{ dag_run.run_id }}__report_ready",
         skip_when_already_exists=True,
+        reset_dag_run=True,
         wait_for_completion=True,
         deferrable=True,
         fail_when_dag_is_paused=True,
