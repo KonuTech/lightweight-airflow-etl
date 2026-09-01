@@ -15,6 +15,9 @@ findings:
   info: 3
   total: 7
 status: issues_found
+fixed_at: 2026-09-02T00:00:00Z
+fix_scope: all
+fix_status: all_fixed
 ---
 
 # Phase 9: Code Review Report
@@ -239,8 +242,56 @@ for tid in ("trigger_customers", "trigger_orders", "trigger_report_ready"):
     assert t.fail_when_dag_is_paused is True, tid
 ```
 
+## Fix Log
+
+All 7 findings (Critical + Warning + Info, `--all` scope) were addressed on 2026-09-01/2026-09-02.
+
+- **CR-01** — fixed. Added `reset_dag_run=True` to all three `TriggerDagRunOperator` tasks
+  (`trigger_customers`, `trigger_orders`, `trigger_report_ready`) so a manual retry of a failed
+  chain-trigger actually clears and re-attempts the child DagRun instead of silently skipping it.
+  Updated the module docstring's D-07 explanation and `docs/airflow-dag.md`'s corresponding section.
+  Commit: `bd114b0`.
+- **WR-01** — fixed. Wrapped `generate_task`'s `subprocess.run(...)` in `try/except
+  subprocess.CalledProcessError`, logging `exc.returncode`/`exc.stdout`/`exc.stderr` via
+  `logging.getLogger("airflow.task").error(...)` before re-raising. Commit: `70ab290`.
+- **WR-02** — fixed. Added `timeout=300` to the same `subprocess.run(...)` call and an additional
+  `except subprocess.TimeoutExpired` branch with the same diagnostic-logging treatment. Bundled
+  into the same commit as WR-01 since both touch the identical code block. Commit: `70ab290`.
+- **WR-03** — fixed. Replaced `retention_sweep`'s permissive `base_dir.glob(f"{dataset}_*.csv*")`
+  with a glob over `f"{dataset}_*"` plus an anchored `_FILENAME_RE = re.compile(r"^(\d{8})\.csv(\.gz)?$")`
+  match, so files like `customers_20260101.csv.bak`/`.orig` no longer match and are recorded as
+  skipped instead of deleted. Added `test_retention_does_not_delete_non_canonical_backup_files` to
+  `tests/unit/dags/test_generate_schedule_helpers.py`, closing the review's own noted test gap.
+  Commit: `3f3ad83`.
+- **IN-01** — fixed. Verified `ingestion_metadata`'s actual DDL
+  (`docker/oracle/init/01_ingestion_metadata.sql`) for its real monotonic surrogate key (`id NUMBER
+  GENERATED ALWAYS AS IDENTITY`, the table's primary key) and added it as a secondary sort key:
+  `ORDER BY processed_at DESC, id DESC`. Commit: `e25e914`.
+- **IN-02** — fixed (documentation-only, per the review's own "not urgent to change now" guidance).
+  Added a code comment at `derive_seed()`'s call site in `generate_task` (`csv_generate_schedule.py`)
+  noting the cross-file clock assumption (DagRun `logical_date`/`run_after` vs. `generate_csv.py`'s
+  wall-clock `date.today()`). `generator/generate_csv.py` itself was explicitly not modified (out of
+  this phase's scope). Commit: `ad1c70e`.
+- **IN-03** — fixed. Extended `Makefile`'s `verify-phase9` live `BundleDagBag` check to assert
+  `deferrable`/`fail_when_dag_is_paused` on all three trigger tasks (`trigger_customers`,
+  `trigger_orders`, `trigger_report_ready`) via `all(...)` generator-expression checks, rather than
+  only `trigger_customers`. Kept as flat, semicolon-separated single-line statements rather than an
+  indented `for` loop, since Make's backslash-continued recipe lines collapse the entire `python -c`
+  script into one Python logical line — an indented `for`-suite would silently absorb every
+  subsequent `assert` into its loop body instead of running once afterward (confirmed by a local
+  reproduction before choosing this shape). Verified live via `make verify-phase9` against the
+  running docker-compose stack (`DAGBAG_OK` printed, all three trigger tasks' assertions passed).
+  Commit: `6d743bb`.
+
+**Verification:** `uv run pytest tests/unit/ -x -q --tb=short` — 232 passed, both before and after
+all fixes. `make verify-phase9` passed against the live stack after the Makefile/DAG changes.
+`airflow/dags/csv_ingest.py` and `airflow/dags/report_ready.py` remain byte-for-byte unmodified
+(`git diff` empty for both, confirmed against the pre-fix commit).
+
 ---
 
 _Reviewed: 2026-09-01T23:35:56Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
+_Fix Log added: 2026-09-02_
+_Fixer: Claude (gsd-code-fixer)_
