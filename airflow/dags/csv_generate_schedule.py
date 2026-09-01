@@ -68,8 +68,16 @@ def csv_generate_schedule() -> None:
         produces the same seed, so a task retry regenerates identical data.
         """
         ctx = get_current_context()
-        logical_date = ctx["dag_run"].logical_date
-        seed = derive_seed(logical_date)
+        dag_run = ctx["dag_run"]
+        # Airflow 3.x's ``logical_date`` is nullable for manually/API-triggered
+        # runs (confirmed live against this project's pinned 3.3.1 -- a run
+        # triggered with the documented ``{"logical_date": null}`` body has a
+        # genuine ``None`` here, not an auto-assigned "now"). ``run_after`` is
+        # the one timestamp Airflow 3.x guarantees non-null on every DagRun
+        # (``DagRunProtocol.run_after: AwareDatetime``), so it's the correct
+        # fallback -- retry-reproducibility (D-04) still holds for scheduled
+        # runs, which always carry a real ``logical_date``.
+        seed = derive_seed(dag_run.logical_date or dag_run.run_after)
         rows = ctx["params"]["rows"]
         invalid_ratio = ctx["params"]["invalid_ratio"]
 

@@ -229,7 +229,177 @@ generate_task -> trigger_customers -> trigger_orders -> trigger_report_ready -> 
 
 ### Live Verification Evidence
 
-(populated by 09-04-PLAN.md's live-triggered run)
+#### SCHED-03: sequential chain-trigger completes end-to-end, deferred states observed
+
+Triggered a real, fresh `csv_generate_schedule` run against the running docker-compose stack
+(same auth flow as `csv_ingest`'s own DAG-03/DAG-05 evidence above), then polled each of the three
+chain-trigger tasks in strict sequence (`trigger_customers` -> `trigger_orders` ->
+`trigger_report_ready`, each becomes pollable once its predecessor starts):
+
+```bash
+JWT=$(curl -s -X POST "http://localhost:8080/auth/token" -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "admin"}' | jq -r '.access_token')
+
+curl -s -X POST "http://localhost:8080/api/v2/dags/csv_generate_schedule/dagRuns" \
+  -H "Authorization: Bearer ${JWT}" -H "Content-Type: application/json" \
+  -d '{"logical_date": null}'
+```
+
+```json
+{
+  "dag_run_id": "manual__2026-09-01T23:15:36.309509+00:00",
+  "state": "queued",
+  "logical_date": null
+}
+```
+
+Polling `trigger_customers`'s task-instance endpoint caught a genuine `deferred` state (the
+triggerer-managed `trigger`/`triggerer_id` fields are only ever populated for a deferred task
+instance, same proof pattern as DAG-03's `FileTrigger` evidence):
+
+```bash
+curl -s -H "Authorization: Bearer ${JWT}" \
+  "http://localhost:8080/api/v2/dags/csv_generate_schedule/dagRuns/${RUN_ID}/taskInstances/trigger_customers" \
+  | jq '{state, trigger}'
+```
+
+```json
+{
+  "state": "deferred",
+  "trigger": {
+    "id": 21,
+    "classpath": "airflow.providers.standard.triggers.external_task.DagStateTrigger",
+    "kwargs": "{}",
+    "created_date": "2026-09-01T23:15:37.917855Z",
+    "queue": null,
+    "triggerer_id": 1
+  }
+}
+```
+
+**Note:** the observed `trigger.classpath` is
+`airflow.providers.standard.triggers.external_task.DagStateTrigger` -- the real deferred-mode
+trigger `TriggerDagRunOperator(deferrable=True, wait_for_completion=True)` uses on this pinned
+`apache-airflow-providers-standard==1.17.0`, not the `dag_run.DagStateTrigger` path speculated in
+this plan's own interface notes before live-verification. `trigger_customers` reached `success`
+seconds later.
+
+`trigger_orders` was also caught in a genuine `deferred` state on its first poll, then reached
+`success`:
+
+```json
+{
+  "state": "deferred",
+  "trigger": {
+    "id": 22,
+    "classpath": "airflow.providers.standard.triggers.external_task.DagStateTrigger",
+    "kwargs": "{}",
+    "created_date": "2026-09-01T23:15:52.436505Z",
+    "queue": null,
+    "triggerer_id": 1
+  }
+}
+```
+
+`trigger_report_ready` reached `success` before a `deferred` poll could be captured (this
+project's low default `rows=100` makes both child DAGs -- and, for `report_ready`, its 30-second
+`OraclePartitionReadyTrigger` poll -- fast enough that the sensor's condition was already true by
+the first poll) -- a valid outcome per this task's own acceptance criteria, not a failure; the
+load-bearing proof is strict ordering + overall success, not that every single task is caught
+mid-defer.
+
+The underlying `csv_ingest` child runs genuinely processed the fresh, correlated CSV pair
+`generate_task` produced in this same run (not a stale leftover fixture -- see the "Environment
+note" below):
+
+```json
+{
+  "status": "SUCCESS_WITH_INVALID_ROWS",
+  "dataset": "customers",
+  "file_name": "customers_20260901.csv.gz",
+  "total_rows": 100,
+  "valid_rows": 90,
+  "invalid_rows": 10
+}
+```
+
+```json
+{
+  "status": "SUCCESS_WITH_INVALID_ROWS",
+  "dataset": "orders",
+  "file_name": "orders_20260901.csv.gz",
+  "total_rows": 100,
+  "valid_rows": 90,
+  "invalid_rows": 10
+}
+```
+
+Waiting for the overall DagRun to a terminal state (`result=trigger_report_ready&interval=2`)
+confirmed genuine end-to-end completion:
+
+```bash
+curl -s --max-time 120 -H "Authorization: Bearer ${JWT}" -H "Accept: application/x-ndjson" \
+  "http://localhost:8080/api/v2/dags/csv_generate_schedule/dagRuns/${RUN_ID}/wait?result=trigger_report_ready&interval=2" \
+  | tail -1
+```
+
+```json
+{
+  "state": "success"
+}
+```
+
+All six tasks (`generate_task`, `trigger_customers`, `trigger_orders`, `trigger_report_ready`,
+`summary_task`, `retention_task`) reached `success` in strict order, with the three chain-trigger
+tasks' timestamps confirming `trigger_orders` started only after `trigger_customers` fully ended
+(`23:15:51` -> `23:15:52`), and `trigger_report_ready` only after `trigger_orders` fully ended
+(`23:16:05` -> `23:16:06`) -- proving SCHED-03's ordering requirement (Phase 7's DB-level `BEFORE
+INSERT` trigger on `orders_valid` requires `customers_valid` to already contain the referenced
+`customer_id`s).
+
+**Upstream issue check (STATE.md's recorded blocker):** none of the four flagged upstream
+GitHub issues (#60049, #57756, #38353, #52247 -- open `TriggerDagRunOperator(deferrable=True)`
+bugs at the time Phase 9 was researched) reproduced during this live run. All three deferred
+chain-trigger tasks transitioned cleanly `queued` -> `deferred` -> `success` with no stuck/
+zombie/duplicate-trigger behavior observed, on the exact pinned
+`apache-airflow-providers-standard==1.17.0` / Airflow 3.3.1 combination this phase targets. The
+MEDIUM-confidence research finding is corrected to live-confirmed working.
+
+**Environment note (Rule 1/3 fix applied during this plan, not a DAG behavior change):** this
+live-verification run initially failed twice before producing the evidence above, for two
+unrelated pre-existing issues discovered only by attempting a real trigger:
+
+1. Three stray, incorrectly-named leftover CSV fixture files (`customers_1788283829821223445.csv`,
+   `customers_1788283847307977164.csv`, `orders_1788283847307977164.csv`, `orders_20260901.csv`
+   uncompressed) from earlier manual testing sessions were sitting in `data/customers/`/
+   `data/orders/` (both fully `.gitignore`d, untracked runtime directories -- confirmed via
+   `git status --short -- data/` before deletion). `_common/paths.py`'s `resolve_matched_file()`
+   deterministically re-globs for the **sorted-first** match on every `process_csv_task` run (by
+   design, Phase 5) -- these stale files' names sorted before the current hourly
+   `<dataset>_20260901.csv.gz` pair, so every real `@hourly`-scheduled run for the past several
+   hours (`20:00`/`21:00`/`22:00` UTC) was silently reprocessing old data instead of the freshly
+   generated pair, and `orders`'s stale file's `customer_id`s no longer existed in the
+   continuously-regenerating `customers_valid` table, so every real hourly `orders` ingestion hit
+   Phase 7's `BEFORE INSERT` FK trigger and returned `DATABASE_ERROR` -- `report_ready`'s sensor
+   then waited forever for an `orders` `ingestion_metadata` row that never arrived, and each
+   `csv_generate_schedule` run failed on its 45-minute `dagrun_timeout`. Deleted the four stale
+   files (untracked, gitignored runtime artifacts, not source) so the sorted-first glob resolves
+   to the genuine current-hour pair.
+2. `generate_task`'s `derive_seed(ctx["dag_run"].logical_date)` raised
+   `AttributeError: 'NoneType' object has no attribute 'strftime'` -- Airflow 3.x's
+   `logical_date` is genuinely `None` for a manually/API-triggered run started with this plan's
+   own documented `{"logical_date": null}` body (confirmed live against the pinned SDK's
+   `DagRunProtocol` type: `logical_date: AwareDatetime | None` vs. `run_after: AwareDatetime`,
+   the one field Airflow 3.x guarantees non-null on every DagRun). Fixed in
+   `airflow/dags/csv_generate_schedule.py`'s `generate_task()` to fall back to `run_after` when
+   `logical_date` is `None`, preserving D-04's retry-reproducibility for scheduled runs (which
+   always carry a real `logical_date`) while making manually/API-triggered runs -- exactly this
+   plan's own trigger pattern -- work correctly too. `csv_ingest.py`/`report_ready.py` were not
+   touched (SCHED-06); `_common/generate_schedule_helpers.py`'s `derive_seed()` itself needed no
+   change, only its caller's argument.
+
+Both fixes were verified via `uv run pytest tests/unit/dags/ -x` (18 passed) and a live
+`BundleDagBag` structural check (`DAGBAG_OK`) before the successful run captured above.
 
 ## Full HTTP-to-Oracle-rows automated testing
 
