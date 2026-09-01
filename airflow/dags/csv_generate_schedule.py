@@ -90,6 +90,18 @@ def csv_generate_schedule() -> None:
         # (``DagRunProtocol.run_after: AwareDatetime``), so it's the correct
         # fallback -- retry-reproducibility (D-04) still holds for scheduled
         # runs, which always carry a real ``logical_date``.
+        #
+        # IN-02 cross-file clock note: this seed is derived from the DagRun's
+        # own logical_date/run_after, but the subprocess invoked below
+        # (generate_csv.py --correlated, no --today override exists) names
+        # its output file from wall-clock date.today(), a *different* clock.
+        # Near a UTC day boundary these can disagree (e.g. a 23:00 scheduled
+        # run whose task execution slips past midnight), so the seed used to
+        # generate the data and the date embedded in the resulting filename
+        # can come from different calendar days. Not urgent to change (see
+        # 09-REVIEW.md IN-02) -- if it ever causes an observed retention/glob
+        # mismatch, thread logical_date's date through generate_csv.py as an
+        # explicit --today override instead of relying on date.today().
         seed = derive_seed(dag_run.logical_date or dag_run.run_after)
         rows = ctx["params"]["rows"]
         invalid_ratio = ctx["params"]["invalid_ratio"]
