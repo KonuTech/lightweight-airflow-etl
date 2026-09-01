@@ -1,11 +1,13 @@
 # The Airflow DAGs: Task Graphs, Triggering, and Live Verification Evidence
 
-This document covers both Airflow DAGs this project runs: the config-driven `csv_ingest` DAG
+This document covers all three Airflow DAGs this project runs: the config-driven `csv_ingest` DAG
 (`airflow/dags/csv_ingest.py`, D-01) — its task graph, how to trigger it, and the reproducible
 commands used to prove DAG-03 (deferrable file-wait genuinely reports Airflow state `deferred`)
-and DAG-05 (the identical, unmodified DAG file supports a second dataset by construction) — and
-the `report_ready` DAG (`airflow/dags/report_ready.py`, D-26), which senses when both datasets
-have ingested data and materializes the business report. Full HTTP-to-Oracle-rows automated
+and DAG-05 (the identical, unmodified DAG file supports a second dataset by construction) — the
+`report_ready` DAG (`airflow/dags/report_ready.py`, D-26), which senses when both datasets
+have ingested data and materializes the business report — and the `csv_generate_schedule` DAG
+(`airflow/dags/csv_generate_schedule.py`), the hourly orchestrator that generates fresh CSVs and
+chain-triggers both of the other two, unmodified DAGs. Full HTTP-to-Oracle-rows automated
 end-to-end testing is Phase 6's job (TEST-03) — this document only records manual/live
 verification evidence gathered directly against the real running docker-compose stack.
 
@@ -186,6 +188,48 @@ wait_for_both_datasets -> build_report_task
 Airflow task state `deferred` before either dataset has ingested; it remains `deferred` after only
 ONE dataset has ingested (proving it waits for both, not either); and the DAG run completes
 successfully once BOTH datasets have ingested data for the current partition.
+
+## `csv_generate_schedule` DAG
+
+`airflow/dags/csv_generate_schedule.py` is the hourly orchestrator: `@dag(schedule="@hourly",
+catchup=False, max_active_runs=1)`. Each run generates a fresh, correlated `customers`+`orders`
+CSV pair, then sequentially chain-triggers the existing, unmodified `csv_ingest`/`report_ready`
+DAGs above via `TriggerDagRunOperator` — it never duplicates their logic. `rows` and
+`invalid_ratio` are operator-overridable DAG `Param`s (SCHED-08), defaulting to `100` and `0.1`
+respectively.
+
+### Task Graph
+
+```
+generate_task -> trigger_customers -> trigger_orders -> trigger_report_ready -> summary_task -> retention_task
+```
+
+- `generate_task` — invokes `generator/generate_csv.py --correlated` as a subprocess, seeded via
+  `derive_seed(logical_date)` (D-04) so a retry of this task regenerates byte-identical data for
+  the same DagRun's `logical_date`.
+- `trigger_customers` — a `TriggerDagRunOperator(trigger_dag_id="csv_ingest", conf={"dataset":
+  "customers", ...})`. Uses a deterministic `trigger_run_id` (`{{ dag_run.run_id }}__customers`,
+  D-06), `skip_when_already_exists=True` (D-07) so a retry never double-triggers the same cascade
+  run, and `deferrable=True` (D-08) so the wait releases its worker slot to the triggerer instead
+  of blocking one, matching this project's existing "defer, never block" convention.
+- `trigger_orders` — identical shape to `trigger_customers`, targeting the `orders` dataset. Runs
+  strictly after `trigger_customers` fully commits (SCHED-03) — Phase 7's DB-level `BEFORE INSERT`
+  trigger on `orders_valid` rejects any row whose `customer_id` doesn't already exist in
+  `customers_valid`.
+- `trigger_report_ready` — the same deterministic-`trigger_run_id`/`skip_when_already_exists`/
+  `deferrable` shape (D-06/D-07/D-08), targeting `report_ready` instead of `csv_ingest`. Runs only
+  after both dataset ingests complete.
+- `summary_task` — queries `ingestion_metadata` directly via a bind-parameterized Oracle query for
+  both datasets' latest ingestion (D-12/D-13/D-14) and logs one cascade summary line built by
+  `format_cascade_summary()`, independent of any XCom pulled from the triggered DAGs.
+- `retention_task` — best-effort deletes CSVs older than 30 days from `data/customers/` and
+  `data/orders/` (D-16/D-17/D-18), logging each deletion/skip; never fails the DagRun even if
+  cleanup itself fails, per its best-effort contract. It is the final task in each hourly
+  `csv_generate_schedule` cascade run.
+
+### Live Verification Evidence
+
+(populated by 09-04-PLAN.md's live-triggered run)
 
 ## Full HTTP-to-Oracle-rows automated testing
 
