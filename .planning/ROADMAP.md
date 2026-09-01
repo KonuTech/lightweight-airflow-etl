@@ -67,7 +67,8 @@ Plans:
 **Goal**: The full CSV → Oracle pipeline runs unattended once per hour — no manual `make generate`
 step, no changes to `csv_ingest.py`/`report_ready.py`.
 **Depends on**: Phase 8
-**Requirements**: SCHED-01, SCHED-02, SCHED-03, SCHED-04, SCHED-05, SCHED-06, SCHED-07, SCHED-08
+**Requirements**: SCHED-01, SCHED-02, SCHED-03, SCHED-04, SCHED-05, SCHED-06, SCHED-07, SCHED-08,
+SCHED-10
 **Success Criteria** (what must be TRUE):
   1. The `csv_generate_schedule` DAG is scheduled `@hourly` with `catchup=False` and, once
      unpaused, produces a new automatic DagRun every hour with no manual `make generate` step
@@ -88,6 +89,10 @@ step, no changes to `csv_ingest.py`/`report_ready.py`.
      row counts and report-ready status (SCHED-07) — and an operator can override row
      counts/invalid-ratio for a run via DAG `Param`s at trigger time, with the generated CSVs
      reflecting the overridden values instead of hardcoded defaults (SCHED-08)
+  6. A retention task at the end of each hourly cascade deletes generated CSVs
+     (`.csv`/`.csv.gz`) older than 30 days from `data/customers/`/`data/orders/`, and a failure in
+     that cleanup step never fails the overall hourly DagRun (SCHED-10, added during Phase 9
+     discuss-phase per CONTEXT.md D-15's user-approved bundled scope addition)
 **Plans**: TBD
 **Implementation note**: the three `TriggerDagRunOperator` chain-trigger tasks use
 `deferrable=True` (resolves research/SUMMARY.md's Open Decision in favor of Position B — consistent

@@ -49,6 +49,10 @@ Requirements for this milestone. Each maps to roadmap phases.
       `report_result_task`/`build_report_task` convention
 - [ ] **SCHED-08**: An operator can configure customers/orders row counts and invalid-ratio for a
       scheduled cycle via DAG `Param`s instead of editing code
+- [ ] **SCHED-10** (added during Phase 9 discuss-phase, D-15 bundled scope addition): A retention
+      task inside `csv_generate_schedule` deletes generated CSVs (`.csv`/`.csv.gz`) older than 30
+      days from `data/customers/`/`data/orders/`, running at the end of each hourly cascade,
+      best-effort (a cleanup failure never fails the overall DagRun)
 
 ### Robustness (ROBUST)
 
@@ -96,11 +100,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SCHED-06 | Phase 9 | Pending |
 | SCHED-07 | Phase 9 | Pending |
 | SCHED-08 | Phase 9 | Pending |
+| SCHED-10 | Phase 9 | Pending |
 | ROBUST-01 | Phase 10 | Pending |
 
 **Coverage:**
-- v1.1 requirements: 12 total (11 original + ENV-03 added during Phase 8 planning per CONTEXT.md
-  D-04's user-approved bundled scope addition)
+- v1.1 requirements: 13 total (11 original + ENV-03 added during Phase 8 planning per CONTEXT.md
+  D-04's user-approved bundled scope addition + SCHED-10 added during Phase 9 discuss-phase per
+  CONTEXT.md D-15's user-approved bundled scope addition)
 - Mapped to phases: 12
 - Unmapped: 0 ✓
 
