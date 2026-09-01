@@ -1,9 +1,9 @@
 ---
 phase: 8
 slug: environment-docker-fixes-for-container-side-generation
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: final
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-09-01
 ---
 
@@ -38,23 +38,20 @@ created: 2026-09-01
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 08-01-01 | 01 | 0 | ENV-01 | — | N/A | unit (Wave 0 stub) | `grep -q "def verify_generator_importable" scripts/verify_environment.py` | ❌ W0 | ⬜ pending |
-| 08-01-02 | 01 | 0 | ENV-02 | — | N/A | unit (Wave 0 stub) | `grep -q "def verify_data_write_access" scripts/verify_environment.py` | ❌ W0 | ⬜ pending |
-| 08-0X-0X | TBD | 1+ | ENV-01 | — | N/A | live exec | `docker compose exec -T airflow-apiserver python -c "import faker; from generator.generate_csv import main"` | ❌ W0 | ⬜ pending |
-| 08-0X-0X | TBD | 1+ | ENV-02 | — | N/A | live exec + fresh-clone dry run | `docker compose exec -T airflow-apiserver python -c "..."` (write-then-delete probe); fresh-clone proof via `make destroy && make up` then re-running the check | ❌ W0 | ⬜ pending |
-| 08-0X-0X | TBD | 1+ | D-04 (bundled passwords-file fix) | — | N/A | manual (not automatable as a committed regression test) | `rm -f docker/airflow/simple_auth_manager_passwords.json.generated && docker compose down -v && docker compose up -d --wait`, confirm no `PermissionError`/`IsADirectoryError` in any service's logs | N/A | ⬜ pending |
+| 08-01-T1 | 01 | 1 | ENV-01, ENV-02, ENV-03 | T-08-01, T-08-02, T-08-03, T-08-04 | Scoped chown/rmdir paths; conditional password seed; chmod 664 not 666 | live check | `docker compose config > /dev/null && echo CONFIG_OK` | ✅ | ⬜ pending |
+| 08-01-T2 | 01 | 1 | ENV-01 | T-08-SC | `faker` pinned exact version, vetted supply chain | live exec | `docker compose exec -T airflow-apiserver python -c "import faker; from generator.generate_csv import main; print('IMPORT_OK')"` | ✅ | ⬜ pending |
+| 08-02-T1 | 02 | 2 | ENV-01, ENV-02 | T-08-05, T-08-06, T-08-07 | Probe file never matches FileSensor glob; try/finally cleanup; no secrets in exec'd code | live exec (committed, permanent) | `uv run python scripts/verify_environment.py` | ✅ | ⬜ pending |
+| 08-02-T2 | 02 | 2 | ENV-02, ENV-03 | — | N/A | live exec + fresh-clone dry run (permanent Makefile target) | `make verify-phase8` (preceded by `rm -f docker/airflow/simple_auth_manager_passwords.json.generated && make destroy && make up` to genuinely reproduce and repair the original bug) | ✅ | ⬜ pending |
+| 08-02-T3 | 02 | 2 | ENV-01 (docs) | — | N/A | live check | `grep -q "## Generator Container Mount" docs/environment.md && ! grep -q "mkdir -p docker/airflow" docs/environment.md && echo DOCS_OK` | ✅ | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
-*Exact Plan/Task IDs filled in by the planner — this table's shape is fixed by 08-RESEARCH.md's Phase Requirements → Test Map; the planner assigns concrete plan/wave numbers.*
+*Task IDs/threat refs reflect the final 08-01-PLAN.md/08-02-PLAN.md as written by the planner and confirmed by gsd-plan-checker (VERIFICATION PASSED) — no Wave 0 stubs were needed, every task ships a real `<automated>` command directly.*
 
 ---
 
 ## Wave 0 Requirements
 
-- [ ] `scripts/verify_environment.py` — add `verify_generator_importable()` and `verify_data_write_access()` (or equivalently named functions), wired into `main()`
-- [ ] `Makefile` — add `verify-phase8` target
-
-*No pytest-level Wave 0 gap — this phase's verification surface is entirely live-stack-exec-based by design, matching the project's established split between `tests/unit/` (pure logic) and `scripts/verify_environment.py`/`Makefile` live checks (anything requiring a running Docker stack).*
+*None — every task in both plans ships a real, directly-runnable `<automated>` verification command (confirmed by gsd-plan-checker's Nyquist Compliance check). No pytest-level gap either — this phase's verification surface is entirely live-stack-exec-based by design, matching the project's established split between `tests/unit/` (pure logic) and `scripts/verify_environment.py`/`Makefile` live checks (anything requiring a running Docker stack).*
 
 ---
 
@@ -70,11 +67,11 @@ created: 2026-09-01
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 60s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references (none needed)
+- [x] No watch-mode flags
+- [x] Feedback latency < 60s
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** approved 2026-09-01 (gsd-plan-checker VERIFICATION PASSED)

@@ -678,10 +678,10 @@ assumptions above are specifically about the *new* code this phase introduces (t
 script's subprocess helper), which is inherently prescriptive/design-level rather than a factual
 claim needing external verification.
 
-## Open Questions
+## Open Questions (RESOLVED during planning)
 
-1. **Should `.github/workflows/ci.yml`'s now-redundant `mkdir -p data/customers data/orders` step
-   be removed as part of this phase, or left as harmless belt-and-suspenders?**
+1. **(RESOLVED — left untouched)** Should `.github/workflows/ci.yml`'s now-redundant `mkdir -p data/customers data/orders` step
+   be removed as part of this phase, or left as harmless belt-and-suspenders?
    - What we know: `[CITED: ARCHITECTURE.md]` — once the `airflow-init chown -R` fix lands, this CI
      step becomes redundant (not wrong) because `docker compose up`'s subsequent chown immediately
      reassigns ownership to uid 50000 regardless of who pre-created the directory.
@@ -693,8 +693,8 @@ claim needing external verification.
      that keeps CI config in sync with the new documented reality. Either is defensible; flag for
      a quick explicit choice during planning rather than silently deciding either way.
 
-2. **Exact `chmod` mode for the repaired passwords file — `664` (this research's suggestion) vs.
-   `666` (the value already documented/applied in this project's existing manual-fix instructions)?**
+2. **(RESOLVED — `664` adopted)** Exact `chmod` mode for the repaired passwords file — `664` (this research's suggestion) vs.
+   `666` (the value already documented/applied in this project's existing manual-fix instructions)?
    - What we know: The file is owned by `uid 50000` after `chown` either way; owner-write bits
      (`6xx`) already grant the running `airflow-apiserver` (which runs as exactly that uid) write
      access regardless of the group/other bits.
