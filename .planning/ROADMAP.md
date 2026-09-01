@@ -92,7 +92,12 @@ step, no changes to `csv_ingest.py`/`report_ready.py`.
      (`.csv`/`.csv.gz`) older than 30 days from `data/customers/`/`data/orders/`, and a failure in
      that cleanup step never fails the overall hourly DagRun (SCHED-10, added during Phase 9
      discuss-phase per CONTEXT.md D-15's user-approved bundled scope addition)
-**Plans**: TBD
+**Plans**: 4 plans
+Plans:
+- [ ] 09-01-PLAN.md — Pure helper functions (derive_seed, format_cascade_summary, retention_sweep) + full unit coverage
+- [ ] 09-02-PLAN.md — csv_generate_schedule DAG: generate_task, three chain-trigger tasks, summary_task, retention_task
+- [ ] 09-03-PLAN.md — verify-phase9 Makefile target + docs/airflow-dag.md new section
+- [ ] 09-04-PLAN.md — Live verification (deferred states, overlap queuing, paused-DAG failure) + evidence capture
 **Implementation note**: the three `TriggerDagRunOperator` chain-trigger tasks use
 `deferrable=True` (resolves research/SUMMARY.md's Open Decision in favor of Position B — consistent
 with this project's existing "defer, never block a worker slot" convention already applied to
@@ -140,6 +145,6 @@ Phases execute in numeric order: 8 → 9 → 10
 | 6. End-to-End Verification, Benchmark, CI & Docs | v1.0 | 5/5 | Complete | 2026-08-30 |
 | 7. Correlated Customer-Order Business Report | v1.0 | 6/6 | Complete | 2026-08-30 |
 | 8. Environment & Docker Fixes for Container-Side Generation | v1.1 | 2/2 | Complete    | 2026-09-01 |
-| 9. Hourly Orchestrator DAG (`csv_generate_schedule`) | v1.1 | 0/TBD | Not started | - |
+| 9. Hourly Orchestrator DAG (`csv_generate_schedule`) | v1.1 | 0/4 | Not started | - |
 | 10. `OraclePartitionReadyTrigger` Robustness Fix | v1.1 | 0/TBD | Not started | - |
 </content>
