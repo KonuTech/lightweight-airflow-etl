@@ -7,7 +7,7 @@ connection.
 from __future__ import annotations
 
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -16,6 +16,7 @@ sys.path.insert(0, str(_REPO_ROOT / "airflow" / "dags"))
 from _common.generate_schedule_helpers import (  # noqa: E402
     derive_seed,
     format_cascade_summary,
+    retention_sweep,
 )
 
 
@@ -58,3 +59,55 @@ def test_summary_format_handles_missing_dataset() -> None:
     assert "customers=NO_DATA" in line
     assert "orders=total:50,valid:48,invalid:2" in line
     assert "report_ready=OK" in line
+
+
+def test_retention_deletes_old_files(tmp_path: Path) -> None:
+    cutoff = datetime(2026, 9, 1, tzinfo=UTC)
+    old_date = (cutoff - timedelta(days=40)).strftime("%Y%m%d")
+    recent_date = (cutoff - timedelta(days=5)).strftime("%Y%m%d")
+    old_file = tmp_path / f"customers_{old_date}.csv"
+    recent_file = tmp_path / f"customers_{recent_date}.csv.gz"
+    old_file.write_text("old", encoding="utf-8")
+    recent_file.write_text("recent", encoding="utf-8")
+
+    deleted, skipped = retention_sweep(tmp_path, "customers", cutoff)
+
+    assert old_file in deleted
+    assert recent_file not in deleted
+    assert skipped == []
+    assert not old_file.exists()
+    assert recent_file.exists()
+
+
+def test_retention_skips_files_within_window(tmp_path: Path) -> None:
+    cutoff = datetime(2026, 9, 1, tzinfo=UTC)
+    recent_date = (cutoff - timedelta(days=5)).strftime("%Y%m%d")
+    recent_file = tmp_path / f"customers_{recent_date}.csv"
+    recent_file.write_text("recent", encoding="utf-8")
+
+    deleted, skipped = retention_sweep(tmp_path, "customers", cutoff)
+
+    assert deleted == []
+    assert skipped == []
+    assert recent_file.exists()
+
+
+def test_retention_never_raises(tmp_path: Path) -> None:
+    cutoff = datetime(2026, 9, 1, tzinfo=UTC)
+    old_date = (cutoff - timedelta(days=40)).strftime("%Y%m%d")
+
+    unparseable_file = tmp_path / "customers_notadate.csv"
+    unparseable_file.write_text("bad", encoding="utf-8")
+
+    # A directory at the "old" dated path -- Path.unlink() raises
+    # IsADirectoryError on it, never a plain file deletion.
+    undeletable_dir = tmp_path / f"customers_{old_date}.csv"
+    undeletable_dir.mkdir()
+
+    deleted, skipped = retention_sweep(tmp_path, "customers", cutoff)
+
+    assert deleted == []
+    skipped_paths = [path for path, _reason in skipped]
+    assert unparseable_file in skipped_paths
+    assert undeletable_dir in skipped_paths
+    assert undeletable_dir.exists()
