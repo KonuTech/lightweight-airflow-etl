@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Hourly Ingestion Automation
-status: verifying
-stopped_at: Completed 08-02-PLAN.md
-last_updated: "2026-09-01T17:28:23.255Z"
+status: ready_to_plan
+stopped_at: Phase 8 complete (2/2) — ready to discuss Phase 9
+last_updated: 2026-09-01T17:41:51.419Z
 last_activity: 2026-09-01
 progress:
   total_phases: 3
@@ -24,13 +24,13 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 validates and bulk-loads its valid rows into Oracle, routes invalid rows (with error metadata)
 into a separate table, and reports back a clear processing summary — end to end, reproducibly,
 from a fresh `git clone`.
-**Current focus:** Phase 8 — Environment & Docker Fixes for Container-Side Generation
+**Current focus:** Phase 9 — hourly orchestrator dag (`csv_generate_schedule`)
 
 ## Current Position
 
-Phase: 8 (Environment & Docker Fixes for Container-Side Generation) — EXECUTING
-Plan: 2 of 2
-Status: Phase complete — ready for verification
+Phase: 9
+Plan: Not started
+Status: Ready to plan
 Last activity: 2026-09-01
 
 Progress: [██████████] 100%
@@ -39,7 +39,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 36 (all v1.0)
+- Total plans completed: 38 (all v1.0)
 - Average duration: - min
 - Total execution time: 0 hours (v1.1)
 
@@ -48,6 +48,7 @@ Progress: [██████████] 100%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-07 | 36 | - | - |
+| 8 | 2 | - | - |
 
 **Recent Trend:**
 

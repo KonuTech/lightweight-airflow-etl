@@ -135,7 +135,7 @@ Phases execute in numeric order: 8 → 9 → 10
 | 5. Airflow DAG Wiring & Deferrable File Wait | v1.0 | 2/2 | Complete | 2026-08-29 |
 | 6. End-to-End Verification, Benchmark, CI & Docs | v1.0 | 5/5 | Complete | 2026-08-30 |
 | 7. Correlated Customer-Order Business Report | v1.0 | 6/6 | Complete | 2026-08-30 |
-| 8. Environment & Docker Fixes for Container-Side Generation | v1.1 | 2/2 | Complete   | 2026-09-01 |
+| 8. Environment & Docker Fixes for Container-Side Generation | v1.1 | 2/2 | Complete    | 2026-09-01 |
 | 9. Hourly Orchestrator DAG (`csv_generate_schedule`) | v1.1 | 0/TBD | Not started | - |
 | 10. `OraclePartitionReadyTrigger` Robustness Fix | v1.1 | 0/TBD | Not started | - |
 </content>
