@@ -17,13 +17,34 @@ row whose ``customer_id`` doesn't already exist in ``customers_valid``.
 
 from __future__ import annotations
 
+import logging
 import subprocess
 import sys
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
-from _common.generate_schedule_helpers import derive_seed
+from _common import paths
+from _common.generate_schedule_helpers import (
+    derive_seed,
+    format_cascade_summary,
+    retention_sweep,
+)
 from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.sdk import Param, dag, get_current_context, task
+from csv_processor import load
+
+# D-12/D-13: bind-parameterized -- ``dataset`` is never string-interpolated
+# into the SQL text itself (Tampering mitigation, T-9-01 in this plan's
+# threat model).
+_LATEST_INGESTION_SQL = """
+SELECT total_rows, valid_rows, invalid_rows
+FROM ingestion_metadata
+WHERE dataset = :dataset
+ORDER BY processed_at DESC
+FETCH FIRST 1 ROW ONLY
+"""
+
+# D-16: retention_task's cutoff window.
+_RETENTION_DAYS = 30
 
 
 @dag(
@@ -108,4 +129,44 @@ def csv_generate_schedule() -> None:
         retries=0,
     )
 
+    @task(trigger_rule="none_failed_min_one_success", retries=0)
+    def summary_task() -> None:
+        """Log one cascade summary line built from ``format_cascade_summary()``
+        (SCHED-07, D-12/D-13/D-14)."""
+        connection = load.get_connection()
+        try:
+            cursor = connection.cursor()
+            dataset_results: dict[str, dict[str, int] | None] = {}
+            for dataset in ("customers", "orders"):
+                cursor.execute(_LATEST_INGESTION_SQL, dataset=dataset)
+                row = cursor.fetchone()
+                dataset_results[dataset] = (
+                    None
+                    if row is None
+                    else {"total_rows": row[0], "valid_rows": row[1], "invalid_rows": row[2]}
+                )
+        finally:
+            connection.close()
+        logging.getLogger("airflow.task").info(format_cascade_summary(dataset_results))
+
+    @task(trigger_rule="none_failed_min_one_success", retries=0)
+    def retention_task() -> None:
+        """Best-effort delete CSVs older than 30 days (SCHED-10, D-16/D-17/D-18).
+
+        ``retention_sweep()`` itself never raises (implemented in Plan
+        09-01) -- no ``try/except`` needed in this task body.
+        """
+        logger = logging.getLogger("airflow.task")
+        cutoff = datetime.now(UTC) - timedelta(days=_RETENTION_DAYS)
+        for dataset in ("customers", "orders"):
+            deleted, skipped = retention_sweep(paths.DATA_ROOT / dataset, dataset, cutoff)
+            for path in deleted:
+                logger.info("retention: deleted %s (older than %d days)", path, _RETENTION_DAYS)
+            for path, reason in skipped:
+                logger.warning("retention: skipped %s (%s)", path, reason)
+
     generate_task() >> trigger_customers >> trigger_orders >> trigger_report_ready
+    trigger_report_ready >> summary_task() >> retention_task()
+
+
+csv_generate_schedule()
