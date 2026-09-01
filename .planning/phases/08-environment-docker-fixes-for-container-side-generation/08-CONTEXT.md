@@ -34,8 +34,8 @@ docs update. Does NOT include writing the `csv_generate_schedule` DAG itself (Ph
 
 ### Bundled fix: passwords-file bind-mount gotcha
 
-- **D-04 (scope addition beyond ENV-01/ENV-02's literal text — user-approved, non-default choice
-  relative to REQUIREMENTS.md's exact wording):** Phase 8 also fixes
+- **D-04:** (scope addition beyond ENV-01/ENV-02's literal text — user-approved, non-default choice
+  relative to REQUIREMENTS.md's exact wording) Phase 8 also fixes
   `docker/airflow/simple_auth_manager_passwords.json.generated` getting auto-created as a
   directory instead of a file (same root-cause class as ENV-02's `data/` problem: Docker
   auto-creating a missing bind-mount path wrong) — rather than leaving it as the documented manual
