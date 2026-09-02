@@ -133,7 +133,7 @@ class OraclePartitionReadyTrigger(BaseTrigger):
                     try:
                         await connection.close()
                     except oracledb.Error:
-                        _LOGGER.debug(
+                        _LOGGER.warning(
                             "connection.close() failed on an already-broken connection",
                             exc_info=True,
                         )
