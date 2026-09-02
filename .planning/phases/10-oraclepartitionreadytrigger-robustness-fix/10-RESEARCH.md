@@ -399,10 +399,13 @@ control flow inside one already-existing file.
 | A1 | `oracledb.OperationalError`'s `str(exc)` representation never embeds the plaintext connection password (only host/DSN/ORA-/DPY- codes) | Code Examples — warning-level retry log line includes `%s` of the exception | If wrong, the new `warning`-level log line (`_LOGGER.warning(...)`) could leak the Oracle app-schema password into Airflow's trigger logs on every transient retry. Not independently re-verified against `oracledb==4.0.2`'s actual DPY-6005/DPY-4011 message-formatting source in this research pass (no live Oracle-down scenario was triggered to inspect a real exception's `str()` output) — recommend the planner add a quick manual check (trigger one real `OperationalError` locally, e.g. via a wrong port, and eyeball the message) before or during D-08's test-writing, or explicitly note this as a residual risk in the phase's verification notes |
 | A2 | No `verify-phase10` Makefile target or live fault-injection harness (`docker compose stop oracle` mid-poll, deliberately-broken `_POLL_QUERY`) is required for this phase to be considered complete — unit-test coverage (D-08's 4 cases) is sufficient given this is an internal robustness fix with no new DAG/task-graph surface | Live-Verification Feasibility section below | If wrong (i.e., the user/planner actually wants live-Oracle fault injection as a phase gate, matching PITFALLS.md's "Looks Done But Isn't" checklist literally), the phase could ship with unit tests green but the actual live triggerer/oracledb interaction unverified — PITFALLS.md itself flags this as the highest-value verification for this exact fix. This is a reasonable default given the project's LOW-risk framing of Pitfall 9 in STATE.md/PITFALLS.md, but is Claude's own judgment call, not a locked CONTEXT.md decision — CONTEXT.md's D-08 only locks the *unit* test shape, leaving live verification unaddressed |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Should live fault-injection verification (docker compose stop oracle mid-poll) be a phase gate
-   or an optional follow-up?**
+1. **RESOLVED (2026-09-02, planner + plan-checker): unit-test-only — no `10-HUMAN-UAT.md`, no live
+   fault-injection phase gate. All 4 ROADMAP success criteria are fully covered by the plan's
+   automated unit tests; the manual `docker compose stop oracle` / typo'd-query checks below remain
+   optional, undertaken confidence checks, not a blocking obligation.** Should live fault-injection
+   verification (docker compose stop oracle mid-poll) be a phase gate or an optional follow-up?
    - What we know: PITFALLS.md's "Looks Done But Isn't" checklist explicitly calls this out as the
      way to verify Pitfall 9/10 are *actually* fixed, not just code-inspected. The `oracle` service
      name is confirmed in `docker-compose.yml` (line 170), so `docker compose stop oracle` /
