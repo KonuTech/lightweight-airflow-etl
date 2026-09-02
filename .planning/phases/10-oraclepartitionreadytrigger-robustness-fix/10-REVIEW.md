@@ -155,6 +155,48 @@ single-row/single-column assumption so a future edit doesn't silently break it.
 
 ---
 
+## Fix Log
+
+### WR-01: Exponential backoff delay values are exercised but never asserted
+
+**Status:** fixed
+**Change:** Added `test_run_backoff_delay_doubles_and_is_capped_at_poke_interval` to
+`tests/unit/test_oracle_partition_trigger.py`, asserting the exact `asyncio.sleep` call
+sequence (`call(1.0), call(2.0), call(2.5)`) produced by three consecutive transient
+`OperationalError` failures with `poke_interval=2.5`, verifying against the actual current
+formula/constants (`_RETRY_BASE_DELAY_SECONDS = 1.0`,
+`min(_RETRY_BASE_DELAY_SECONDS * (2 ** (retry_count - 1)), self.poke_interval)`) before use —
+matched the review's suggested test verbatim.
+**Commit:** b3775aa
+
+### WR-02: `connection.close()` failures inside `finally` are only logged at `debug`
+
+**Status:** fixed
+**Change:** Raised the log level in `airflow/dags/_common/oracle_partition_trigger.py`'s
+`finally`-guarded `connection.close()` exception handler from `_LOGGER.debug` to
+`_LOGGER.warning`, matching the retry-attempt warnings a few lines above. No other behavior
+changed — still never re-raises or masks the original exception.
+**Commit:** 3018f1c
+
+### IN-01: `ReportReadySensor` has zero test coverage
+
+**Status:** skipped — out of phase scope (`ReportReadySensor` is explicitly untouched by this
+phase per `10-CONTEXT.md`'s `<code_context>` section)
+
+### IN-02: `ReportReadySensor`'s hardcoded `poke_interval=30` duplicates the trigger's own default
+
+**Status:** skipped — out of phase scope (same reason as IN-01)
+
+### IN-03: `(count,) = await cursor.fetchone()` assumes exactly one column, unguarded
+
+**Status:** skipped — review's own Fix section states "Not required"; optional documentation
+nit, not a code fix
+
+---
+
 _Reviewed: 2026-09-02T06:34:52Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
+_Fixed: 2026-09-02_
+_Fixer: Claude (gsd-code-fixer)_
+_Iteration: 1_
