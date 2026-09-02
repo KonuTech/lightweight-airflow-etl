@@ -134,18 +134,18 @@ table, and reports back a clear processing summary — end to end, reproducibly,
       (`.csv`/`.csv.gz`) older than 30 days from `data/customers/`/`data/orders/`, never failing
       the DagRun on cleanup errors (SCHED-10, added during Phase 9 discuss-phase as a bundled scope
       addition, mirroring Phase 8's ENV-03 precedent) — Phase 9.
+- ✓ `OraclePartitionReadyTrigger.run()` now catches `oracledb.OperationalError` specifically (never
+      the broader `DatabaseError`/`Error`) with a bounded, exponentially-backed-off retry (max 10
+      consecutive failures, capped at `poke_interval`); a genuine non-transient error (bad query,
+      dropped/renamed table) still propagates immediately uncaught; a `connection.close()` failure
+      inside `finally` is guarded so it never masks the original, more diagnostic exception
+      (ROBUST-01) — Phase 10. Resolves the Phase 7 code-review Critical finding (07-REVIEW.md CR-01).
 
 ### Active
 
 - [ ] Everything run from WSL (Linux filesystem, not `/mnt/c/...`); Docker Desktop as the host —
       ongoing environmental requirement, continuously true through Phase 7, not a one-time
       deliverable to check off
-- [ ] `OraclePartitionReadyTrigger.run()` (Phase 7, `airflow/dags/_common/oracle_partition_trigger.py`)
-      has no exception handling around its Oracle polling calls — a transient DB error currently
-      crashes the deferred sensor permanently, with no retry/backoff. Flagged as a code-review
-      Critical finding (07-REVIEW.md CR-01); did not block Phase 7 completion since the sensor's
-      happy-path defer/poll/fire behavior is live-proven, but is a real production-shaped
-      robustness gap worth a follow-up fix. **In scope for v1.1.**
 
 ### Out of Scope
 
@@ -290,15 +290,23 @@ which validates and bulk-loads CSV rows into Oracle with checksum-keyed idempote
 `customers ⋈ orders` business report; CI (`ci.yml` + `readme-summary.yml`, PR-based with a scoped
 PAT — see Key Decisions) enforces this on every change.
 
-**v1.1 progress:** Phase 8 (Environment & Docker Fixes for Container-Side Generation) complete
-(2026-09-01) — 2/2 plans, goal-backward verification passed 8/8 must-haves against the live stack.
-Phase 9 (Hourly Orchestrator DAG) complete (2026-09-02) — 4/4 plans, goal-backward verification
-passed 9/9 requirement IDs against the live stack, plus a code-review Critical finding (CR-01,
-a silent-skip-masks-failure retry bug in the chain-trigger tasks) found and fixed post-plan. One
-open item accepted as known risk rather than escalated: an Airflow `TriggerRunner` subprocess
-deadlock observed during verification (self-recovering, plausibly this sandboxed environment's
-resource pressure — see STATE.md Blockers/Concerns). Phase 10
-(`OraclePartitionReadyTrigger` robustness fix) is next, now unblocked.
+**v1.1 complete** (2026-09-02) — all 3 phases (8, 9, 10) shipped, 7/7 plans, 13/13 requirements
+validated:
+- Phase 8 (Environment & Docker Fixes for Container-Side Generation) — 2/2 plans, goal-backward
+  verification passed 8/8 must-haves against the live stack.
+- Phase 9 (Hourly Orchestrator DAG) — 4/4 plans, goal-backward verification passed 9/9 requirement
+  IDs against the live stack, plus a code-review Critical finding (CR-01, a silent-skip-masks-
+  failure retry bug in the chain-trigger tasks) found and fixed post-plan. One open item accepted
+  as known risk rather than escalated: an Airflow `TriggerRunner` subprocess deadlock observed
+  during verification (self-recovering, plausibly this sandboxed environment's resource pressure
+  — see STATE.md Blockers/Concerns).
+- Phase 10 (`OraclePartitionReadyTrigger` Robustness Fix) — 1/1 plan, goal-backward verification
+  passed 4/4 must-haves cleanly (no open items), plus two code-review Warning findings (untested
+  backoff-formula values, under-severity close-failure logging) found and fixed post-plan.
+
+The full CSV → Oracle pipeline now runs unattended once per hour with no manual step, and the
+`report_ready` sensor's Oracle polling no longer crashes permanently on a transient connectivity
+error.
 
 ### Next Milestone Goals
 
@@ -325,4 +333,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-09-02 after Phase 9 completion (v1.1 Hourly Ingestion Automation)*
+*Last updated: 2026-09-02 after Phase 10 completion — v1.1 Hourly Ingestion Automation milestone complete*
