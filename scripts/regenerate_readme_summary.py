@@ -304,6 +304,11 @@ Live evidence of a working HTTP-trigger -> Airflow DAG -> Oracle ETL pipeline
 `lint-type-unit`/`oracle-e2e` genuinely pass against it (D-13). Last
 regenerated: `{regenerated_at}`.
 
+![Airflow DAGs list showing csv_to_oracle_ingest, customers_orders_report, and ingestion_cascade_orchestrator, all active with green run history](docs/image.png)
+*Airflow's Dags view, live: all three DAGs active and green — `ingestion_cascade_orchestrator`
+running on its `*/5 * * * *` schedule, fanning out into `csv_to_oracle_ingest` (the producer,
+triggered once per dataset) and `customers_orders_report` (the consumer, joining both).*
+
 ### Latest ingestion per dataset
 
 {_render_row_count_table(row_count_rows)}
