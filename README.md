@@ -141,9 +141,16 @@ flowchart TD
     STAGED --> WATCH["data/customers/ , data/orders/
     watched directories"]
 
-    WATCH --> SENSE["wait_for_file
-    deferrable FileSensor"]
-    SENSE --> PROC["process_csv_task"]
+    subgraph INGEST["csv_to_oracle_ingest DAG  —  the SAME file, run twice per cycle
+    (dataset=customers, then dataset=orders)"]
+        SENSE["wait_for_file
+        deferrable FileSensor"]
+        SENSE --> PROC["process_csv_task"]
+        PROC --> RESULTS["load_results_task"]
+        RESULTS --> REPORTRES["report_result_task
+        per-ingestion log line"]
+    end
+    WATCH --> SENSE
     PROC --> ENGINE["csv_processor.engine.process()
     detect -> parse -> validate -> normalize -> chunk"]
 
@@ -155,14 +162,12 @@ flowchart TD
 
     OVALID -.->|"BEFORE INSERT trigger: FK-existence check, whole batch fails"| CVALID
 
-    PROC --> RESULTS["load_results_task"]
-    RESULTS --> REPORTRES["report_result_task
-    per-ingestion log line"]
-
-    META --> SENSOR2["OraclePartitionReadyTrigger
-    polls until both datasets present today"]
-    SENSOR2 --> BUILDRPT["build_report_task
-    customers_orders_report DAG"]
+    subgraph REPORTDAG["customers_orders_report DAG  —  the CONSUMER"]
+        SENSOR2["OraclePartitionReadyTrigger
+        polls until both datasets present today"]
+        SENSOR2 --> BUILDRPT["build_report_task"]
+    end
+    META --> SENSOR2
     CVALID --> BUSREPORT["customers JOIN orders
     business report"]
     OVALID --> BUSREPORT
@@ -211,11 +216,15 @@ flowchart TD
     class META meta
     class BUSREPORT,README report
     class CVALIDDETAIL,OVALIDDETAIL,INVALIDDETAIL,METADETAIL details
+
+    style INGEST fill:#f3f7fd,stroke:#1565c0,stroke-width:1px
+    style REPORTDAG fill:#fffdf0,stroke:#f57f17,stroke-width:1px
 ```
 
 ### Data Flow Legend
 - **(blue-grey) Generation**: `generator/generate_csv.py` produces Zipf-correlated `customers`/`orders` CSVs, staged then atomically renamed into the watched directory
-- **(blue) Airflow Tasks**: the `csv_to_oracle_ingest` DAG's chain (`wait_for_file` → `process_csv_task` → `load_results_task` → `report_result_task`) plus the `customers_orders_report` DAG's sensor/report task
+- **(blue box) `csv_to_oracle_ingest` DAG**: `wait_for_file` → `process_csv_task` → `load_results_task` → `report_result_task` — this exact box runs twice per cycle, once per dataset (see "DAG Orchestration: Producers & Consumer" above)
+- **(yellow box) `customers_orders_report` DAG**: `wait_for_both_datasets` (the `OraclePartitionReadyTrigger` sensor) → `build_report_task` — the consumer that joins both producers' output
 - **(green) Valid**: `customers_valid`/`orders_valid` — PK + index + FK-existence trigger enforced
 - **(red) Invalid**: `customers_invalid`/`orders_invalid` — fully unconstrained, widened nullable columns
 - **(indigo) Metadata**: `ingestion_metadata`, the checksum-keyed idempotency record every ingestion writes
@@ -230,6 +239,112 @@ flowchart TD
 - The business report is materialized three independent ways from the identical, never-re-authored SQL: an ad hoc `make verify-evidence` run, the CI-triggered README regeneration, and the live `customers_orders_report` DAG
 
 </details>
+
+## DAG Orchestration: Producers & Consumer
+
+`csv_to_oracle_ingest` is **one** DAG, not two — the same, unmodified DAG file runs twice per cycle,
+parameterized purely by the runtime `conf` it's triggered with (`dataset: "customers"` vs.
+`dataset: "orders"`). Every 5 minutes, `ingestion_cascade_orchestrator` generates a fresh,
+correlated CSV pair and runs both as sequential **producers**, then triggers
+`customers_orders_report` — the **consumer** — which joins whatever both producers just wrote.
+
+<details open>
+<summary><strong>Click to collapse</strong></summary>
+
+```mermaid
+flowchart TD
+    subgraph ORCH["ingestion_cascade_orchestrator  —  schedule: */5 * * * * (every 5 minutes)"]
+        direction TB
+        GENT["generate_task
+        generates a fresh, correlated
+        customers+orders CSV pair
+        (seeded from this run's logical_date)"]
+        TC["trigger_customers
+        TriggerDagRunOperator"]
+        TO["trigger_orders
+        TriggerDagRunOperator"]
+        TR["trigger_report_ready
+        TriggerDagRunOperator"]
+        SUM["summary_task
+        logs cascade summary"]
+        RET["retention_task
+        deletes CSVs older than 30 days"]
+        GENT --> TC --> TO --> TR --> SUM --> RET
+    end
+
+    TC -.->|"triggers, waits for completion"| P1["csv_to_oracle_ingest
+    conf: dataset=customers
+    ── PRODUCER 1 ──"]
+    TO -.->|"triggers, waits for completion
+    (strictly AFTER Producer 1 commits —
+    orders_valid's BEFORE INSERT trigger
+    needs the customer_id to already exist)"| P2["csv_to_oracle_ingest
+    conf: dataset=orders
+    ── PRODUCER 2 ──"]
+    TR -.->|"triggers, waits for completion"| CONS["customers_orders_report
+    ── CONSUMER ──
+    joins both producers' output"]
+
+    P1 -->|writes| CVALID2[("customers_valid")]
+    P2 -->|writes| OVALID2[("orders_valid")]
+    CVALID2 --> CONS
+    OVALID2 --> CONS
+    CONS -->|logs| OUT["business report
+    customers ⋈ orders,
+    one fresh batch per 5-min partition"]
+
+    classDef orch fill:#ede7f6,stroke:#5e35b1,color:#000000
+    classDef producer fill:#c8e6c9,stroke:#2e7d32,color:#000000
+    classDef consumer fill:#fff59d,stroke:#f57f17,color:#000000
+    classDef store fill:#fce4ec,stroke:#d81b60,color:#000000
+    classDef outp fill:#fff3e0,stroke:#fb8c00,color:#000000
+
+    class GENT,TC,TO,TR,SUM,RET orch
+    class P1,P2 producer
+    class CONS consumer
+    class CVALID2,OVALID2 store
+    class OUT outp
+```
+
+### Data Flow Legend
+- **(purple) Orchestrator**: `ingestion_cascade_orchestrator`'s own task chain — the only DAG on a real cron schedule (`*/5 * * * *`); everything else runs on demand, triggered by it
+- **(green) Producers**: two runs of the *same* `csv_to_oracle_ingest` DAG file, distinguished only by runtime `conf` — never two separate DAGs, never dataset-specific code
+- **(yellow) Consumer**: `customers_orders_report` — waits (via `OraclePartitionReadyTrigger`) until both producers have written today's partition, then joins them
+- **(pink) Storage**: `customers_valid`/`orders_valid`, written by each producer independently
+- **Solid Lines**: same-DAG task-to-task dependency (`ORCH` subgraph) and row/data movement
+- **Dotted Lines**: cross-DAG `TriggerDagRunOperator` calls — a *different* DagRun is started and waited on, not a task within the same DAG
+
+### Key Relationships
+- `trigger_customers` and `trigger_orders` call the exact same DAG (`trigger_dag_id="csv_to_oracle_ingest"`) with different `conf` — there is no `csv_ingest_customers`/`csv_ingest_orders` DAG pair, by design (DAG-05)
+- `trigger_orders` is ordered strictly **after** `trigger_customers` fully commits, not run in parallel — Producer 2's rows would otherwise race Producer 1's `customers_valid` writes, which the DB-level `BEFORE INSERT` FK trigger on `orders_valid` would then reject
+- The consumer never re-derives which rows are "new" from this specific cycle — it re-runs the *same* full `customers_valid ⋈ orders_valid` business-report SQL every time (see `docs/oracle.md`'s "Business Report Evidence"); "per-partition" framing in this document refers to *when* each producer's rows were `ingested_at`, not a column the report itself filters on
+
+</details>
+
+## Example: Business Report Output Per 5-Minute Partition
+
+Live snapshot from the running stack — the customers ⋈ orders JOIN, bucketed by each producer
+pair's 5-minute `ingested_at` window (`TRUNC(ingested_at,'HH24') + FLOOR(MI/5)*5/1440`), 3 rows per
+partition. Reproduce this yourself with the ready-to-paste query in "Querying Oracle Directly"
+below.
+
+| Partition (UTC) | Customer ID | Country | Order ID | Order Date | Amount |
+|---|---|---|---|---|---|
+| 2026-09-02 09:00 | CUST-e5689bfb-000001 | Papua New Guinea | ORD-e5689bfb-000001 | 2026-02-03 | 1128.75 |
+| 2026-09-02 09:00 | CUST-e5689bfb-000009 | Ghana | ORD-e5689bfb-000002 | 2026-01-25 | 4901.05 |
+| 2026-09-02 09:00 | CUST-e5689bfb-000002 | French Southern Territories | ORD-e5689bfb-000003 | 2026-01-24 | 536.43 |
+| 2026-09-02 09:05 | CUST-99d949e5-000029 | Cocos (Keeling) Islands | ORD-99d949e5-000001 | 2026-01-21 | 1526.18 |
+| 2026-09-02 09:05 | CUST-99d949e5-000028 | Sierra Leone | ORD-99d949e5-000002 | 2026-01-07 | 6931.68 |
+| 2026-09-02 09:05 | CUST-99d949e5-000009 | Iraq | ORD-99d949e5-000003 | 2026-01-26 | 8951.75 |
+| 2026-09-02 09:10 | CUST-2dbf35e0-000004 | Slovenia | ORD-2dbf35e0-000001 | 2026-02-21 | 7460.56 |
+| 2026-09-02 09:10 | CUST-2dbf35e0-000001 | Madagascar | ORD-2dbf35e0-000002 | 2026-01-24 | 541.97 |
+| 2026-09-02 09:10 | CUST-2dbf35e0-000027 | Burkina Faso | ORD-2dbf35e0-000003 | 2026-01-14 | 6391.93 |
+
+Every one of these partitions matched **90 orders** (`rows=100`, `invalid_ratio=0.1` default Params
+→ ~90 valid rows per producer per cycle), and the `customer_id`/`order_id` prefixes are unique per
+partition (derived from `derive_seed(logical_date)`) — confirming each 5-minute cycle really does
+generate and ingest fresh, non-duplicate, correctly-correlated data rather than replaying the same
+batch.
 
 ## Getting Started
 
@@ -302,6 +417,26 @@ SELECT c.country AS region, TRUNC(o.order_date, 'MM') AS order_month,
 FROM customers_valid c JOIN orders_valid o ON o.customer_id = c.customer_id
 GROUP BY c.country, TRUNC(o.order_date, 'MM')
 ORDER BY region, order_month;
+
+-- The SAME join, instead bucketed by each producer pair's 5-minute ingested_at
+-- window -- reproduces the "Example: Business Report Output Per 5-Minute
+-- Partition" table above, 3 rows per partition
+WITH joined AS (
+  SELECT
+    TRUNC(o.ingested_at, 'HH24')
+      + FLOOR(TO_NUMBER(TO_CHAR(o.ingested_at, 'MI')) / 5) * 5 / 1440 AS run_bucket,
+    c.customer_id, c.country, o.order_id, o.order_date, o.amount
+  FROM customers_valid c JOIN orders_valid o ON o.customer_id = c.customer_id
+),
+ranked AS (
+  SELECT j.*, ROW_NUMBER() OVER (PARTITION BY run_bucket ORDER BY order_id) AS rn
+  FROM joined j
+)
+SELECT TO_CHAR(run_bucket, 'YYYY-MM-DD HH24:MI') AS partition_utc,
+       customer_id, country, order_id, order_date, amount
+FROM ranked
+WHERE rn <= 3
+ORDER BY run_bucket, order_id;
 ```
 
 For one-shot, non-interactive queries (e.g. from a script), pipe SQL in via stdin instead —
