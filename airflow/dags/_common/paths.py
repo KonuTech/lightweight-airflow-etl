@@ -25,21 +25,30 @@ ALLOWED_DATASETS = frozenset({"customers", "orders"})
 
 
 def resolve_matched_file(base_dir: Path, file_pattern: str) -> Path | None:
-    """Glob ``base_dir`` for ``file_pattern`` and return the sorted-first match.
+    """Glob ``base_dir`` for ``file_pattern`` and return the most-recent match.
 
     ``FileSensor.poke()`` only ever returns a bare ``bool`` (05-RESEARCH.md
     Pitfall 1) -- ``process_csv_task`` must independently re-glob to get an
     actual file path once the sensor confirms existence; this is that re-glob.
+
+    Filenames embed ``YYYYMMDD`` (e.g. ``customers_20260902.csv.gz``), so
+    lexicographic sort order matches chronological order -- the *last*
+    element of the sorted candidates is the most-recently-dated file. Picking
+    the first (oldest) element instead was a real, live-reproduced bug: once
+    more than one dated file exists in ``base_dir`` (retention keeps files up
+    to 30 days), the oldest was picked every time, silently re-ingesting a
+    stale file forever instead of today's fresh one.
 
     Args:
         base_dir: Directory to search (e.g. ``/opt/airflow/data/customers``).
         file_pattern: A shell-style glob, e.g. ``"customers_*.csv*"``.
 
     Returns:
-        The sorted-first matching path, or ``None`` if nothing matches.
+        The most-recent matching path (by embedded date), or ``None`` if
+        nothing matches.
     """
     candidates = sorted(base_dir.glob(file_pattern))
-    return candidates[0] if candidates else None
+    return candidates[-1] if candidates else None
 
 
 def validate_dataset(dataset: str) -> None:
