@@ -61,8 +61,22 @@ jobs:
       # Pre-creating it here, owned by the runner user, avoids that entirely.
       # Confirmed live: PR #1's second oracle-e2e run failed with exactly this
       # PermissionError before this mkdir was added.
+      #
+      # .staging/ subdirs are ALSO pre-created here, not left for generate_csv.py's
+      # write_staged() to mkdir lazily -- live-reproduced root cause (2026-09-02):
+      # this job brings up the FULL stack, scheduler included, and
+      # ingestion_cascade_orchestrator's real */5 * * * * schedule is not paused,
+      # so its own container-side generate_task can race a host-side write_staged()
+      # caller to create .staging/ first. Whichever side creates it first wins its
+      # own default mode -- the container's uid-50000-owned mkdir() produces 755
+      # (its own umask), which the host runner (a different uid, not in group 0)
+      # then cannot write into, even though airflow-init's later `chmod -R 777
+      # /opt/airflow/data` already ran (it only covers paths that existed at THAT
+      # moment -- a directory created afterward is untouched by it). Pre-creating
+      # .staging/ here, before docker compose up ever starts the scheduler, means
+      # airflow-init's chmod -R 777 covers it too, closing the race for good.
       - name: Pre-create data/ subdirectories with correct ownership
-        run: mkdir -p data/customers data/orders
+        run: mkdir -p data/customers/.staging data/orders/.staging
 
       # Assumption A1 (06-RESEARCH.md): ubuntu-latest ships Docker Engine +
       # the docker compose v2 CLI plugin pre-installed. This is a cheap,

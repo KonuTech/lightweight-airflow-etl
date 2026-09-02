@@ -72,8 +72,26 @@ jobs:
       # scripts/regenerate_readme_summary.py writes into data/customers and
       # data/orders, which would otherwise get PermissionError on a fresh
       # checkout. Pre-create with runner-user ownership.
+      #
+      # .staging/ subdirs are ALSO pre-created here, not left for
+      # generate_csv.py's write_staged() to mkdir lazily -- live-reproduced
+      # root cause (2026-09-02): this job brings up the FULL stack, scheduler
+      # included, and ingestion_cascade_orchestrator's real */5 * * * *
+      # schedule is not paused, so its own container-side generate_task can
+      # race this job's own host-side regenerate_readme_summary.py (both call
+      # write_staged()) to create .staging/ first. Whichever side creates it
+      # first wins its own default mode -- the container's uid-50000-owned
+      # mkdir() produces 755 (its own umask), which this job's host runner (a
+      # different uid, not in group 0) then cannot write into, even though
+      # airflow-init's later `chmod -R 777 /opt/airflow/data` already ran (it
+      # only covers paths that existed at THAT moment -- a directory created
+      # afterward is untouched by it). Confirmed live via a diagnostic run:
+      # data/customers/.staging ended up `drwxrwxr-x`, owned by uid 50000, while
+      # every pre-existing sibling path was `drwxrwxrwx`. Pre-creating .staging/
+      # here, before docker compose up ever starts the scheduler, means
+      # airflow-init's chmod -R 777 covers it too, closing the race for good.
       - name: Pre-create data/ subdirectories with correct ownership
-        run: mkdir -p data/customers data/orders
+        run: mkdir -p data/customers/.staging data/orders/.staging
 
       - name: Bring up the full stack
         run: docker compose up -d --wait
@@ -81,25 +99,6 @@ jobs:
       - name: Dump container logs on stack failure
         if: failure()
         run: docker compose logs
-
-      - name: DIAGNOSTIC -- data/ permission state
-        run: |
-          echo "--- id ---"
-          id
-          echo "--- ls -la data/ ---"
-          ls -la data/
-          echo "--- ls -la data/customers/ ---"
-          ls -la data/customers/
-          echo "--- stat data/customers ---"
-          stat data/customers
-          echo "--- attempt: mkdir + touch as this runner user ---"
-          mkdir -p data/customers/.staging && echo "mkdir OK" || echo "mkdir FAILED"
-          touch data/customers/.staging/diag_test.txt && echo "touch OK" || echo "touch FAILED"
-          ls -la data/customers/.staging/
-          echo "--- docker compose ps ---"
-          docker compose ps
-          echo "--- airflow-init logs ---"
-          docker compose logs airflow-init
 
       - uses: astral-sh/setup-uv@v10.0.1
       - run: uv sync --locked
