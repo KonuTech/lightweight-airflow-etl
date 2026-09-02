@@ -37,7 +37,7 @@ manual `make generate` step.
       fresh CSVs and chain-triggers `csv_ingest` (customers → orders) then `report_ready`, fully
       unattended
 
-- [ ] **Phase 10: `OraclePartitionReadyTrigger` Robustness Fix** - A transient Oracle error during
+- [x] **Phase 10: `OraclePartitionReadyTrigger` Robustness Fix** - A transient Oracle error during (completed 2026-09-02)
       `report_ready`'s polling no longer permanently crashes the deferred sensor
 
 ## Phase Details
@@ -163,7 +163,7 @@ research/SUMMARY.md)
 **Plans**: 1 plan
 Plans:
 
-- [ ] 10-01-PLAN.md — Fix OraclePartitionReadyTrigger.run(): bounded retry/backoff on transient oracledb.OperationalError, immediate propagation of non-transient errors, guarded connection.close() (D-01 through D-08)
+- [x] 10-01-PLAN.md — Fix OraclePartitionReadyTrigger.run(): bounded retry/backoff on transient oracledb.OperationalError, immediate propagation of non-transient errors, guarded connection.close() (D-01 through D-08)
 
 ## Progress
 
@@ -181,5 +181,5 @@ Phases execute in numeric order: 8 → 9 → 10
 | 7. Correlated Customer-Order Business Report | v1.0 | 6/6 | Complete | 2026-08-30 |
 | 8. Environment & Docker Fixes for Container-Side Generation | v1.1 | 2/2 | Complete    | 2026-09-01 |
 | 9. Hourly Orchestrator DAG (`csv_generate_schedule`) | v1.1 | 4/4 | Complete    | 2026-09-02 |
-| 10. `OraclePartitionReadyTrigger` Robustness Fix | v1.1 | 0/1 | Not started | - |
+| 10. `OraclePartitionReadyTrigger` Robustness Fix | v1.1 | 1/1 | Complete   | 2026-09-02 |
 </content>

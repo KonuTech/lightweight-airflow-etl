@@ -56,7 +56,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Robustness (ROBUST)
 
-- [ ] **ROBUST-01**: A transient Oracle connectivity error during `report_ready`'s polling no
+- [x] **ROBUST-01**: A transient Oracle connectivity error during `report_ready`'s polling no
       longer permanently crashes the deferred sensor — `OraclePartitionReadyTrigger.run()` catches
       `oracledb.OperationalError` specifically with bounded retry/backoff; a genuine non-transient
       error (e.g. a bad query) still surfaces as a visible failure
@@ -101,7 +101,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SCHED-07 | Phase 9 | Complete |
 | SCHED-08 | Phase 9 | Complete |
 | SCHED-10 | Phase 9 | Complete |
-| ROBUST-01 | Phase 10 | Pending |
+| ROBUST-01 | Phase 10 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 13 total (11 original + ENV-03 added during Phase 8 planning per CONTEXT.md
