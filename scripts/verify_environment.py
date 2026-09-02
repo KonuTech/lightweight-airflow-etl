@@ -196,7 +196,7 @@ def verify_data_write_access(service: str = "airflow-apiserver") -> None:
     if the write, read-back, or delete fails (ENV-02, D-08) -- a real write-then-delete
     proof, not a permission-bits-only check. The probe file uses a dotfile name
     (`.verify_write_probe`) that never matches `customers_*.csv*`/`orders_*.csv*`, so
-    `csv_ingest`'s FileSensor glob can never pick it up; the delete runs in a
+    `csv_to_oracle_ingest`'s FileSensor glob can never pick it up; the delete runs in a
     try/finally inside the exec'd code so the probe is always removed even if the
     content assertion fails.
     """

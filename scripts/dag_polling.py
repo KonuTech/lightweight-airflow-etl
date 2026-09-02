@@ -51,7 +51,7 @@ def get_jwt_token(base_url: str = AIRFLOW_BASE_URL) -> str:
 
 
 def trigger_dag(dataset: str, config_path: str) -> str:
-    """Trigger ``csv_ingest`` for ``dataset`` via ``scripts/trigger_dag.sh``
+    """Trigger ``csv_to_oracle_ingest`` for ``dataset`` via ``scripts/trigger_dag.sh``
     (subprocess reuse of the already-proven auth+trigger flow, D-08's
     Pattern 1) -- never re-derives the flow in Python.
 
@@ -70,12 +70,12 @@ def trigger_dag(dataset: str, config_path: str) -> str:
 def trigger_dag_generic(
     dag_id: str, conf: dict[str, object] | None = None, base_url: str = AIRFLOW_BASE_URL
 ) -> str:
-    """Trigger any DAG (not just ``csv_ingest``) via a plain ``urllib`` POST.
+    """Trigger any DAG (not just ``csv_to_oracle_ingest``) via a plain ``urllib`` POST.
 
     Generalizes ``trigger_dag()``'s auth-then-POST flow to an arbitrary
     ``dag_id``/``conf`` payload -- ``trigger_dag()``/``scripts/trigger_dag.sh``
-    are hard-coded to ``csv_ingest``'s URL and ``{dataset, config_path}`` conf
-    shape, so they cannot trigger a dataset-agnostic DAG like ``report_ready``,
+    are hard-coded to ``csv_to_oracle_ingest``'s URL and ``{dataset, config_path}`` conf
+    shape, so they cannot trigger a dataset-agnostic DAG like ``customers_orders_report``,
     which takes no runtime conf at all. Mirrors ``scripts/trigger_dag.sh``'s
     exact ``{"conf": ..., "logical_date": null}`` payload shape (Airflow
     3.3.1's ``TriggerDAGRunPostBody`` marks ``logical_date`` as required-but-
@@ -102,15 +102,20 @@ def trigger_dag_generic(
 
 
 def poll_task_instance_state(
-    base_url: str, run_id: str, task_id: str, jwt_token: str, *, dag_id: str = "csv_ingest"
+    base_url: str,
+    run_id: str,
+    task_id: str,
+    jwt_token: str,
+    *,
+    dag_id: str = "csv_to_oracle_ingest",
 ) -> str:
     """GET ``.../dagRuns/{run_id}/taskInstances/{task_id}``, return its
     ``state`` field as a string (``"None"`` when the field is JSON ``null``,
     e.g. before the task has been scheduled at all).
 
-    ``dag_id`` defaults to ``csv_ingest`` (every pre-existing caller's own
+    ``dag_id`` defaults to ``csv_to_oracle_ingest`` (every pre-existing caller's own
     implicit assumption) but is overridable for any other DAG, e.g.
-    ``report_ready``.
+    ``customers_orders_report``.
     """
     request = urllib.request.Request(
         f"{base_url}/api/v2/dags/{dag_id}/dagRuns/{run_id}/taskInstances/{task_id}",
@@ -131,7 +136,7 @@ def wait_for_task_state(
     *,
     timeout: float = 60.0,
     interval: float = 2.0,
-    dag_id: str = "csv_ingest",
+    dag_id: str = "csv_to_oracle_ingest",
 ) -> None:
     """Bounded poll loop: return once ``task_id`` (within ``run_id``) reports
     ``target_state``.
@@ -164,7 +169,7 @@ def wait_for_dag_run_result(
     result_task_id: str = "load_results_task",
     timeout: float = 120.0,
     interval: float = 1.0,
-    dag_id: str = "csv_ingest",
+    dag_id: str = "csv_to_oracle_ingest",
 ) -> dict[str, object]:
     """GET ``.../dagRuns/{run_id}/wait?result={result_task_id}&interval={interval}``,
     blocking server-side (Airflow's own ``wait`` endpoint) until the DAG run
@@ -176,7 +181,7 @@ def wait_for_dag_run_result(
     with intermediate heartbeat lines (e.g. ``{"state": "running"}``) followed
     by a final line carrying ``results``; only the final line is parsed.
 
-    ``dag_id`` defaults to ``csv_ingest`` (every pre-existing caller's own
+    ``dag_id`` defaults to ``csv_to_oracle_ingest`` (every pre-existing caller's own
     implicit assumption) but is overridable for any other DAG.
 
     Returns the parsed ``results[result_task_id]`` dict.

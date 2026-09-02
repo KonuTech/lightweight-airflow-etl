@@ -1,5 +1,5 @@
-"""Custom deferrable Oracle-polling trigger + sensor for the ``report_ready``
-DAG (D-26/D-28).
+"""Custom deferrable Oracle-polling trigger + sensor for the
+``customers_orders_report`` DAG (D-26/D-28).
 
 ``apache-airflow-providers-oracle==4.6.2`` (already pinned, see
 ``docker/airflow/Dockerfile``) ships exactly one operator

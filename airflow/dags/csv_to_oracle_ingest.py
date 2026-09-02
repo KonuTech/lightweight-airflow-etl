@@ -1,4 +1,4 @@
-"""The one, config-driven ``csv_ingest`` DAG (D-01/DAG-01/DAG-05).
+"""The one, config-driven ``csv_to_oracle_ingest`` DAG (D-01/DAG-01/DAG-05).
 
 Fully parameterized by runtime ``conf`` (``dataset`` name + ``config_path``) --
 never one DAG per dataset. Delegates the entire detect->parse->validate->
@@ -27,7 +27,7 @@ from csv_processor.models import ProcessingResult, Status
 
 
 @dag(
-    dag_id="csv_ingest",
+    dag_id="csv_to_oracle_ingest",
     schedule=None,
     catchup=False,
     params={
@@ -35,7 +35,7 @@ from csv_processor.models import ProcessingResult, Status
         "config_path": Param("configs/datasets/customers.json", type="string"),
     },
 )
-def csv_ingest() -> None:
+def csv_to_oracle_ingest() -> None:
     @task
     def load_config_task() -> dict[str, object]:
         """Validate runtime conf and load the referenced dataset config.
@@ -141,4 +141,4 @@ def csv_ingest() -> None:
     final_result_dict >> report
 
 
-csv_ingest()
+csv_to_oracle_ingest()

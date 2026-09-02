@@ -56,7 +56,7 @@ def test_summary_format() -> None:
 
     assert "customers=total:100,valid:95,invalid:5" in line
     assert "orders=total:50,valid:48,invalid:2" in line
-    assert "report_ready=OK" in line
+    assert "customers_orders_report=OK" in line
 
 
 def test_summary_format_handles_missing_dataset() -> None:
@@ -69,7 +69,7 @@ def test_summary_format_handles_missing_dataset() -> None:
 
     assert "customers=NO_DATA" in line
     assert "orders=total:50,valid:48,invalid:2" in line
-    assert "report_ready=OK" in line
+    assert "customers_orders_report=OK" in line
 
 
 def test_retention_deletes_old_files(tmp_path: Path) -> None:

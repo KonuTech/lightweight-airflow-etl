@@ -2,7 +2,7 @@
 
 Runs a real ingestion for both datasets (customers, orders) via the same
 HTTP-trigger -> deferred-wait -> Oracle-load flow already proven in
-``scripts/dag_polling.py``/``tests/e2e/test_csv_ingest_e2e.py`` (Plan 01),
+``scripts/dag_polling.py``/``tests/e2e/test_csv_to_oracle_ingest_e2e.py`` (Plan 01),
 then opens one real Oracle connection and runs the exact two queries
 mirrored from ``scripts/verify_evidence.sql`` (Task 1's own output -- the
 business-report query text is intentionally NEVER re-authored independently
@@ -33,7 +33,7 @@ prohibition against a silent stale/misleading "proof of a working platform".
 ``scripts/dag_polling.py`` and ``generator/generate_csv.py`` have no
 ``__init__.py`` and are not installed packages, so both are loaded via
 ``importlib.util.spec_from_file_location`` -- the same convention already
-established by ``tests/e2e/test_csv_ingest_e2e.py``, never a plain
+established by ``tests/e2e/test_csv_to_oracle_ingest_e2e.py``, never a plain
 ``import``.
 
 Usage:
@@ -112,7 +112,7 @@ FETCH FIRST 10 ROWS ONLY
 
 def _load_sibling_module(name: str, path: Path) -> ModuleType:
     """Load a non-package sibling script via ``importlib`` (see module
-    docstring) -- mirrors ``tests/e2e/test_csv_ingest_e2e.py``'s exact
+    docstring) -- mirrors ``tests/e2e/test_csv_to_oracle_ingest_e2e.py``'s exact
     convention, never a plain ``import``."""
     spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
@@ -123,7 +123,7 @@ def _load_sibling_module(name: str, path: Path) -> ModuleType:
     # its frozen dataclass (GeneratedCsv) uses postponed annotations, whose
     # forward-ref resolution looks the module up via
     # sys.modules[cls.__module__] -- mirrors
-    # tests/e2e/test_csv_ingest_e2e.py's own documented workaround.
+    # tests/e2e/test_csv_to_oracle_ingest_e2e.py's own documented workaround.
     sys.modules[name] = module
     spec.loader.exec_module(module)
     return module

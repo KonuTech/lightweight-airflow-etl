@@ -78,7 +78,7 @@ x-airflow-common: &airflow-common
     # `airflow connections test`. Acceptable in this project's explicit local-dev-only scope.
     AIRFLOW__CORE__TEST_CONNECTION: "Enabled"
     # 07-03-PLAN.md Task 2's own newly-discovered gap (found via a real live
-    # deferral of the new report_ready DAG's custom trigger -- no prior phase
+    # deferral of the new customers_orders_report DAG's custom trigger -- no prior phase
     # ever exercised a DAG-folder-relative import from the triggerer process,
     # only from DAG-parsing, which Airflow's own DagFileProcessor already puts
     # on sys.path for free). The triggerer reconstructs a deferred trigger via
@@ -125,7 +125,7 @@ x-airflow-common: &airflow-common
     # containers at all, so load_config_task could never read
     # /opt/airflow/configs/datasets/<dataset>.json without this.
     - ./configs:/opt/airflow/configs:ro
-    # Phase 8 (ENV-01): mounts the CLI generator so Phase 9's csv_generate_schedule
+    # Phase 8 (ENV-01): mounts the CLI generator so Phase 9's ingestion_cascade_orchestrator
     # DAG can `from generator.generate_csv import main` and run it in-process --
     # read-only, since no Airflow task ever needs to write back into this package.
     - ./generator:/opt/airflow/generator:ro
@@ -139,7 +139,7 @@ x-airflow-common: &airflow-common
     # hostname stops resolving the moment the original container is recreated (image rebuild,
     # `docker compose down`/`up`, `--force-recreate`, host reboot), permanently orphaning every
     # log written before the recycle with a NameResolutionError -- observed live for a
-    # report_ready/build_report_task run that predated this very session's secret_key-fix
+    # customers_orders_report/build_report_task run that predated this very session's secret_key-fix
     # container recreate. A named volume shared across all 5 services means every component
     # reads/writes the SAME persistent /opt/airflow/logs, so apiserver almost always finds the
     # log file locally (Airflow's FileTaskHandler checks local disk before falling back to the

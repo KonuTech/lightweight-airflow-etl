@@ -59,7 +59,7 @@ verify-phase4:     ## Phase 4's own combined local gate: unit + real-Oracle inte
 # requires `make up` first, same as verify-phase4. The DagBag structure check
 # uses BundleDagBag (not the plain airflow.models.DagBag) -- 05-01-SUMMARY.md's
 # own recorded deviation found that plain DagBag never adds the dags folder to
-# sys.path, so csv_ingest.py's `from _common import paths, reporting` fails
+# sys.path, so csv_to_oracle_ingest.py's `from _common import paths, reporting` fails
 # under it even though it imports cleanly under Airflow's real dag-processor.
 verify-phase5:     ## Phase 5's own combined local gate: unit suite + live DagBag structure check (requires `make up` first)
 	uv run pytest tests/unit/ -x
@@ -68,7 +68,7 @@ from pathlib import Path; \
 from airflow.dag_processing.dagbag import BundleDagBag; \
 b = BundleDagBag(bundle_path=Path('/opt/airflow/dags'), dag_folder='/opt/airflow/dags'); \
 assert not b.import_errors, b.import_errors; \
-dag = b.dags['csv_ingest']; \
+dag = b.dags['csv_to_oracle_ingest']; \
 required = {'load_config_task','wait_for_file','process_csv_task','load_results_task','report_result_task'}; \
 assert required.issubset(set(dag.task_ids)), dag.task_ids; \
 assert dag.get_task('wait_for_file').deferrable is True; \
@@ -117,7 +117,7 @@ verify-phase8:     ## Phase 8's own combined local gate: container-exec import +
 	uv run python scripts/verify_environment.py
 
 # Phase 9's own combined local gate -- mirrors verify-phase5's exact BundleDagBag shape,
-# swapped to csv_generate_schedule's own task_ids/Param defaults, plus the extra
+# swapped to ingestion_cascade_orchestrator's own task_ids/Param defaults, plus the extra
 # max_active_runs/deferrable/fail_when_dag_is_paused/Param-default assertions SCHED-04/
 # SCHED-05/SCHED-08 need. Requires `make up` first, same as verify-phase5/verify-phase8.
 verify-phase9:     ## Phase 9's own combined local gate: unit suite + live DagBag structure check (requires `make up` first)
@@ -127,7 +127,7 @@ from pathlib import Path; \
 from airflow.dag_processing.dagbag import BundleDagBag; \
 b = BundleDagBag(bundle_path=Path('/opt/airflow/dags'), dag_folder='/opt/airflow/dags'); \
 assert not b.import_errors, b.import_errors; \
-dag = b.dags['csv_generate_schedule']; \
+dag = b.dags['ingestion_cascade_orchestrator']; \
 required = {'generate_task','trigger_customers','trigger_orders','trigger_report_ready','summary_task','retention_task'}; \
 assert required.issubset(set(dag.task_ids)), dag.task_ids; \
 assert dag.max_active_runs == 1, dag.max_active_runs; \

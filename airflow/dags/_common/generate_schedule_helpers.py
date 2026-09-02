@@ -1,4 +1,4 @@
-"""``csv_generate_schedule``'s pure helper functions (SCHED-02, SCHED-07,
+"""``ingestion_cascade_orchestrator``'s pure helper functions (SCHED-02, SCHED-07,
 SCHED-10; D-04, D-12, D-13, D-14, D-16, D-18).
 
 Plain, unit-testable functions with zero Airflow import -- mirrors
@@ -61,7 +61,7 @@ def format_cascade_summary(dataset_results: dict[str, dict[str, int] | None]) ->
     Returns:
         A single line naming both datasets' total/valid/invalid row counts
         (or ``NO_DATA`` when a dataset's result is ``None``) plus a fixed
-        ``report_ready=OK`` heartbeat token (D-14 -- never re-runs the
+        ``customers_orders_report=OK`` heartbeat token (D-14 -- never re-runs the
         business-report SQL here).
     """
     parts = []
@@ -75,7 +75,7 @@ def format_cascade_summary(dataset_results: dict[str, dict[str, int] | None]) ->
                 f"valid:{result['valid_rows']},"
                 f"invalid:{result['invalid_rows']}"
             )
-    parts.append("report_ready=OK")
+    parts.append("customers_orders_report=OK")
     return " ".join(parts)
 
 

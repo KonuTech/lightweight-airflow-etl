@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Trigger the csv_ingest DAG for a given dataset + config path via Airflow's REST
+# Trigger the csv_to_oracle_ingest DAG for a given dataset + config path via Airflow's REST
 # API, reusing the exact /auth/token auth flow already proven in
 # scripts/verify_environment.py (AIRFLOW_AUTH_TOKEN_URL / AIRFLOW_USER /
 # AIRFLOW_PASSWORD -- same endpoint, same admin/admin credential, same payload
@@ -27,7 +27,7 @@ CONFIG_PATH="$2"
 
 AIRFLOW_BASE_URL="${AIRFLOW_BASE_URL:-http://localhost:8080}"
 AIRFLOW_AUTH_TOKEN_URL="${AIRFLOW_BASE_URL}/auth/token"
-AIRFLOW_TRIGGER_URL="${AIRFLOW_BASE_URL}/api/v2/dags/csv_ingest/dagRuns"
+AIRFLOW_TRIGGER_URL="${AIRFLOW_BASE_URL}/api/v2/dags/csv_to_oracle_ingest/dagRuns"
 AIRFLOW_USER="admin"
 AIRFLOW_PASSWORD="admin"
 

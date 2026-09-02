@@ -1,5 +1,5 @@
 """Automated end-to-end proof for TEST-03/D-08: an HTTP request triggers the
-real ``csv_ingest`` DAG, the deferred ``wait_for_file`` sensor genuinely
+real ``csv_to_oracle_ingest`` DAG, the deferred ``wait_for_file`` sensor genuinely
 wakes (not polls) once a fixture file appears, ``process_csv_task`` runs the
 real CSV engine, and correct/incorrect rows land in Oracle's
 ``customers_valid``/``customers_invalid`` tables -- asserted via a real
@@ -57,7 +57,7 @@ def _clear_existing_customers_fixtures() -> None:
     HOST data dir BEFORE triggering.
 
     The DAG's ``wait_for_file`` sensor glob-matches this exact pattern
-    (``airflow/dags/csv_ingest.py``'s ``FileSensor``), so a stale fixture
+    (``airflow/dags/csv_to_oracle_ingest.py``'s ``FileSensor``), so a stale fixture
     left over from a prior manual/live-verification run (e.g. Phase 5's own
     ``docs/airflow-dag.md`` evidence capture, or a prior local ``make
     generate``) would make the sensor match immediately and never defer,

@@ -81,9 +81,9 @@ ignore = ["UP042"]
 # annotation"/bare-`dict` errors across every prior phase's already-passing
 # test suite -- exactly the "nuclear strict=true" outcome this profile is
 # explicitly avoiding). All three are turned back on per-module for
-# `csv_processor`/`generator`/`benchmark`/`scripts`/`_common`/`csv_ingest`
+# `csv_processor`/`generator`/`benchmark`/`scripts`/`_common`/`csv_to_oracle_ingest`
 # below -- this project's own source code, not tests -- which is also where
-# Pitfall 3's literal `airflow/dags/csv_ingest.py` bare-`dict` fix lives.
+# Pitfall 3's literal `airflow/dags/csv_to_oracle_ingest.py` bare-`dict` fix lives.
 [tool.mypy]
 plugins = ["pydantic.mypy"]
 python_version = "3.12"
@@ -114,7 +114,7 @@ module = [
     "generator.*",
     "benchmark.*",
     "scripts.*",
-    "csv_ingest",
+    "csv_to_oracle_ingest",
     "_common.*",
 ]
 disallow_any_generics = true

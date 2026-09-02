@@ -18,7 +18,7 @@ DAG is a separate, later concern (D-24/D-25), not this test's.
 
 ``generator/generate_csv.py`` has no ``__init__.py`` and is not an installed
 package, so it is loaded via ``importlib.util.spec_from_file_location`` --
-the same convention already established by ``tests/e2e/test_csv_ingest_e2e.py``
+the same convention already established by ``tests/e2e/test_csv_to_oracle_ingest_e2e.py``
 and ``tests/unit/test_generate_csv.py``, never a plain ``import``.
 """
 
@@ -49,7 +49,7 @@ generate_csv = importlib.util.module_from_spec(_GENERATE_CSV_SPEC)
 # dataclasses (GeneratedCsv/CorrelatedDatasets) use postponed annotations,
 # and dataclasses' forward-ref resolution looks the module up via
 # sys.modules[cls.__module__] -- without this it raises AttributeError on a
-# None module during class creation (mirrors test_csv_ingest_e2e.py's own
+# None module during class creation (mirrors test_csv_to_oracle_ingest_e2e.py's own
 # workaround).
 sys.modules["generate_csv"] = generate_csv
 _GENERATE_CSV_SPEC.loader.exec_module(generate_csv)
@@ -102,7 +102,7 @@ def test_correlated_customers_orders_join_returns_at_least_one_row(
         defaults_path=_CONFIGS_DIR / "defaults.json",
     )
 
-    # Run-unique seed (matches test_csv_ingest_e2e.py's own run-uniqueness
+    # Run-unique seed (matches test_csv_to_oracle_ingest_e2e.py's own run-uniqueness
     # convention) so LOAD-04's checksum-based idempotency never collides
     # with a prior test run.
     seed = time.time_ns() % (2**31)
@@ -139,7 +139,7 @@ def test_correlated_customers_orders_join_returns_at_least_one_row(
 def _clear_dataset_fixtures(dataset: str) -> None:
     """Delete every pre-existing file matching ``<dataset>_*.csv*`` under both
     the dataset's watched directory and its ``.staging/`` subdir BEFORE
-    triggering -- mirrors ``test_csv_ingest_e2e.py``'s
+    triggering -- mirrors ``test_csv_to_oracle_ingest_e2e.py``'s
     ``_clear_existing_customers_fixtures()``, extended to ``.staging/`` too
     (D-24's staging path is a separate glob root the original helper never
     considered). A stale watched-directory file would make the sensor match
@@ -159,7 +159,7 @@ def test_correlated_ingestion_via_live_dag_trigger_reports_across_backdated_part
     oracle_cursor: oracledb.Cursor,
 ) -> None:
     """D-24/D-25: prove the staging+atomic-rename mechanism against the REAL,
-    already-proven ``csv_ingest`` DAG (never mocked), for both datasets, and
+    already-proven ``csv_to_oracle_ingest`` DAG (never mocked), for both datasets, and
     D-12: prove the business report aggregates correctly across a multi-day
     backdated-partition boundary.
     """
@@ -193,7 +193,7 @@ def test_correlated_ingestion_via_live_dag_trigger_reports_across_backdated_part
     # ABSENT, poll until wait_for_file genuinely reaches "deferred" BEFORE
     # the staged write/rename happens -- Pitfall 4's exact ordering, applied
     # per dataset. timeout=180 matches this project's established cold-start
-    # headroom (docs/airflow-dag.md, test_csv_ingest_e2e.py).
+    # headroom (docs/airflow-dag.md, test_csv_to_oracle_ingest_e2e.py).
     customers_run_id = dag_polling.trigger_dag("customers", "configs/datasets/customers.json")
     dag_polling.wait_for_task_state(
         dag_polling.AIRFLOW_BASE_URL,

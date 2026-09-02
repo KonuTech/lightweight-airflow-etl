@@ -1,4 +1,4 @@
-"""The ``report_ready`` DAG (D-26): senses when both ``customers`` and
+"""The ``customers_orders_report`` DAG (D-26): senses when both ``customers`` and
 ``orders`` have ingested data for today's real wall-clock-date partition,
 then builds/logs the same business-report SQL this project already uses
 (never re-authored a fourth time).
@@ -41,17 +41,17 @@ FETCH FIRST 10 ROWS ONLY
 
 
 @dag(
-    dag_id="report_ready",
+    dag_id="customers_orders_report",
     schedule=None,
     catchup=False,
 )
-def report_ready() -> None:
+def customers_orders_report() -> None:
     sensor = ReportReadySensor(task_id="wait_for_both_datasets")
 
     @task
     def build_report_task() -> None:
         """Query and log the business report (D-27: logs only, matching
-        ``csv_ingest.py``'s ``report_result_task`` shape -- no Slack/email)."""
+        ``csv_to_oracle_ingest.py``'s ``report_result_task`` shape -- no Slack/email)."""
         connection = load.get_connection()
         try:
             cursor = connection.cursor()
@@ -60,10 +60,10 @@ def report_ready() -> None:
         finally:
             connection.close()
         logging.getLogger("airflow.task").info(
-            "report_ready business report (%d rows): %s", len(rows), rows
+            "customers_orders_report business report (%d rows): %s", len(rows), rows
         )
 
     sensor >> build_report_task()
 
 
-report_ready()
+customers_orders_report()

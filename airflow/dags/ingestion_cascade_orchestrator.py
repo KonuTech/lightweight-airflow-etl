@@ -1,14 +1,14 @@
-"""The ``csv_generate_schedule`` orchestrator DAG (SCHED-01, SCHED-03,
+"""The ``ingestion_cascade_orchestrator`` DAG (SCHED-01, SCHED-03,
 SCHED-04, SCHED-05, SCHED-06, SCHED-08, SCHED-10; D-01 through D-19).
 
 Generates a fresh, correlated ``customers``+``orders`` CSV pair every 5
 minutes (MVP cadence -- see docs/airflow-dag.md for the rationale: surfacing
 pipeline failures within minutes instead of up to an hour; D-03/D-04/D-05),
 then sequentially chain-triggers the existing, unmodified
-``csv_ingest``/``report_ready`` DAGs (SCHED-03/SCHED-06, D-06/D-07/D-08),
+``csv_to_oracle_ingest``/``customers_orders_report`` DAGs (SCHED-03/SCHED-06, D-06/D-07/D-08),
 logs a one-line cascade summary (SCHED-07, D-12/D-13/D-14), and best-effort
 cleans up CSVs older than 30 days (SCHED-10, D-16/D-17/D-18) -- all without
-ever touching ``csv_ingest.py``/``report_ready.py`` themselves.
+ever touching ``csv_to_oracle_ingest.py``/``customers_orders_report.py`` themselves.
 
 Task graph: ``generate_task -> trigger_customers -> trigger_orders ->
 trigger_report_ready -> summary_task -> retention_task``. ``trigger_orders``
@@ -63,7 +63,7 @@ _RETENTION_DAYS = 30
 
 
 @dag(
-    dag_id="csv_generate_schedule",
+    dag_id="ingestion_cascade_orchestrator",
     schedule="*/5 * * * *",
     catchup=False,
     max_active_runs=1,
@@ -73,7 +73,7 @@ _RETENTION_DAYS = 30
         "invalid_ratio": Param(0.1, type="number", minimum=0.0, maximum=1.0),
     },
 )
-def csv_generate_schedule() -> None:
+def ingestion_cascade_orchestrator() -> None:
     @task(retries=0)
     def generate_task() -> None:
         """Generate a fresh, correlated customers+orders CSV pair (D-03/D-05).
@@ -156,7 +156,7 @@ def csv_generate_schedule() -> None:
 
     trigger_customers = TriggerDagRunOperator(
         task_id="trigger_customers",
-        trigger_dag_id="csv_ingest",
+        trigger_dag_id="csv_to_oracle_ingest",
         conf={"dataset": "customers", "config_path": "configs/datasets/customers.json"},
         trigger_run_id="{{ dag_run.run_id }}__customers",
         skip_when_already_exists=True,
@@ -170,7 +170,7 @@ def csv_generate_schedule() -> None:
 
     trigger_orders = TriggerDagRunOperator(
         task_id="trigger_orders",
-        trigger_dag_id="csv_ingest",
+        trigger_dag_id="csv_to_oracle_ingest",
         conf={"dataset": "orders", "config_path": "configs/datasets/orders.json"},
         trigger_run_id="{{ dag_run.run_id }}__orders",
         skip_when_already_exists=True,
@@ -184,7 +184,7 @@ def csv_generate_schedule() -> None:
 
     trigger_report_ready = TriggerDagRunOperator(
         task_id="trigger_report_ready",
-        trigger_dag_id="report_ready",
+        trigger_dag_id="customers_orders_report",
         trigger_run_id="{{ dag_run.run_id }}__report_ready",
         skip_when_already_exists=True,
         reset_dag_run=True,
@@ -235,4 +235,4 @@ def csv_generate_schedule() -> None:
     trigger_report_ready >> summary_task() >> retention_task()
 
 
-csv_generate_schedule()
+ingestion_cascade_orchestrator()

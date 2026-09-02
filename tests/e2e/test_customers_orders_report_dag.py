@@ -1,11 +1,11 @@
-"""Live proof for D-26/D-28/D-29: the ``report_ready`` DAG's
+"""Live proof for D-26/D-28/D-29: the ``customers_orders_report`` DAG's
 ``wait_for_both_datasets`` sensor genuinely defers until BOTH ``customers``
 and ``orders`` have ingestion for today's real wall-clock-date partition,
 then ``build_report_task`` runs and the DAG completes successfully.
 
-Bypasses the ``csv_ingest`` DAG/``FileSensor`` layer on purpose for the
+Bypasses the ``csv_to_oracle_ingest`` DAG/``FileSensor`` layer on purpose for the
 ingestion side (mirrors ``tests/e2e/test_correlated_report_e2e.py``'s own
-choice) -- this test's own concern is proving the NEW ``report_ready`` DAG's
+choice) -- this test's own concern is proving the NEW ``customers_orders_report`` DAG's
 sensor waits for both datasets, not either, via a real, live deferral
 against the real Airflow triggerer; it calls ``csv_processor.engine.process()``
 directly to land real ``ingestion_metadata``/``customers_valid``/
@@ -50,13 +50,13 @@ generate_csv = importlib.util.module_from_spec(_GENERATE_CSV_SPEC)
 sys.modules["generate_csv"] = generate_csv
 _GENERATE_CSV_SPEC.loader.exec_module(generate_csv)
 
-_DAG_ID = "report_ready"
+_DAG_ID = "customers_orders_report"
 _SENSOR_TASK_ID = "wait_for_both_datasets"
 _REPORT_TASK_ID = "build_report_task"
 
 
 @pytest.fixture(autouse=True)
-def clean_report_ready_partition(oracle_cursor: oracledb.Cursor) -> None:
+def clean_customers_orders_report_partition(oracle_cursor: oracledb.Cursor) -> None:
     """Delete today's ``ingestion_metadata`` rows for ``customers``/``orders``
     BEFORE the test -- a clean slate is required to prove genuine deferral
     (mirrors this project's established Pitfall-4 discipline against
@@ -73,7 +73,7 @@ def clean_report_ready_partition(oracle_cursor: oracledb.Cursor) -> None:
 def test_report_ready_dag_defers_then_fires_once_both_datasets_present() -> None:
     jwt_token = dag_polling.get_jwt_token(dag_polling.AIRFLOW_BASE_URL)
 
-    # (1) Trigger report_ready -- no runtime conf needed (dataset-agnostic).
+    # (1) Trigger customers_orders_report -- no runtime conf needed (dataset-agnostic).
     run_id = dag_polling.trigger_dag_generic(_DAG_ID)
 
     # (2) The sensor must reach "deferred" BEFORE any ingestion happens.

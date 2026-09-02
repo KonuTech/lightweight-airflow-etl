@@ -1,4 +1,4 @@
-"""Path/dataset-safety helpers for ``csv_ingest.py`` (D-05, DAG-02, T-05-01).
+"""Path/dataset-safety helpers for ``csv_to_oracle_ingest.py`` (D-05, DAG-02, T-05-01).
 
 Plain, unit-testable functions with zero Airflow import (05-RESEARCH.md
 "Validation Architecture" Wave 0 Gaps) -- mirrors
