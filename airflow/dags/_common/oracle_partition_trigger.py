@@ -90,6 +90,16 @@ _POLL_QUERY = (
 # for today's partition before the sensor is satisfied (D-28).
 _BOTH_DATASETS_PRESENT = 2
 
+# Bounded retry cap for consecutive transient oracledb.OperationalError
+# failures during a poll cycle (D-03) -- after this many consecutive
+# failures, the original exception is re-raised rather than retried forever.
+_MAX_TRANSIENT_RETRIES = 10
+
+# Base delay (seconds) for the exponential backoff between retries, capped at
+# `self.poke_interval` (D-05) -- mirrors scripts/verify_environment.py's own
+# retry-backoff convention, adapted to `asyncio.sleep` (never `time.sleep`).
+_RETRY_BASE_DELAY_SECONDS = 1.0
+
 
 class OraclePartitionReadyTrigger(BaseTrigger):
     """Polls Oracle's ``ingestion_metadata`` table directly (D-28) -- the
@@ -109,16 +119,43 @@ class OraclePartitionReadyTrigger(BaseTrigger):
         )
 
     async def run(self) -> AsyncIterator[Any]:
+        retry_count = 0
         while True:
-            connection = await oracledb.connect_async(
-                user=oracle_user(), password=oracle_password(), dsn=oracle_dsn()
-            )
             try:
-                cursor = connection.cursor()
-                await cursor.execute(_POLL_QUERY)
-                (count,) = await cursor.fetchone()
-            finally:
-                await connection.close()
+                connection = await oracledb.connect_async(
+                    user=oracle_user(), password=oracle_password(), dsn=oracle_dsn()
+                )
+                try:
+                    cursor = connection.cursor()
+                    await cursor.execute(_POLL_QUERY)
+                    (count,) = await cursor.fetchone()
+                finally:
+                    try:
+                        await connection.close()
+                    except oracledb.Error:
+                        _LOGGER.debug(
+                            "connection.close() failed on an already-broken connection",
+                            exc_info=True,
+                        )
+            except oracledb.OperationalError as exc:
+                retry_count += 1
+                if retry_count > _MAX_TRANSIENT_RETRIES:
+                    raise
+                delay = min(
+                    _RETRY_BASE_DELAY_SECONDS * (2 ** (retry_count - 1)),
+                    self.poke_interval,
+                )
+                _LOGGER.warning(
+                    "Oracle poll attempt %d/%d failed (transient): %s -- retrying in %.1fs",
+                    retry_count,
+                    _MAX_TRANSIENT_RETRIES,
+                    exc,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+                continue
+
+            retry_count = 0  # a successful poll clears the transient-failure budget
             if count >= _BOTH_DATASETS_PRESENT:
                 yield TriggerEvent({"status": "ready"})
                 return
