@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Hourly Ingestion Automation
-status: verifying
-stopped_at: "Completed 09-04-PLAN.md -- Phase 9 fully live-verified (SCHED-01/03/04/05/06/08 all confirmed), ready for /gsd:verify-work"
-last_updated: "2026-09-01T23:26:56.521Z"
+status: ready_to_plan
+stopped_at: Phase 9 complete (4/4) — ready to discuss Phase 10
+last_updated: 2026-09-02T05:57:18.289Z
 last_activity: 2026-09-01
 progress:
   total_phases: 3
@@ -24,14 +24,14 @@ See: .planning/PROJECT.md (updated 2026-09-01)
 validates and bulk-loads its valid rows into Oracle, routes invalid rows (with error metadata)
 into a separate table, and reports back a clear processing summary — end to end, reproducibly,
 from a fresh `git clone`.
-**Current focus:** Phase 9 — Hourly Orchestrator DAG (`csv_generate_schedule`)
+**Current focus:** Phase 10 — `oraclepartitionreadytrigger` robustness fix
 
 ## Current Position
 
-Phase: 9 (Hourly Orchestrator DAG (`csv_generate_schedule`)) — EXECUTING
-Plan: 4 of 4
-Status: Phase complete — ready for verification
-Last activity: 2026-09-01
+Phase: 10
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-09-02
 
 Progress: [██████████] 100%
 
@@ -39,7 +39,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 38 (all v1.0)
+- Total plans completed: 42 (all v1.0)
 - Average duration: - min
 - Total execution time: 0 hours (v1.1)
 
@@ -49,6 +49,7 @@ Progress: [██████████] 100%
 |-------|-------|-------|----------|
 | 01-07 | 36 | - | - |
 | 8 | 2 | - | - |
+| 9 | 4 | - | - |
 
 **Recent Trend:**
 
@@ -104,9 +105,20 @@ None yet.
   (2026-08-30), unrelated to v1.1 scope. Still deferred, needs its own investigation
   (e.g. `/gsd-debug`).
 
-  research (open upstream GitHub issues #60049/#57756/#38353/#52247, not independently reproduced
-  at this project's exact pinned provider version) — must be live-verified during Phase 9, not
-  assumed to work from research alone.
+- Airflow's own `TriggerRunner` subprocess can deadlock for hours under sustained load (observed
+  2026-09-02 during Phase 9 verification: `docker logs airflow-triggerer-1` showed
+  "TriggerRunner subprocess event loop appears deadlocked" for ~1h and ~3.7h stretches, causing one
+  genuine, fully-fixed-code `csv_generate_schedule` scheduled run to fail past its 45-minute
+  `dagrun_timeout` with no automatic retry (`retries=0` by design)). Self-recovered on its own via
+  Airflow's own watchdog; not reproduced during Phase 9's own dedicated live-verification window
+  (09-04). Same risk category as the previously-flagged open upstream `TriggerDagRunOperator`
+  deferred-mode issues (#60049/#57756/#38353/#52247) — those were separately confirmed NOT to
+  reproduce for the deferral mechanism itself (09-RESEARCH.md, live-verified 09-04), but this
+  triggerer-subprocess-level instability is a distinct, still-open residual risk. **Accepted as
+  known risk, not escalated to a new phase** (09-HUMAN-UAT.md, 2026-09-02) — plausibly attributable
+  to this sandboxed dev environment's resource pressure during heavy concurrent session activity
+  rather than a defect in Phase 9's own DAG code. Revisit if it recurs under normal (non-session-
+  heavy) operation.
 
 ## Deferred Items
 
