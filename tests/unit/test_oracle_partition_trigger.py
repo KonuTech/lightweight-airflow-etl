@@ -49,12 +49,53 @@ async def _collect_events(trigger: OraclePartitionReadyTrigger) -> list[TriggerE
 
 
 def test_serialize_returns_the_expected_classpath_and_poke_interval() -> None:
-    trigger = OraclePartitionReadyTrigger(poke_interval=5.0)
+    trigger = OraclePartitionReadyTrigger(poke_interval=5.0, max_wait_seconds=60.0)
 
     assert trigger.serialize() == (
         "_common.oracle_partition_trigger.OraclePartitionReadyTrigger",
-        {"poke_interval": 5.0},
+        {"poke_interval": 5.0, "max_wait_seconds": 60.0},
     )
+
+
+def test_run_raises_timeout_error_after_exceeding_max_wait() -> None:
+    """Every poll reports "not ready" -- the trigger must eventually raise
+    TimeoutError rather than polling forever, so a genuinely stuck pipeline
+    surfaces as a visible FAILED task instead of being force-SKIPPED by the
+    parent DAG's own dagrun_timeout."""
+    # poke_interval=10, max_wait_seconds=30 -> max_wait_attempts=3.
+    # 4 "not ready" polls: the 4th must exceed the budget and raise.
+    connection = _mock_connection([(1,), (1,), (1,), (1,)])
+
+    with (
+        patch(
+            "_common.oracle_partition_trigger.oracledb.connect_async",
+            AsyncMock(return_value=connection),
+        ),
+        patch("_common.oracle_partition_trigger.asyncio.sleep", AsyncMock(return_value=None)),
+    ):
+        trigger = OraclePartitionReadyTrigger(poke_interval=10.0, max_wait_seconds=30.0)
+        with pytest.raises(TimeoutError, match="both datasets not present after"):
+            asyncio.run(_collect_events(trigger))
+
+
+def test_run_succeeds_within_the_max_wait_budget() -> None:
+    """Becoming ready on the 2nd poll, well within a 3-attempt budget, must
+    still yield the ready event normally -- the bounded wait must not
+    interfere with the happy path."""
+    connection = _mock_connection([(1,), (2,)])
+
+    with (
+        patch(
+            "_common.oracle_partition_trigger.oracledb.connect_async",
+            AsyncMock(return_value=connection),
+        ),
+        patch("_common.oracle_partition_trigger.asyncio.sleep", AsyncMock(return_value=None)),
+    ):
+        trigger = OraclePartitionReadyTrigger(poke_interval=10.0, max_wait_seconds=30.0)
+        events = asyncio.run(_collect_events(trigger))
+
+    assert len(events) == 1
+    assert events[0].payload == {"status": "ready"}
 
 
 def test_run_does_not_yield_when_only_one_dataset_is_present() -> None:

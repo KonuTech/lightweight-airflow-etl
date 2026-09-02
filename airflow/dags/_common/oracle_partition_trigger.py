@@ -100,6 +100,17 @@ _MAX_TRANSIENT_RETRIES = 10
 # retry-backoff convention, adapted to `asyncio.sleep` (never `time.sleep`).
 _RETRY_BASE_DELAY_SECONDS = 1.0
 
+# Bounded overall wait for "both datasets present" to become true. Without
+# this, a genuinely stuck ingestion pipeline (e.g. silently failing to load
+# new data) leaves this trigger polling forever -- the only thing that ever
+# stopped it was the PARENT DAG's own dagrun_timeout, which is stock Airflow
+# scheduler behavior that force-SKIPS (never FAILS) any still-deferred task
+# when it fires. Raising here instead lets Airflow's own uncaught-exception
+# handling fail this trigger's deferred task genuinely, well before the
+# parent's dagrun_timeout, so a stuck pipeline surfaces as FAILED, not a
+# misleading SKIPPED.
+_MAX_WAIT_SECONDS = 180.0
+
 
 class OraclePartitionReadyTrigger(BaseTrigger):
     """Polls Oracle's ``ingestion_metadata`` table directly (D-28) -- the
@@ -108,18 +119,23 @@ class OraclePartitionReadyTrigger(BaseTrigger):
     partition (D-29), then yields exactly one ``TriggerEvent`` and returns.
     """
 
-    def __init__(self, poke_interval: float = 30.0) -> None:
+    def __init__(
+        self, poke_interval: float = 30.0, max_wait_seconds: float = _MAX_WAIT_SECONDS
+    ) -> None:
         super().__init__()
         self.poke_interval = poke_interval
+        self.max_wait_seconds = max_wait_seconds
 
     def serialize(self) -> tuple[str, dict[str, Any]]:
         return (
             "_common.oracle_partition_trigger.OraclePartitionReadyTrigger",
-            {"poke_interval": self.poke_interval},
+            {"poke_interval": self.poke_interval, "max_wait_seconds": self.max_wait_seconds},
         )
 
     async def run(self) -> AsyncIterator[Any]:
         retry_count = 0
+        wait_count = 0
+        max_wait_attempts = max(1, int(self.max_wait_seconds / self.poke_interval))
         while True:
             try:
                 connection = await oracledb.connect_async(
@@ -159,6 +175,14 @@ class OraclePartitionReadyTrigger(BaseTrigger):
             if count >= _BOTH_DATASETS_PRESENT:
                 yield TriggerEvent({"status": "ready"})
                 return
+            wait_count += 1
+            if wait_count > max_wait_attempts:
+                msg = (
+                    f"OraclePartitionReadyTrigger: both datasets not present after "
+                    f"{self.max_wait_seconds}s ({wait_count - 1} polls) -- giving up so "
+                    "this surfaces as a visible failure instead of waiting indefinitely."
+                )
+                raise TimeoutError(msg)
             await asyncio.sleep(self.poke_interval)
 
 
