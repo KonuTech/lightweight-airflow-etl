@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import oracledb
+import pytest
 from csv_processor.config.loader import load_config
 from csv_processor.config.models import DatasetConfig
 from csv_processor.engine import process
@@ -113,15 +114,20 @@ def test_structurally_broken_file_returns_invalid_file(tmp_path: Path) -> None:
     assert len(result.checksum) == 64
 
 
-def test_connection_failure_returns_database_error(tmp_path: Path) -> None:
+def test_connection_failure_returns_database_error(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     config = _load_customers_config()
     csv_path = tmp_path / "customers_20260829.csv"
     csv_path.write_text(_WELL_FORMED_CSV, encoding="utf-8")
 
-    with patch(
-        "csv_processor.engine.load.get_connection",
-        side_effect=oracledb.OperationalError("ORA-12541: TNS:no listener"),
-    ) as mock_get_connection:
+    with (
+        patch(
+            "csv_processor.engine.load.get_connection",
+            side_effect=oracledb.OperationalError("ORA-12541: TNS:no listener"),
+        ) as mock_get_connection,
+        caplog.at_level("ERROR", logger="csv_processor.engine"),
+    ):
         result = process(csv_path, config)
 
     mock_get_connection.assert_called_once()
@@ -132,6 +138,12 @@ def test_connection_failure_returns_database_error(tmp_path: Path) -> None:
     assert result.duration_seconds > 0.0
     assert result.checksum is not None
     assert len(result.checksum) == 64
+    # Regression: the underlying Oracle error must actually be logged, not
+    # silently swallowed -- previously nothing in this package logged at all.
+    assert len(caplog.records) == 1
+    assert "ORA-12541" in caplog.records[0].message or "ORA-12541" in str(
+        caplog.records[0].exc_info
+    )
 
 
 def test_unexpected_exception_returns_processing_error(tmp_path: Path) -> None:

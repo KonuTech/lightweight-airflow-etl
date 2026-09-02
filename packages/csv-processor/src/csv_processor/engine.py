@@ -17,6 +17,7 @@ pattern (Pattern 5).
 from __future__ import annotations
 
 import itertools
+import logging
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -29,6 +30,11 @@ from csv_processor import errors, load, source, validate
 from csv_processor.config.models import DatasetConfig
 from csv_processor.errors import StructuralValidationError
 from csv_processor.models import ProcessingResult, Status
+
+# Module logger. This package is deliberately Airflow-independent (no
+# "airflow.task" logger name here) -- a plain module logger still propagates
+# to Airflow's own root-logger capture when running inside a worker process.
+logger = logging.getLogger(__name__)
 
 
 def process_chunks(
@@ -309,7 +315,14 @@ def process(file_path: Path, config: DatasetConfig) -> ProcessingResult:
         if connection is not None:
             connection.rollback()
         return _build_result(Status.INVALID_FILE, config, file_path, start, checksum=checksum)
-    except oracledb.Error:
+    except oracledb.Error as exc:
+        logger.error(
+            "Oracle error during process() for dataset=%s file=%s: %s",
+            config.dataset,
+            file_path.name,
+            exc,
+            exc_info=True,
+        )
         if connection is not None:
             connection.rollback()
         return _build_result(
@@ -323,6 +336,11 @@ def process(file_path: Path, config: DatasetConfig) -> ProcessingResult:
             invalid_rows=invalid_count,
         )
     except Exception:
+        logger.exception(
+            "Unexpected error during process() for dataset=%s file=%s",
+            config.dataset,
+            file_path.name,
+        )
         if connection is not None:
             try:
                 connection.rollback()
