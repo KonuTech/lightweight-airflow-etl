@@ -19,6 +19,9 @@ import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import oracledb
+import pytest
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "airflow" / "dags"))
 
@@ -105,3 +108,90 @@ def test_poll_query_uses_real_wall_clock_date_never_logical_date_or_data_interva
     assert "TRUNC(SYSDATE)" in _POLL_QUERY
     assert "logical_date" not in _POLL_QUERY
     assert "data_interval" not in _POLL_QUERY
+
+
+def test_run_retries_transient_operational_error_then_succeeds() -> None:
+    """D-08a: a single transient `OperationalError` from `connect_async()` is
+    retried (with backoff), then a successful connection yields the ready
+    event -- the retry logic recovers rather than crashing the sensor."""
+    with (
+        patch(
+            "_common.oracle_partition_trigger.oracledb.connect_async",
+            AsyncMock(
+                side_effect=[
+                    oracledb.OperationalError("DPY-6005: cannot connect"),
+                    _mock_connection([(2,)]),
+                ]
+            ),
+        ),
+        patch(
+            "_common.oracle_partition_trigger.asyncio.sleep", AsyncMock(return_value=None)
+        ) as mock_sleep,
+    ):
+        trigger = OraclePartitionReadyTrigger(poke_interval=30.0)
+        events = asyncio.run(_collect_events(trigger))
+
+    assert len(events) == 1
+    assert events[0].payload == {"status": "ready"}
+    mock_sleep.assert_awaited()
+
+
+def test_run_reraises_after_exhausting_transient_retries() -> None:
+    """D-08b: 11 consecutive `OperationalError` failures (one more than
+    `_MAX_TRANSIENT_RETRIES`) exhausts the retry budget -- the original
+    exception propagates out of `run()` uncaught (D-04)."""
+    with (
+        patch(
+            "_common.oracle_partition_trigger.oracledb.connect_async",
+            AsyncMock(side_effect=[oracledb.OperationalError("DPY-6005: cannot connect")] * 11),
+        ),
+        patch("_common.oracle_partition_trigger.asyncio.sleep", AsyncMock(return_value=None)),
+    ):
+        trigger = OraclePartitionReadyTrigger(poke_interval=30.0)
+        with pytest.raises(oracledb.OperationalError):
+            asyncio.run(_collect_events(trigger))
+
+
+def test_run_propagates_non_transient_error_immediately() -> None:
+    """D-08c: a non-transient `oracledb.Error` subclass (e.g.
+    `ProgrammingError` from a bad query or dropped/renamed table) is never
+    caught for retry -- it propagates immediately on first occurrence, and
+    no backoff sleep is ever attempted (D-02)."""
+    with (
+        patch(
+            "_common.oracle_partition_trigger.oracledb.connect_async",
+            AsyncMock(side_effect=oracledb.ProgrammingError("ORA-00904: invalid identifier")),
+        ),
+        patch(
+            "_common.oracle_partition_trigger.asyncio.sleep", AsyncMock(return_value=None)
+        ) as mock_sleep,
+    ):
+        trigger = OraclePartitionReadyTrigger(poke_interval=30.0)
+        with pytest.raises(oracledb.ProgrammingError):
+            asyncio.run(_collect_events(trigger))
+
+    mock_sleep.assert_not_awaited()
+
+
+def test_run_close_failure_does_not_mask_original_exception() -> None:
+    """D-08d: a `connection.close()` failure inside `finally` never masks
+    the original exception that was already propagating from the try block
+    -- even after the retry cap is exhausted, the exception ultimately
+    raised is the original `OperationalError`, never the close-time
+    `oracledb.Error` (D-06)."""
+    connection = _mock_connection([])
+    connection.cursor.return_value.execute = AsyncMock(
+        side_effect=[oracledb.OperationalError("DPY-4011: connection closed")] * 11
+    )
+    connection.close = AsyncMock(side_effect=oracledb.Error("close failed"))
+
+    with (
+        patch(
+            "_common.oracle_partition_trigger.oracledb.connect_async",
+            AsyncMock(return_value=connection),
+        ),
+        patch("_common.oracle_partition_trigger.asyncio.sleep", AsyncMock(return_value=None)),
+    ):
+        trigger = OraclePartitionReadyTrigger(poke_interval=30.0)
+        with pytest.raises(oracledb.OperationalError):
+            asyncio.run(_collect_events(trigger))

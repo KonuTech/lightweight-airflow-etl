@@ -1,4 +1,4 @@
-.PHONY: up down reset destroy rebuild logs verify smoke-test generate fixtures fixtures-verify verify-phase2 verify-phase3 verify-phase4 verify-phase5 benchmark lint verify-evidence verify-phase6 verify-phase7 verify-phase8 verify-phase9
+.PHONY: up down reset destroy rebuild logs verify smoke-test generate fixtures fixtures-verify verify-phase2 verify-phase3 verify-phase4 verify-phase5 benchmark lint verify-evidence verify-phase6 verify-phase7 verify-phase8 verify-phase9 verify-phase10
 
 up:               ## Start the full stack (Airflow + Oracle)
 	docker compose up -d --wait
@@ -137,3 +137,6 @@ assert all(dag.get_task(tid).fail_when_dag_is_paused is True for tid in trigger_
 assert dag.params['rows'] == 100, dag.params['rows']; \
 assert dag.params['invalid_ratio'] == 0.1, dag.params['invalid_ratio']; \
 print('DAGBAG_OK')"
+
+verify-phase10:    ## Phase 10's own combined local gate: full unit suite covering OraclePartitionReadyTrigger's bounded retry/backoff (ROBUST-01)
+	uv run pytest tests/unit/ -x
