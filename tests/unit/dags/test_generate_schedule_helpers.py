@@ -21,18 +21,29 @@ from _common.generate_schedule_helpers import (  # noqa: E402
 
 
 def test_derive_seed_matches_documented_format() -> None:
-    logical_date = datetime(2026, 9, 1, 14, tzinfo=UTC)
+    logical_date = datetime(2026, 9, 1, 14, 5, tzinfo=UTC)
 
-    assert derive_seed(logical_date) == 2026090114
+    assert derive_seed(logical_date) == 202609011405
 
 
 def test_seed_varies_by_hour() -> None:
-    hour_14 = datetime(2026, 9, 1, 14, tzinfo=UTC)
-    hour_15 = datetime(2026, 9, 1, 15, tzinfo=UTC)
+    hour_14 = datetime(2026, 9, 1, 14, 0, tzinfo=UTC)
+    hour_15 = datetime(2026, 9, 1, 15, 0, tzinfo=UTC)
 
     assert derive_seed(hour_14) != derive_seed(hour_15)
     # Same logical_date reproduces the same seed on retry (D-04).
     assert derive_seed(hour_14) == derive_seed(hour_14)
+
+
+def test_seed_varies_within_the_same_hour_at_five_minute_cadence() -> None:
+    """Regression test for the MVP's 5-minute schedule: hour-only seed
+    granularity would give every run within the same hour an identical
+    seed/checksum, silently no-op-ing 11 of every 12 runs via
+    checksum-keyed idempotency (Phase 9's "Pitfall 1", reborn)."""
+    minute_00 = datetime(2026, 9, 1, 14, 0, tzinfo=UTC)
+    minute_05 = datetime(2026, 9, 1, 14, 5, tzinfo=UTC)
+
+    assert derive_seed(minute_00) != derive_seed(minute_05)
 
 
 def test_summary_format() -> None:

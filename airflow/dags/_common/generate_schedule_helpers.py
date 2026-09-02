@@ -26,21 +26,27 @@ _FILENAME_RE = re.compile(r"^(\d{8})\.csv(\.gz)?$")
 
 
 def derive_seed(logical_date: datetime) -> int:
-    """Derive a per-hour, retry-reproducible seed from ``logical_date`` (D-04).
+    """Derive a per-run, retry-reproducible seed from ``logical_date`` (D-04).
 
     The same ``logical_date`` always produces the same seed (retry
-    reproducibility); two different real hours always produce different
-    seeds.
+    reproducibility); two different runs always produce different seeds.
+
+    Minute granularity (not hour) -- at the MVP's 5-minute schedule cadence,
+    hour-only granularity would give every run within the same hour an
+    IDENTICAL seed, producing byte-identical CSVs whose checksum-keyed
+    idempotency check (``csv_processor.engine.process()``) would silently
+    no-op 11 of every 12 runs. This is Phase 9's own "Pitfall 1" bug,
+    reborn at finer schedule granularity.
 
     Args:
         logical_date: The DagRun's ``logical_date`` (a plain, tz-aware
             ``datetime.datetime``, not ``pendulum.DateTime``).
 
     Returns:
-        An integer seed in ``YYYYMMDDHH`` shape, e.g.
-        ``datetime(2026, 9, 1, 14, tzinfo=UTC)`` -> ``2026090114``.
+        An integer seed in ``YYYYMMDDHHMM`` shape, e.g.
+        ``datetime(2026, 9, 1, 14, 5, tzinfo=UTC)`` -> ``202609011405``.
     """
-    return int(logical_date.strftime("%Y%m%d%H"))
+    return int(logical_date.strftime("%Y%m%d%H%M"))
 
 
 def format_cascade_summary(dataset_results: dict[str, dict[str, int] | None]) -> str:
