@@ -120,6 +120,20 @@ table, and reports back a clear processing summary — end to end, reproducibly,
       (`airflow-init` root-user repair step for both `data/` ownership and the
       passwords-file bind-mount gotcha), proven by a permanent `make verify-phase8` check and a
       live fresh-clone/idempotency proof, not just code inspection (ENV-01/02/03) — Phase 8.
+- ✓ New `csv_generate_schedule` DAG (`@hourly`, `catchup=False`, `max_active_runs=1`) regenerates
+      customers/orders CSVs with a per-hour-varying seed and chain-triggers `csv_ingest` (customers
+      → orders) then `report_ready` via three sequential, deferrable `TriggerDagRunOperator` tasks
+      — the full pipeline runs unattended once per hour with no manual `make generate` step
+      (SCHED-01/02/03/04/05/07/08) — Phase 9. `csv_ingest.py`/`report_ready.py` remain
+      byte-for-byte unmodified and independently triggerable (SCHED-06). Live-verified against the
+      real running stack, not just structurally: sequential `deferred`-state chain-triggering,
+      overlap queuing under `max_active_runs=1`, and immediate failure on a paused sub-DAG all
+      confirmed via captured REST API evidence (`docs/airflow-dag.md`) — none of the flagged
+      upstream Airflow deferred-mode issues (#60049/#57756/#38353/#52247) reproduced.
+- ✓ Best-effort 30-day retention task inside `csv_generate_schedule` deletes generated CSVs
+      (`.csv`/`.csv.gz`) older than 30 days from `data/customers/`/`data/orders/`, never failing
+      the DagRun on cleanup errors (SCHED-10, added during Phase 9 discuss-phase as a bundled scope
+      addition, mirroring Phase 8's ENV-03 precedent) — Phase 9.
 
 ### Active
 
@@ -132,10 +146,6 @@ table, and reports back a clear processing summary — end to end, reproducibly,
       Critical finding (07-REVIEW.md CR-01); did not block Phase 7 completion since the sensor's
       happy-path defer/poll/fire behavior is live-proven, but is a real production-shaped
       robustness gap worth a follow-up fix. **In scope for v1.1.**
-- [ ] New `csv_generate_schedule` DAG regenerates customers/orders CSVs hourly and chain-triggers
-      `csv_ingest` (both datasets) then `report_ready`, so the full pipeline runs unattended once
-      per hour with no manual `make generate` step — v1.1 (Phase 9, depends on Phase 8's
-      environment fixes, now shipped)
 
 ### Out of Scope
 
@@ -282,7 +292,13 @@ PAT — see Key Decisions) enforces this on every change.
 
 **v1.1 progress:** Phase 8 (Environment & Docker Fixes for Container-Side Generation) complete
 (2026-09-01) — 2/2 plans, goal-backward verification passed 8/8 must-haves against the live stack.
-Phase 9 (`csv_generate_schedule` orchestrator DAG) is next, now unblocked.
+Phase 9 (Hourly Orchestrator DAG) complete (2026-09-02) — 4/4 plans, goal-backward verification
+passed 9/9 requirement IDs against the live stack, plus a code-review Critical finding (CR-01,
+a silent-skip-masks-failure retry bug in the chain-trigger tasks) found and fixed post-plan. One
+open item accepted as known risk rather than escalated: an Airflow `TriggerRunner` subprocess
+deadlock observed during verification (self-recovering, plausibly this sandboxed environment's
+resource pressure — see STATE.md Blockers/Concerns). Phase 10
+(`OraclePartitionReadyTrigger` robustness fix) is next, now unblocked.
 
 ### Next Milestone Goals
 
@@ -309,4 +325,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-09-01 after Phase 8 completion (v1.1 Hourly Ingestion Automation)*
+*Last updated: 2026-09-02 after Phase 9 completion (v1.1 Hourly Ingestion Automation)*
