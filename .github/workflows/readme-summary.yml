@@ -44,6 +44,7 @@ name: readme-summary
 on:
   push:
     branches: [master]
+  workflow_dispatch: {}
 
 jobs:
   regenerate-executive-summary:
@@ -80,6 +81,25 @@ jobs:
       - name: Dump container logs on stack failure
         if: failure()
         run: docker compose logs
+
+      - name: DIAGNOSTIC -- data/ permission state
+        run: |
+          echo "--- id ---"
+          id
+          echo "--- ls -la data/ ---"
+          ls -la data/
+          echo "--- ls -la data/customers/ ---"
+          ls -la data/customers/
+          echo "--- stat data/customers ---"
+          stat data/customers
+          echo "--- attempt: mkdir + touch as this runner user ---"
+          mkdir -p data/customers/.staging && echo "mkdir OK" || echo "mkdir FAILED"
+          touch data/customers/.staging/diag_test.txt && echo "touch OK" || echo "touch FAILED"
+          ls -la data/customers/.staging/
+          echo "--- docker compose ps ---"
+          docker compose ps
+          echo "--- airflow-init logs ---"
+          docker compose logs airflow-init
 
       - uses: astral-sh/setup-uv@v10.0.1
       - run: uv sync --locked
