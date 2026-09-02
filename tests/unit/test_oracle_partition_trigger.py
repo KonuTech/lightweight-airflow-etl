@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import oracledb
 import pytest
@@ -134,6 +134,30 @@ def test_run_retries_transient_operational_error_then_succeeds() -> None:
     assert len(events) == 1
     assert events[0].payload == {"status": "ready"}
     mock_sleep.assert_awaited()
+
+
+def test_run_backoff_delay_doubles_and_is_capped_at_poke_interval() -> None:
+    """D-05: the exponential backoff formula
+    (`min(_RETRY_BASE_DELAY_SECONDS * (2 ** (retry_count - 1)), poke_interval)`)
+    doubles the delay each consecutive transient failure and caps it at
+    `poke_interval` -- asserted by exact value/sequence so a regression in
+    the formula (wrong exponent base, dropped cap) fails this test even
+    though other retry tests only check `assert_awaited()`."""
+    with (
+        patch(
+            "_common.oracle_partition_trigger.oracledb.connect_async",
+            AsyncMock(
+                side_effect=[oracledb.OperationalError("x")] * 3 + [_mock_connection([(2,)])]
+            ),
+        ),
+        patch(
+            "_common.oracle_partition_trigger.asyncio.sleep", AsyncMock(return_value=None)
+        ) as mock_sleep,
+    ):
+        trigger = OraclePartitionReadyTrigger(poke_interval=2.5)
+        asyncio.run(_collect_events(trigger))
+
+    mock_sleep.assert_has_awaits([call(1.0), call(2.0), call(2.5)])  # capped at poke_interval
 
 
 def test_run_reraises_after_exhausting_transient_retries() -> None:
