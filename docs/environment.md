@@ -143,7 +143,7 @@ entry) so any Airflow task or `docker compose exec` context can `from generator.
 main` and run it **in-process**, without shelling out to a subprocess. `faker` — the only
 non-stdlib dependency `generate_csv.py` needs beyond the already-installed `csv_processor.config`
 — is installed in the image at the exact version pinned in the root `uv.lock`. This is what Phase
-9's `csv_generate_schedule` DAG uses to regenerate customers/orders CSVs on an hourly schedule
+9's `ingestion_cascade_orchestrator` DAG uses to regenerate customers/orders CSVs on its schedule
 without a manual `make generate` step.
 
 ## First-Clone Setup Gaps

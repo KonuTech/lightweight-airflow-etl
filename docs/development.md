@@ -23,7 +23,7 @@ uv run pytest tests/e2e/ -x           # needs `make up` (real Oracle + real Airf
 `tests/unit/` covers config/parsing/type-conversion/validation logic with no external
 dependencies. `tests/integration/` exercises `csv_processor.load`/`engine.process()` against a
 real running Oracle container (never mocked). `tests/e2e/` (TEST-03) is the strongest proof: it
-triggers the real `csv_ingest` DAG over Airflow's REST API, polls for a genuine `deferred`
+triggers the real `csv_to_oracle_ingest` DAG over Airflow's REST API, polls for a genuine `deferred`
 `wait_for_file` state *before* dropping the fixture file, then asserts real row counts in
 `<dataset>_valid`/`<dataset>_invalid` — not just `DagRun.state == "success"`.
 
@@ -64,7 +64,7 @@ sequence CI runs).
 ```
 packages/csv-processor/   -- the reusable, Airflow-agnostic CSV engine (ENGINE-09).
                               Zero airflow.* imports anywhere in this tree.
-airflow/dags/              -- the config-driven csv_ingest DAG, the report_ready DAG (senses both
+airflow/dags/              -- the config-driven csv_to_oracle_ingest DAG, the customers_orders_report DAG (senses both
                               datasets' ingestion, materializes the business report), and
                               _common/ helpers (including the custom OraclePartitionReadyTrigger).
                               Thin orchestration only -- zero CSV/Oracle logic of its own.
@@ -95,7 +95,7 @@ Per `DAG-05`'s zero-branching design, adding a dataset never requires a DAG code
    `ingested_at`) plus a widened-`_invalid`-columns migration (mirror
    `docker/oracle/init/04_widen_invalid_columns.sql` — every `_invalid` data column becomes
    nullable `VARCHAR2` at its current size, see `docs/oracle.md` for why).
-3. Add the new dataset name to `airflow/dags/csv_ingest.py`'s `dataset` `Param`'s `enum` list —
+3. Add the new dataset name to `airflow/dags/csv_to_oracle_ingest.py`'s `dataset` `Param`'s `enum` list —
    the **only** DAG-file edit a new dataset ever needs.
 4. `make reset && make up` (fresh Oracle volume, so the new init scripts actually run), then
    `uv run python generator/generate_csv.py --dataset <name>` to produce a fixture file and

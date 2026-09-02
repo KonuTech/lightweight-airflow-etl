@@ -10,10 +10,10 @@ level, not the per-module detail level.
 ## The Full Path
 
 ```
-HTTP POST /api/v2/dags/csv_ingest/dagRuns   (Airflow's own REST API, admin/admin JWT)
+HTTP POST /api/v2/dags/csv_to_oracle_ingest/dagRuns   (Airflow's own REST API, admin/admin JWT)
         |
         v
-csv_ingest DAG (airflow/dags/csv_ingest.py)
+csv_to_oracle_ingest DAG (airflow/dags/csv_to_oracle_ingest.py)
         |
         +-- load_config_task        -- validates runtime conf, loads configs/datasets/<name>.json
         +-- route_after_config      -- the ONLY branch, on config validity, never on dataset identity
@@ -37,18 +37,18 @@ A single HTTP request carries `{"conf": {"dataset": "customers", "config_path":
 "configs/datasets/customers.json"}}` (see `docs/airflow-dag.md`'s "Triggering the DAG" section for
 the exact `scripts/trigger_dag.sh` flow). The DAG never branches on which dataset it received —
 `route_after_config` only ever branches on whether the loaded config is valid — so the exact same,
-unmodified `csv_ingest.py` handles both `customers` and `orders` purely by the runtime `conf` it's
+unmodified `csv_to_oracle_ingest.py` handles both `customers` and `orders` purely by the runtime `conf` it's
 given (DAG-05).
 
-## The `report_ready` DAG (business report)
+## The `customers_orders_report` DAG (business report)
 
-A second, independent DAG — `airflow/dags/report_ready.py` — senses when both `customers` and
+A second, independent DAG — `airflow/dags/customers_orders_report.py` — senses when both `customers` and
 `orders` have ingested data for the current day's partition, then materializes the same
 customers⋈orders business report every other path in this project produces (see
 `docs/oracle.md`'s "Business Report Evidence"):
 
 ```
-report_ready DAG (airflow/dags/report_ready.py)
+customers_orders_report DAG (airflow/dags/customers_orders_report.py)
         |
         +-- wait_for_both_datasets  -- ReportReadySensor, a deferrable BaseSensorOperator
         |       |

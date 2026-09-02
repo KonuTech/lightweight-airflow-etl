@@ -1,17 +1,26 @@
 # The Airflow DAGs: Task Graphs, Triggering, and Live Verification Evidence
 
-This document covers all three Airflow DAGs this project runs: the config-driven `csv_ingest` DAG
-(`airflow/dags/csv_ingest.py`, D-01) — its task graph, how to trigger it, and the reproducible
+This document covers all three Airflow DAGs this project runs: the config-driven `csv_to_oracle_ingest` DAG
+(`airflow/dags/csv_to_oracle_ingest.py`, D-01) — its task graph, how to trigger it, and the reproducible
 commands used to prove DAG-03 (deferrable file-wait genuinely reports Airflow state `deferred`)
 and DAG-05 (the identical, unmodified DAG file supports a second dataset by construction) — the
-`report_ready` DAG (`airflow/dags/report_ready.py`, D-26), which senses when both datasets
-have ingested data and materializes the business report — and the `csv_generate_schedule` DAG
-(`airflow/dags/csv_generate_schedule.py`), the hourly orchestrator that generates fresh CSVs and
+`customers_orders_report` DAG (`airflow/dags/customers_orders_report.py`, D-26), which senses when both datasets
+have ingested data and materializes the business report — and the `ingestion_cascade_orchestrator` DAG
+(`airflow/dags/ingestion_cascade_orchestrator.py`), the orchestrator that generates fresh CSVs and
 chain-triggers both of the other two, unmodified DAGs. Full HTTP-to-Oracle-rows automated
 end-to-end testing is Phase 6's job (TEST-03) — this document only records manual/live
 verification evidence gathered directly against the real running docker-compose stack.
 
-## `csv_ingest` DAG
+> **Note (2026-09-02):** all three DAGs in this document were renamed — `csv_generate_schedule` →
+> `ingestion_cascade_orchestrator`, `csv_ingest` → `csv_to_oracle_ingest`, `report_ready` →
+> `customers_orders_report` (files renamed to match). Section headers/prose below use the current
+> names. The dated **Live Verification Evidence** subsections further down predate the rename and
+> intentionally keep their real captured curl commands, JSON responses, and error text **verbatim
+> under the old names** — that's what actually ran and was observed at the time; rewriting it
+> would misrepresent the historical record. Substitute the current `dag_id` if you re-run any of
+> those commands yourself today.
+
+## `csv_to_oracle_ingest` DAG
 
 ### Task Graph
 
@@ -62,7 +71,7 @@ run regardless, but the scheduler will never execute a paused DAG's tasks — th
 ```bash
 JWT=$(curl -s -X POST "http://localhost:8080/auth/token" -H "Content-Type: application/json" \
   -d '{"username": "admin", "password": "admin"}' | jq -r '.access_token')
-curl -s -X PATCH "http://localhost:8080/api/v2/dags/csv_ingest" \
+curl -s -X PATCH "http://localhost:8080/api/v2/dags/csv_to_oracle_ingest" \
   -H "Authorization: Bearer ${JWT}" -H "Content-Type: application/json" \
   -d '{"is_paused": false}'
 ```
@@ -157,10 +166,10 @@ field on `TriggerDAGRunPostBody` — omitting it entirely returns HTTP 422 (`Fie
 `scripts/trigger_dag.sh` passes `"logical_date": null` explicitly in the trigger body so Airflow
 auto-assigns the trigger time, matching UI/CLI-triggered runs.
 
-## `report_ready` DAG
+## `customers_orders_report` DAG
 
-`airflow/dags/report_ready.py` (D-26) is dataset-agnostic — it takes no runtime `conf` and is
-triggered on demand or run on a schedule, independently of any `csv_ingest` run.
+`airflow/dags/customers_orders_report.py` (D-26) is dataset-agnostic — it takes no runtime `conf` and is
+triggered on demand or run on a schedule, independently of any `csv_to_oracle_ingest` run.
 
 ### Task Graph
 
@@ -184,16 +193,16 @@ wait_for_both_datasets -> build_report_task
 
 ### Live Verification Evidence
 
-`tests/e2e/test_report_ready_dag.py` proves, against the real running stack: the sensor reaches
+`tests/e2e/test_customers_orders_report_dag.py` proves, against the real running stack: the sensor reaches
 Airflow task state `deferred` before either dataset has ingested; it remains `deferred` after only
 ONE dataset has ingested (proving it waits for both, not either); and the DAG run completes
 successfully once BOTH datasets have ingested data for the current partition.
 
-## `csv_generate_schedule` DAG
+## `ingestion_cascade_orchestrator` DAG
 
-`airflow/dags/csv_generate_schedule.py` is the hourly orchestrator: `@dag(schedule="@hourly",
+`airflow/dags/ingestion_cascade_orchestrator.py` is the orchestrator: `@dag(schedule="*/5 * * * *",
 catchup=False, max_active_runs=1)`. Each run generates a fresh, correlated `customers`+`orders`
-CSV pair, then sequentially chain-triggers the existing, unmodified `csv_ingest`/`report_ready`
+CSV pair, then sequentially chain-triggers the existing, unmodified `csv_to_oracle_ingest`/`customers_orders_report`
 DAGs above via `TriggerDagRunOperator` — it never duplicates their logic. `rows` and
 `invalid_ratio` are operator-overridable DAG `Param`s (SCHED-08), defaulting to `100` and `0.1`
 respectively.
@@ -207,7 +216,7 @@ generate_task -> trigger_customers -> trigger_orders -> trigger_report_ready -> 
 - `generate_task` — invokes `generator/generate_csv.py --correlated` as a subprocess, seeded via
   `derive_seed(logical_date)` (D-04) so a retry of this task regenerates byte-identical data for
   the same DagRun's `logical_date`.
-- `trigger_customers` — a `TriggerDagRunOperator(trigger_dag_id="csv_ingest", conf={"dataset":
+- `trigger_customers` — a `TriggerDagRunOperator(trigger_dag_id="csv_to_oracle_ingest", conf={"dataset":
   "customers", ...})`. Uses a deterministic `trigger_run_id` (`{{ dag_run.run_id }}__customers`,
   D-06), `skip_when_already_exists=True` **and** `reset_dag_run=True` (D-07, corrected) so a
   manual retry actually clears and re-runs the existing child DagRun for that `trigger_run_id`
@@ -224,15 +233,15 @@ generate_task -> trigger_customers -> trigger_orders -> trigger_report_ready -> 
   trigger on `orders_valid` rejects any row whose `customer_id` doesn't already exist in
   `customers_valid`.
 - `trigger_report_ready` — the same deterministic-`trigger_run_id`/`skip_when_already_exists`/
-  `reset_dag_run`/`deferrable` shape (D-06/D-07/D-08), targeting `report_ready` instead of
-  `csv_ingest`. Runs only after both dataset ingests complete.
+  `reset_dag_run`/`deferrable` shape (D-06/D-07/D-08), targeting `customers_orders_report` instead of
+  `csv_to_oracle_ingest`. Runs only after both dataset ingests complete.
 - `summary_task` — queries `ingestion_metadata` directly via a bind-parameterized Oracle query for
   both datasets' latest ingestion (D-12/D-13/D-14) and logs one cascade summary line built by
   `format_cascade_summary()`, independent of any XCom pulled from the triggered DAGs.
 - `retention_task` — best-effort deletes CSVs older than 30 days from `data/customers/` and
   `data/orders/` (D-16/D-17/D-18), logging each deletion/skip; never fails the DagRun even if
-  cleanup itself fails, per its best-effort contract. It is the final task in each hourly
-  `csv_generate_schedule` cascade run.
+  cleanup itself fails, per its best-effort contract. It is the final task in each
+  `ingestion_cascade_orchestrator` cascade run.
 
 ### Live Verification Evidence
 
@@ -522,6 +531,6 @@ false
 ## Full HTTP-to-Oracle-rows automated testing
 
 This document records this phase's own manual/live verification evidence only. Fully automated
-end-to-end tests (HTTP trigger → DAG → CSV → Oracle → VALID/INVALID tables for `csv_ingest`,
-asserted via a real test runner rather than manual curl commands, plus the `report_ready`
+end-to-end tests (HTTP trigger → DAG → CSV → Oracle → VALID/INVALID tables for `csv_to_oracle_ingest`,
+asserted via a real test runner rather than manual curl commands, plus the `customers_orders_report`
 deferral/completion proof above) live under `tests/e2e/`.

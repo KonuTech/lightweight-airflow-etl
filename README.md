@@ -162,7 +162,7 @@ flowchart TD
     META --> SENSOR2["OraclePartitionReadyTrigger
     polls until both datasets present today"]
     SENSOR2 --> BUILDRPT["build_report_task
-    report_ready DAG"]
+    customers_orders_report DAG"]
     CVALID --> BUSREPORT["customers JOIN orders
     business report"]
     OVALID --> BUSREPORT
@@ -215,7 +215,7 @@ flowchart TD
 
 ### Data Flow Legend
 - **(blue-grey) Generation**: `generator/generate_csv.py` produces Zipf-correlated `customers`/`orders` CSVs, staged then atomically renamed into the watched directory
-- **(blue) Airflow Tasks**: the `csv_ingest` DAG's chain (`wait_for_file` → `process_csv_task` → `load_results_task` → `report_result_task`) plus the `report_ready` DAG's sensor/report task
+- **(blue) Airflow Tasks**: the `csv_to_oracle_ingest` DAG's chain (`wait_for_file` → `process_csv_task` → `load_results_task` → `report_result_task`) plus the `customers_orders_report` DAG's sensor/report task
 - **(green) Valid**: `customers_valid`/`orders_valid` — PK + index + FK-existence trigger enforced
 - **(red) Invalid**: `customers_invalid`/`orders_invalid` — fully unconstrained, widened nullable columns
 - **(indigo) Metadata**: `ingestion_metadata`, the checksum-keyed idempotency record every ingestion writes
@@ -227,7 +227,7 @@ flowchart TD
 - `orders_valid.customer_id` is drawn from the *same* pool of `customer_id` values that land in `customers_valid` (Zipf-weighted, with replacement) — never independently random — which is what makes the customers ⋈ orders JOIN return real rows
 - The `BEFORE INSERT` trigger on `orders_valid` is a DB-level safety net on top of the Python-side correlation, not a replacement for it — it rejects the *whole batch* if a `customer_id` doesn't already exist in `customers_valid`
 - `customers_invalid`/`orders_invalid` are reachable only via the same `engine.process()` call, never a separate write path — and carry zero constraints, by design
-- The business report is materialized three independent ways from the identical, never-re-authored SQL: an ad hoc `make verify-evidence` run, the CI-triggered README regeneration, and the live `report_ready` DAG
+- The business report is materialized three independent ways from the identical, never-re-authored SQL: an ad hoc `make verify-evidence` run, the CI-triggered README regeneration, and the live `customers_orders_report` DAG
 
 </details>
 
@@ -327,7 +327,7 @@ constraints (PK/index/trigger), partitioning, and idempotency details behind the
 | [docs/configuration.md](docs/configuration.md) | The `config.json` contract shape, `defaults.json` merge semantics, and the two real dataset configs |
 | [docs/csv-engine.md](docs/csv-engine.md) | The detect→parse→validate→normalize→chunk sequence, the 7 closed `Status` values, and the bounded-memory chunking guarantee |
 | [docs/oracle.md](docs/oracle.md) | The 5-table schema, `_invalid` column widening, `INTERVAL` partitioning, `executemany()` bulk loading, checksum-based idempotency, the business report, and its DB-level PK/index/trigger correlation safety net |
-| [docs/airflow-dag.md](docs/airflow-dag.md) | Both DAGs' task graphs (`csv_ingest` and the report-sensing `report_ready`), how to trigger them, and live-verification evidence |
+| [docs/airflow-dag.md](docs/airflow-dag.md) | All three DAGs' task graphs (`csv_to_oracle_ingest`, the report-sensing `customers_orders_report`, and the `ingestion_cascade_orchestrator`), how to trigger them, and live-verification evidence |
 | [docs/development.md](docs/development.md) | Local dev workflow (tests, reset, fixtures, lint/type-check), code layout, adding a new dataset, and CI/troubleshooting |
 | [docs/benchmark.md](docs/benchmark.md) | The naive-vs-bulk Oracle write comparison at ~100K rows, with per-chunk timing |
 

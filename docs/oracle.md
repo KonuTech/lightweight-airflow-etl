@@ -156,7 +156,7 @@ literal `region` column exists in this schema, an explicit substitution, not a s
 - `scripts/verify_evidence.sql`, run ad hoc via `make verify-evidence`
 - `scripts/regenerate_readme_summary.py`, which live-regenerates README's Executive Summary table
   after every merge to `master` (`.github/workflows/readme-summary.yml`)
-- the `report_ready` Airflow DAG (`airflow/dags/report_ready.py`, see `docs/airflow-dag.md`), whose
+- the `customers_orders_report` Airflow DAG (`airflow/dags/customers_orders_report.py`, see `docs/airflow-dag.md`), whose
   `build_report_task` runs it once a deferrable trigger confirms both `customers` and `orders` have
   ingested data for the current day's partition, and logs the result
 
