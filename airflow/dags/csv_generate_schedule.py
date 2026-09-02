@@ -1,8 +1,10 @@
-"""The hourly ``csv_generate_schedule`` orchestrator DAG (SCHED-01, SCHED-03,
+"""The ``csv_generate_schedule`` orchestrator DAG (SCHED-01, SCHED-03,
 SCHED-04, SCHED-05, SCHED-06, SCHED-08, SCHED-10; D-01 through D-19).
 
-Generates a fresh, correlated ``customers``+``orders`` CSV pair each hour
-(D-03/D-04/D-05), then sequentially chain-triggers the existing, unmodified
+Generates a fresh, correlated ``customers``+``orders`` CSV pair every 5
+minutes (MVP cadence -- see docs/airflow-dag.md for the rationale: surfacing
+pipeline failures within minutes instead of up to an hour; D-03/D-04/D-05),
+then sequentially chain-triggers the existing, unmodified
 ``csv_ingest``/``report_ready`` DAGs (SCHED-03/SCHED-06, D-06/D-07/D-08),
 logs a one-line cascade summary (SCHED-07, D-12/D-13/D-14), and best-effort
 cleans up CSVs older than 30 days (SCHED-10, D-16/D-17/D-18) -- all without
@@ -62,10 +64,10 @@ _RETENTION_DAYS = 30
 
 @dag(
     dag_id="csv_generate_schedule",
-    schedule="@hourly",
+    schedule="*/5 * * * *",
     catchup=False,
     max_active_runs=1,
-    dagrun_timeout=timedelta(minutes=45),
+    dagrun_timeout=timedelta(minutes=4),
     params={
         "rows": Param(100, type="integer", minimum=1),
         "invalid_ratio": Param(0.1, type="number", minimum=0.0, maximum=1.0),
@@ -123,11 +125,12 @@ def csv_generate_schedule() -> None:
                 check=True,
                 capture_output=True,
                 text=True,
-                # A few minutes, well under the DAG's 45-minute dagrun_timeout
-                # (WR-02) -- bounds a hung generate_csv.py deterministically
-                # rather than relying on DAG-level bookkeeping to eventually
-                # notice and terminate an orphaned child OS process.
-                timeout=300,
+                # Well under the DAG's 4-minute dagrun_timeout (WR-02) --
+                # bounds a hung generate_csv.py deterministically rather than
+                # relying on DAG-level bookkeeping to eventually notice and
+                # terminate an orphaned child OS process. generate_csv.py
+                # normally completes in ~1s.
+                timeout=60,
             )
         except subprocess.CalledProcessError as exc:
             # WR-01: CalledProcessError.__str__() only prints the command and
