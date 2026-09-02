@@ -277,6 +277,7 @@ setup and any later schema change.
 | `orders.customer_id → customers.customer_id` FK now enforced at the DB level (supersedes the Phase 3 "FK not enforced" decision above for this one relationship) | Catches any future generator regression as a hard load failure instead of silent bad data; the Python-side `csv_processor` validation engine itself still excludes referential validators per spec §28 — this is a separate DDL safety net, not a new validator stage | ✓ Applied — Phase 7 |
 | `orders.amount` precision narrowed (12→6 digits) and `order_date` confined to a narrow, recent window (supersedes nothing — first time these were tuned) so realistic row counts produce multiple orders per (region, month) business-report bucket | Every bucket held exactly one order at the old precision/date-range combination, so the report's Avg Amount always trivially equaled Total Amount — not a bug in the report SQL, a data-generation gap | ✓ Applied — post-Phase-7 |
 | `readme-summary.yml` opens a PR (via a repo-scoped `README_BOT_PAT`) and auto-merges it once `lint-type-unit`/`oracle-e2e` genuinely pass, rather than committing straight to `master` with the default `GITHUB_TOKEN` (supersedes the Phase 6 "default GITHUB_TOKEN, never a PAT" decision above) | Confirmed live: a GITHUB_TOKEN-authored push can never satisfy `master`'s required status checks (they only ever run via `pull_request`, and GitHub Actions app bypass actors are org-only — unavailable on this personal-account repo); a GITHUB_TOKEN-opened PR also can't trigger those checks itself (anti-recursion) or dispatch them via API (needs `workflow` scope). `README_BOT_PAT` is scoped to only this repo with only Contents/PR write, used solely to open this one PR — never to push `master` directly. D-13's actual concern (an infinite regenerate-commit loop) is closed by `[skip ci]` on the final squash-merge commit instead, a token-independent mechanism — confirmed live: the merge commit does not re-trigger `readme-summary.yml` | ✓ Applied — post-Phase-7 |
+| `csv_generate_schedule` cadence changed `@hourly` → `*/5 * * * *` for the MVP, with `dagrun_timeout` 45min→4min, `OraclePartitionReadyTrigger` given a new bounded 3-min max-wait (was unbounded), and `derive_seed()` moved from hour to minute granularity (supersedes Phase 9's `@hourly`/45min/hour-granularity decisions) | Post-milestone live debugging (2026-09-02) found `trigger_report_ready` showing SKIPPED on nearly every real run — root cause: `resolve_matched_file()` picked the *oldest* dated file, not newest, so ingestion kept silently re-consuming a stale already-loaded file (`ORA-00001` PK collision), `csv_processor.engine.process()` swallowed the error with zero logging anywhere in the package, `ingestion_metadata` never got a new same-day row, and `report_ready`'s sensor polled forever — the parent DAG's `dagrun_timeout` eventually force-SKIPped every unfinished task (stock Airflow 3.x scheduler behavior: timeout marks unfinished task instances SKIPPED, never FAILED). Fixed: `resolve_matched_file()` now picks the newest file; `engine.py` now logs Oracle/unexpected errors; the trigger now fails loudly via `TimeoutError` well before the parent's own timeout; 5-min cadence (with proportionally-shrunk timeouts and minute-granularity seeds) surfaces failures within minutes instead of up to an hour. Live-verified: 3 consecutive full end-to-end successes post-fix, `customers_valid`/`orders_valid` genuinely growing again | ✓ Applied — post-Phase-10 |
 
 ## Current State
 
@@ -304,9 +305,21 @@ validated:
   passed 4/4 must-haves cleanly (no open items), plus two code-review Warning findings (untested
   backoff-formula values, under-severity close-failure logging) found and fixed post-plan.
 
-The full CSV → Oracle pipeline now runs unattended once per hour with no manual step, and the
+**Post-milestone fix (2026-09-02):** live operation after v1.1 shipped revealed
+`trigger_report_ready` showing SKIPPED on nearly every real run — not the accepted-as-known
+`TriggerRunner` deadlock risk above, but a genuine, deterministic, self-inflicted bug
+(stale-file selection + silent Oracle-error swallowing; see Key Decisions for the full root
+cause and fix). Fixed same-day: `resolve_matched_file()` now picks the newest file,
+`csv_processor.engine.process()` now logs Oracle errors (was 100% silent package-wide),
+`OraclePartitionReadyTrigger` now has a bounded 3-minute max-wait so a stuck pipeline fails
+loudly instead of being force-SKIPPED by the parent DAG's timeout, and the schedule moved from
+hourly to every 5 minutes (MVP decision) with `derive_seed()` correspondingly moved to minute
+granularity. Live-verified: 3 consecutive full end-to-end successes, `customers_valid`/
+`orders_valid` genuinely growing again.
+
+The full CSV → Oracle pipeline now runs unattended every 5 minutes with no manual step, and the
 `report_ready` sensor's Oracle polling no longer crashes permanently on a transient connectivity
-error.
+error nor hangs indefinitely on a genuinely stuck pipeline.
 
 ### Next Milestone Goals
 
@@ -333,4 +346,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-09-02 after Phase 10 completion — v1.1 Hourly Ingestion Automation milestone complete*
+*Last updated: 2026-09-02 after post-milestone live-bug fix (stale-file selection, silent Oracle error swallowing, unbounded sensor wait) — v1.1 Hourly Ingestion Automation milestone complete and live-verified*

@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Hourly Ingestion Automation
-status: milestone_complete
-stopped_at: Milestone complete (Phase 10 was final phase)
-last_updated: 2026-09-02T06:41:09.611Z
+status: completed
+stopped_at: context exhaustion at 75% (2026-09-02)
+last_updated: "2026-09-02T07:54:39.133Z"
 last_activity: 2026-09-02
 progress:
   total_phases: 3
@@ -123,6 +123,20 @@ None yet.
   rather than a defect in Phase 9's own DAG code. Revisit if it recurs under normal (non-session-
   heavy) operation.
 
+  **Correction (2026-09-02):** the "accepted as known risk" framing above turned out to be
+  incomplete — subsequent live operation showed `trigger_report_ready` SKIPPED on nearly every
+  run, and root-causing it found this was NOT primarily the `TriggerRunner` deadlock (that
+  remains a real, separate, still-unaddressed residual risk) but a distinct, deterministic,
+  self-inflicted bug: `resolve_matched_file()` picked the oldest dated file instead of the
+  newest, causing ingestion to silently re-consume an already-loaded stale file every cycle
+  (`ORA-00001` PK collision), with the error swallowed by zero logging anywhere in
+  `csv_processor`. Fixed same-day (see PROJECT.md Key Decisions): newest-file selection, Oracle
+  error logging, a bounded 3-min max-wait on `OraclePartitionReadyTrigger` (so a genuinely stuck
+  pipeline now fails loudly well before the parent DAG's timeout), and a 5-minute MVP cadence.
+  Live-verified: 3 consecutive full end-to-end successes post-fix. The `TriggerRunner` deadlock
+  risk itself is still open and unaddressed — watch for recurrence now that the masking bug is
+  gone and failures will surface distinctly.
+
 ## Deferred Items
 
 Items acknowledged and deferred at milestone close, most recent first:
@@ -136,8 +150,8 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-02T06:27:23.488Z
-Stopped at: Completed 10-01-PLAN.md
+Last session: 2026-09-02T07:54:39.114Z
+Stopped at: context exhaustion at 75% (2026-09-02)
 requirements mapped across Phases 8-10, awaiting user approval to proceed to `/gsd:plan-phase 8`
 Resume file: None
 </content>

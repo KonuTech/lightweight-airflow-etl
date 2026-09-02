@@ -28,8 +28,13 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Scheduling / Orchestrator DAG (SCHED)
 
-- [x] **SCHED-01**: A new `csv_generate_schedule` DAG runs automatically every hour
-      (`schedule="@hourly"`, `catchup=False`), with no manual `make generate` step required
+- [x] **SCHED-01**: A new `csv_generate_schedule` DAG runs automatically on a fixed cadence
+      (`catchup=False`), with no manual `make generate` step required. **Amended post-milestone
+      (2026-09-02):** cadence changed from `schedule="@hourly"` to `schedule="*/5 * * * *"`
+      (every 5 minutes) for the MVP, so pipeline failures surface within minutes instead of up to
+      an hour — a live production bug (stale-file selection silently masking as SKIPPED, not
+      FAILED) was found and fixed the same day. See PROJECT.md Key Decisions for the full
+      dagrun_timeout/seed-granularity/bounded-wait consequences of this change.
 - [x] **SCHED-02**: Each hourly run generates a fresh, non-duplicate customers+orders CSV pair —
       the generation seed varies per run so checksums differ hour to hour, avoiding a silent
       idempotency no-op at the Oracle ingestion layer
