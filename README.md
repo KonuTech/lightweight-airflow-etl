@@ -1,3 +1,52 @@
+<!-- EXEC-SUMMARY:START -->
+
+# Executive Summary
+
+Live evidence of a working HTTP-trigger -> Airflow DAG -> Oracle ETL pipeline
+(TEST-03/DOC-01), regenerated automatically after every push to `master`
+(D-11/D-12) by `scripts/regenerate_readme_summary.py`, landed via a PR
+`.github/workflows/readme-summary.yml` opens and auto-merges once
+`lint-type-unit`/`oracle-e2e` genuinely pass against it (D-13). Last
+regenerated: `2026-09-03T06:22:55.370756+00:00`.
+
+![Airflow DAGs list showing csv_to_oracle_ingest, customers_orders_report, and ingestion_cascade_orchestrator, all active with green run history](docs/image.png)
+*Airflow's Dags view, live: all three DAGs active and green — `ingestion_cascade_orchestrator`
+running on its `*/5 * * * *` schedule, fanning out into `csv_to_oracle_ingest` (the producer,
+triggered once per dataset) and `customers_orders_report` (the consumer, joining both).*
+
+### Latest ingestion per dataset
+
+| Dataset | File Name | Total Rows | Valid Rows | Invalid Rows | Status | Processed At (UTC) |
+|---|---|---|---|---|---|---|
+| customers | customers_20260903.csv | 15 | 12 | 3 | SUCCESS_WITH_INVALID_ROWS | 2026-09-03T06:22:39.375617 |
+| orders | orders_20260903.csv | 250 | 200 | 50 | SUCCESS_WITH_INVALID_ROWS | 2026-09-03T06:22:51.901510 |
+
+### Deferred-wake proof
+
+`wait_for_file` reported Airflow task state `deferred` for the `customers` dataset (`dag_run_id=manual__2026-09-03T06:22:29.453830+00:00`) at `2026-09-03T06:22:35.620822+00:00` -- confirmed BEFORE the fixture file existed on disk, proving the non-blocking file-wait genuinely deferred rather than short-circuited against an already-present file.
+
+### Customers x Orders business report (top 10)
+
+Region is `customers.country` (no literal `region` column exists in this
+schema -- explicit substitution, not silently assumed, D-10). Grouped by
+region and month-of-`orders.order_date`; see `scripts/verify_evidence.sql`
+for the full, un-truncated report and `make verify-evidence` to reproduce it.
+
+| Region | Order Month | Order Count | Total Amount | Avg Amount |
+|---|---|---|---|---|
+| Angola | 2026-02 | 1 | 3382.56 | 3382.56 |
+| Armenia | 2026-01 | 2 | 12021.07 | 6010.54 |
+| Aruba | 2026-01 | 1 | 6401.76 | 6401.76 |
+| Bermuda | 2026-01 | 7 | 30714.18 | 4387.74 |
+| Bermuda | 2026-02 | 4 | 13800.43 | 3450.11 |
+| Bolivia | 2026-01 | 2 | 9375.24 | 4687.62 |
+| Bolivia | 2026-02 | 1 | 1406.74 | 1406.74 |
+| Bouvet Island (Bouvetoya) | 2026-01 | 6 | 25725.29 | 4287.55 |
+| Bouvet Island (Bouvetoya) | 2026-02 | 5 | 17162.15 | 3432.43 |
+| Bulgaria | 2026-01 | 4 | 18066.82 | 4516.71 |
+
+<!-- EXEC-SUMMARY:END -->
+
 # Lightweight Airflow CSV→Oracle ETL Platform
 
 A small, local Airflow environment that detects, parses, validates, and bulk-loads generated CSV
