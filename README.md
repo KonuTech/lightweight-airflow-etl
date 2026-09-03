@@ -1,52 +1,3 @@
-<!-- EXEC-SUMMARY:START -->
-
-# Executive Summary
-
-Live evidence of a working HTTP-trigger -> Airflow DAG -> Oracle ETL pipeline
-(TEST-03/DOC-01), regenerated automatically after every push to `master`
-(D-11/D-12) by `scripts/regenerate_readme_summary.py`, landed via a PR
-`.github/workflows/readme-summary.yml` opens and auto-merges once
-`lint-type-unit`/`oracle-e2e` genuinely pass against it (D-13). Last
-regenerated: `2026-09-02T09:28:55.512332+00:00`.
-
-![Airflow DAGs list showing csv_to_oracle_ingest, customers_orders_report, and ingestion_cascade_orchestrator, all active with green run history](docs/image.png)
-*Airflow's Dags view, live: all three DAGs active and green — `ingestion_cascade_orchestrator`
-running on its `*/5 * * * *` schedule, fanning out into `csv_to_oracle_ingest` (the producer,
-triggered once per dataset) and `customers_orders_report` (the consumer, joining both).*
-
-### Latest ingestion per dataset
-
-| Dataset | File Name | Total Rows | Valid Rows | Invalid Rows | Status | Processed At (UTC) |
-|---|---|---|---|---|---|---|
-| customers | customers_20260902.csv | 15 | 12 | 3 | SUCCESS_WITH_INVALID_ROWS | 2026-09-02T09:28:39.941572 |
-| orders | orders_20260902.csv | 250 | 200 | 50 | SUCCESS_WITH_INVALID_ROWS | 2026-09-02T09:28:52.306343 |
-
-### Deferred-wake proof
-
-`wait_for_file` reported Airflow task state `deferred` for the `customers` dataset (`dag_run_id=manual__2026-09-02T09:28:32.150485+00:00`) at `2026-09-02T09:28:36.242394+00:00` -- confirmed BEFORE the fixture file existed on disk, proving the non-blocking file-wait genuinely deferred rather than short-circuited against an already-present file.
-
-### Customers x Orders business report (top 10)
-
-Region is `customers.country` (no literal `region` column exists in this
-schema -- explicit substitution, not silently assumed, D-10). Grouped by
-region and month-of-`orders.order_date`; see `scripts/verify_evidence.sql`
-for the full, un-truncated report and `make verify-evidence` to reproduce it.
-
-| Region | Order Month | Order Count | Total Amount | Avg Amount |
-|---|---|---|---|---|
-| Afghanistan | 2026-02 | 1 | 6568.28 | 6568.28 |
-| Albania | 2026-01 | 1 | 2808.15 | 2808.15 |
-| Algeria | 2026-01 | 2 | 13687.11 | 6843.56 |
-| Algeria | 2026-02 | 4 | 8977.56 | 2244.39 |
-| American Samoa | 2026-01 | 4 | 14973.17 | 3743.29 |
-| American Samoa | 2026-02 | 4 | 9019.86 | 2254.97 |
-| Andorra | 2026-01 | 2 | 10018.58 | 5009.29 |
-| Andorra | 2026-02 | 3 | 7939.26 | 2646.42 |
-| Angola | 2026-01 | 1 | 2340.69 | 2340.69 |
-| Angola | 2026-02 | 1 | 3355.62 | 3355.62 |
-
-<!-- EXEC-SUMMARY:END -->
-
 # Lightweight Airflow CSV→Oracle ETL Platform
 
 A small, local Airflow environment that detects, parses, validates, and bulk-loads generated CSV
@@ -54,6 +5,11 @@ files into Oracle Database Free, orchestrated by a thin Airflow TaskFlow DAG tha
 parsing/validation/loading logic to a reusable, Airflow-agnostic Python CSV processing engine. It
 is the deliberately-small sibling of an existing production-shaped Airflow platform — see
 `.planning/PROJECT.md` for the full project context, requirements, and scope.
+
+![Airflow DAGs list showing csv_to_oracle_ingest, customers_orders_report, and ingestion_cascade_orchestrator, all active with green run history](docs/image.png)
+*Airflow's Dags view, live: all three DAGs active and green — `ingestion_cascade_orchestrator`
+running on its `*/5 * * * *` schedule, fanning out into `csv_to_oracle_ingest` (the producer,
+triggered once per dataset) and `customers_orders_report` (the consumer, joining both).*
 
 This README is a short summary with links into the topic docs below — the actual command
 sequences live in `docs/*.md`, never duplicated here.
@@ -325,6 +281,13 @@ flowchart TD
 - The consumer never re-derives which rows are "new" from this specific cycle — it re-runs the *same* full `customers_valid ⋈ orders_valid` business-report SQL every time (see `docs/oracle.md`'s "Business Report Evidence"); "per-partition" framing in this document refers to *when* each producer's rows were `ingested_at`, not a column the report itself filters on
 
 </details>
+
+## Example: Latest ingestion per dataset
+
+| Dataset | File Name | Total Rows | Valid Rows | Invalid Rows | Status | Processed At (UTC) |
+|---|---|---|---|---|---|---|
+| customers | customers_20260902.csv | 15 | 12 | 3 | SUCCESS_WITH_INVALID_ROWS | 2026-09-02T09:28:39.941572 |
+| orders | orders_20260902.csv | 250 | 200 | 50 | SUCCESS_WITH_INVALID_ROWS | 2026-09-02T09:28:52.306343 |
 
 ## Example: Business Report Output Per 5-Minute Partition
 
